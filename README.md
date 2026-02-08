@@ -38,6 +38,14 @@ mindloop-chunk logs/20260208_171554.log --summarize
 mindloop-chunk logs/20260208_171554.log --embed --summarize
 ```
 
+### Tests
+
+```bash
+pip install -e ".[dev]"
+pytest
+pytest --cov=mindloop
+```
+
 ### As a library
 
 ```python
