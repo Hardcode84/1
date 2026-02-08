@@ -48,6 +48,7 @@ def main() -> None:
         try:
             print("Bot: ", end="", flush=True)
             reply = chat(messages)
+            print()
             messages.append({"role": "assistant", "content": reply})
             logging.info("Bot: %s", reply)
             print()

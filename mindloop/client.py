@@ -2,6 +2,7 @@
 
 import json
 import os
+from collections.abc import Callable
 from typing import Any
 
 import requests
@@ -15,13 +16,18 @@ Message = dict[str, Any]
 Tool = dict[str, Any]
 
 
+def _default_on_token(token: str) -> None:
+    print(token, end="", flush=True)
+
+
 def chat(
     messages: list[Message],
     model: str = DEFAULT_MODEL,
     system_prompt: str | None = None,
     tools: list[Tool] | None = None,
+    on_token: Callable[[str], None] = _default_on_token,
 ) -> str:
-    """Stream a chat response, printing tokens as they arrive."""
+    """Stream a chat response, calling on_token for each token."""
     full_messages = list(messages)
     if system_prompt is not None:
         full_messages.insert(0, {"role": "system", "content": system_prompt})
@@ -51,10 +57,9 @@ def chat(
             break
         chunk = json.loads(data)
         token = chunk["choices"][0]["delta"].get("content", "")
-        print(token, end="", flush=True)
+        on_token(token)
         full_reply.append(token)
 
-    print()
     return "".join(full_reply)
 
 
