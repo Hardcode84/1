@@ -45,6 +45,11 @@ def main() -> None:
         action="store_true",
         help="Fetch embeddings for each chunk via OpenRouter.",
     )
+    parser.add_argument(
+        "--summarize",
+        action="store_true",
+        help="Summarize each chunk via OpenRouter.",
+    )
     args = parser.parse_args()
 
     if not args.logfile.exists():
@@ -58,26 +63,36 @@ def main() -> None:
 
     chunks = chunk_turns(turns, args.gap)
 
-    if not args.embed:
-        print_chunks(chunks)
-        return
+    if args.embed:
+        if not API_KEY:
+            print("Set OPENROUTER_API_KEY for embeddings.")
+            return
 
-    if not API_KEY:
-        print("Set OPENROUTER_API_KEY for embeddings.")
-        return
+        embeddings = get_embeddings([c.text for c in chunks])
+        if len(chunks) >= 2:
+            sims = cosine_similarities(embeddings)
+            print("=== Before merging ===\n")
+            print_chunks(chunks, embeddings)
 
-    embeddings = get_embeddings([c.text for c in chunks])
-    if len(chunks) < 2:
-        print_chunks(chunks)
-        return
+            chunks = merge_chunks(chunks, sims)
+            print(f"=== After merging ({len(chunks)} chunks) ===\n")
 
-    sims = cosine_similarities(embeddings)
-    print("=== Before merging ===\n")
-    print_chunks(chunks, embeddings)
+    print_chunks(chunks)
 
-    merged = merge_chunks(chunks, sims)
-    print(f"=== After merging ({len(chunks)} -> {len(merged)} chunks) ===\n")
-    print_chunks(merged)
+    if args.summarize:
+        if not API_KEY:
+            print("Set OPENROUTER_API_KEY for summarization.")
+            return
+
+        from mindloop.summarizer import summarize_chunks
+
+        print("=== Summaries ===\n")
+        summaries = summarize_chunks(chunks)
+        for i, summary in enumerate(summaries, 1):
+            print(f"--- Chunk {i} ---")
+            print(f"  Abstract: {summary.abstract}")
+            print(f"  Summary:  {summary.summary}")
+            print()
 
 
 if __name__ == "__main__":

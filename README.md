@@ -30,6 +30,12 @@ mindloop-chunk logs/20260208_171554.log --embed
 
 # Custom time gap threshold (seconds).
 mindloop-chunk logs/20260208_171554.log --gap 60
+
+# Summarize each chunk.
+mindloop-chunk logs/20260208_171554.log --summarize
+
+# Embed, merge, then summarize.
+mindloop-chunk logs/20260208_171554.log --embed --summarize
 ```
 
 ### As a library

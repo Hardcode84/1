@@ -25,9 +25,12 @@ def chat(
     model: str = DEFAULT_MODEL,
     system_prompt: str | None = None,
     tools: list[Tool] | None = None,
+    stream: bool = True,
     on_token: Callable[[str], None] = _default_on_token,
+    temperature: float | None = None,
+    seed: int | None = None,
 ) -> str:
-    """Stream a chat response, calling on_token for each token."""
+    """Send a chat completion request. Streams by default."""
     full_messages = list(messages)
     if system_prompt is not None:
         full_messages.insert(0, {"role": "system", "content": system_prompt})
@@ -35,11 +38,25 @@ def chat(
     payload: dict[str, Any] = {
         "model": model,
         "messages": full_messages,
-        "stream": True,
     }
     if tools:
         payload["tools"] = tools
+    if temperature is not None:
+        payload["temperature"] = temperature
+    if seed is not None:
+        payload["seed"] = seed
 
+    if not stream:
+        response = requests.post(
+            f"{BASE_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            json=payload,
+        )
+        response.raise_for_status()
+        result: str = response.json()["choices"][0]["message"]["content"]
+        return result
+
+    payload["stream"] = True
     response = requests.post(
         f"{BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {API_KEY}"},
@@ -48,7 +65,7 @@ def chat(
     )
     response.raise_for_status()
 
-    full_reply = []
+    full_reply: list[str] = []
     for line in response.iter_lines():
         if not line or not line.startswith(b"data: "):
             continue
