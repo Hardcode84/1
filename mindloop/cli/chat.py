@@ -9,7 +9,7 @@ import requests
 from mindloop.client import API_KEY, DEFAULT_MODEL, chat
 
 
-def setup_logging():
+def setup_logging() -> Path:
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -23,7 +23,7 @@ def setup_logging():
     return log_path
 
 
-def main():
+def main() -> None:
     if not API_KEY:
         print("Set OPENROUTER_API_KEY environment variable first.")
         print("Get a free key at https://openrouter.ai/keys")

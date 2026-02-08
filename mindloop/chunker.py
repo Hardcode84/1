@@ -86,7 +86,8 @@ def cosine_similarities(embeddings: list[list[float]]) -> list[float]:
     norms = np.linalg.norm(vecs, axis=1, keepdims=True)
     normalized = vecs / norms
     # Dot product of each row with the next one.
-    return (normalized[:-1] * normalized[1:]).sum(axis=1).tolist()
+    result: list[float] = (normalized[:-1] * normalized[1:]).sum(axis=1).tolist()
+    return result
 
 
 def merge_chunks(chunks: list[Chunk], similarities: list[float]) -> list[Chunk]:

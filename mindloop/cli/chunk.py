@@ -14,7 +14,9 @@ from mindloop.chunker import (
 from mindloop.client import API_KEY, get_embeddings
 
 
-def print_chunks(chunks: list[Chunk], embeddings: list[list[float]] | None = None):
+def print_chunks(
+    chunks: list[Chunk], embeddings: list[list[float]] | None = None
+) -> None:
     similarities = (
         cosine_similarities(embeddings) if embeddings and len(embeddings) > 1 else None
     )
@@ -29,7 +31,7 @@ def print_chunks(chunks: list[Chunk], embeddings: list[list[float]] | None = Non
         print()
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Split a chat log into chunks.")
     parser.add_argument("logfile", type=Path, help="Path to the log file.")
     parser.add_argument(

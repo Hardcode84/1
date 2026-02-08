@@ -2,16 +2,19 @@
 
 import json
 import os
+from typing import Any
 
 import requests
 
-API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_MODEL = "openrouter/free"
-DEFAULT_EMBEDDING_MODEL = "openai/text-embedding-3-small"
+API_KEY: str = os.environ.get("OPENROUTER_API_KEY", "")
+BASE_URL: str = "https://openrouter.ai/api/v1"
+DEFAULT_MODEL: str = "openrouter/free"
+DEFAULT_EMBEDDING_MODEL: str = "openai/text-embedding-3-small"
+
+Message = dict[str, Any]
 
 
-def chat(messages, model=DEFAULT_MODEL):
+def chat(messages: list[Message], model: str = DEFAULT_MODEL) -> str:
     """Stream a chat response, printing tokens as they arrive."""
     response = requests.post(
         f"{BASE_URL}/chat/completions",
@@ -37,7 +40,9 @@ def chat(messages, model=DEFAULT_MODEL):
     return "".join(full_reply)
 
 
-def get_embeddings(texts, model=DEFAULT_EMBEDDING_MODEL):
+def get_embeddings(
+    texts: list[str], model: str = DEFAULT_EMBEDDING_MODEL
+) -> list[list[float]]:
     """Fetch embeddings for a list of texts in a single batch request."""
     response = requests.post(
         f"{BASE_URL}/embeddings",
