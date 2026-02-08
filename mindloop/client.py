@@ -53,7 +53,8 @@ def chat(
             json=payload,
         )
         response.raise_for_status()
-        result: str = response.json()["choices"][0]["message"]["content"]
+        body = response.json()
+        result: str = body["choices"][0]["message"]["content"]
         return result
 
     payload["stream"] = True
