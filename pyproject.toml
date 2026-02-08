@@ -1,0 +1,17 @@
+[project]
+name = "mindloop"
+version = "0.1.0"
+description = "Autonomous agent toolkit powered by OpenRouter."
+requires-python = ">=3.10"
+dependencies = [
+    "requests",
+    "numpy",
+]
+
+[project.scripts]
+mindloop-chat = "mindloop.cli.chat:main"
+mindloop-chunk = "mindloop.cli.chunk:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
