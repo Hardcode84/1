@@ -15,7 +15,9 @@ from mindloop.client import API_KEY, get_embeddings
 
 
 def print_chunks(chunks: list[Chunk], embeddings: list[list[float]] | None = None):
-    similarities = cosine_similarities(embeddings) if embeddings and len(embeddings) > 1 else None
+    similarities = (
+        cosine_similarities(embeddings) if embeddings and len(embeddings) > 1 else None
+    )
 
     for i, chunk in enumerate(chunks):
         print(f"--- Chunk {i + 1} [{chunk.time_range}] ({len(chunk.turns)} turns) ---")

@@ -48,10 +48,14 @@ def parse_turns(path: Path) -> list[Turn]:
         m = TURN_RE.match(line)
         if m:
             ts = datetime.strptime(m.group(1), "%H:%M:%S")
-            turns.append(Turn(
-                timestamp=ts, role=m.group(2), text=m.group(3),
-                preceded_by_blank=saw_blank,
-            ))
+            turns.append(
+                Turn(
+                    timestamp=ts,
+                    role=m.group(2),
+                    text=m.group(3),
+                    preceded_by_blank=saw_blank,
+                )
+            )
             saw_blank = False
         elif turns:
             # Continuation line — append to previous turn.
@@ -59,7 +63,9 @@ def parse_turns(path: Path) -> list[Turn]:
     return turns
 
 
-def chunk_turns(turns: list[Turn], gap_threshold: int = DEFAULT_GAP_THRESHOLD) -> list[Chunk]:
+def chunk_turns(
+    turns: list[Turn], gap_threshold: int = DEFAULT_GAP_THRESHOLD
+) -> list[Chunk]:
     """Group turns into chunks, splitting on time gaps and blank lines."""
     if not turns:
         return []
@@ -87,7 +93,9 @@ def merge_chunks(chunks: list[Chunk], similarities: list[float]) -> list[Chunk]:
     """Merge adjacent chunks whose similarity is above mean - 0.5 * stddev."""
     sims = np.array(similarities)
     threshold = sims.mean() - 0.5 * sims.std()
-    print(f"Merge threshold: {threshold:.4f} (mean={sims.mean():.4f}, std={sims.std():.4f})\n")
+    print(
+        f"Merge threshold: {threshold:.4f} (mean={sims.mean():.4f}, std={sims.std():.4f})\n"
+    )
 
     merged = [Chunk(turns=list(chunks[0].turns))]
     for i, sim in enumerate(similarities):
