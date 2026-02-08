@@ -12,14 +12,32 @@ DEFAULT_MODEL: str = "openrouter/free"
 DEFAULT_EMBEDDING_MODEL: str = "openai/text-embedding-3-small"
 
 Message = dict[str, Any]
+Tool = dict[str, Any]
 
 
-def chat(messages: list[Message], model: str = DEFAULT_MODEL) -> str:
+def chat(
+    messages: list[Message],
+    model: str = DEFAULT_MODEL,
+    system_prompt: str | None = None,
+    tools: list[Tool] | None = None,
+) -> str:
     """Stream a chat response, printing tokens as they arrive."""
+    full_messages = list(messages)
+    if system_prompt is not None:
+        full_messages.insert(0, {"role": "system", "content": system_prompt})
+
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": full_messages,
+        "stream": True,
+    }
+    if tools:
+        payload["tools"] = tools
+
     response = requests.post(
         f"{BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {API_KEY}"},
-        json={"model": model, "messages": messages, "stream": True},
+        json=payload,
         stream=True,
     )
     response.raise_for_status()
