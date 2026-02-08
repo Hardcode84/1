@@ -80,16 +80,37 @@ def chat(
     return "".join(full_reply)
 
 
+# Cache: (model, text) -> embedding vector.
+_embedding_cache: dict[tuple[str, str], list[float]] = {}
+
+
 def get_embeddings(
     texts: list[str], model: str = DEFAULT_EMBEDDING_MODEL
 ) -> list[list[float]]:
-    """Fetch embeddings for a list of texts in a single batch request."""
-    response = requests.post(
-        f"{BASE_URL}/embeddings",
-        headers={"Authorization": f"Bearer {API_KEY}"},
-        json={"model": model, "input": texts},
-    )
-    response.raise_for_status()
-    data = response.json()["data"]
-    # Sort by index to match input order.
-    return [item["embedding"] for item in sorted(data, key=lambda x: x["index"])]
+    """Fetch embeddings with per-text caching. Only uncached texts hit the API."""
+    results: dict[int, list[float]] = {}
+    uncached: list[tuple[int, str]] = []
+
+    for i, text in enumerate(texts):
+        key = (model, text)
+        if key in _embedding_cache:
+            results[i] = _embedding_cache[key]
+        else:
+            uncached.append((i, text))
+
+    if uncached:
+        response = requests.post(
+            f"{BASE_URL}/embeddings",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            json={"model": model, "input": [text for _, text in uncached]},
+        )
+        response.raise_for_status()
+        data = response.json()["data"]
+        # Sort by index to match input order within the batch.
+        sorted_data = sorted(data, key=lambda x: x["index"])
+        for (orig_idx, text), item in zip(uncached, sorted_data):
+            embedding: list[float] = item["embedding"]
+            _embedding_cache[(model, text)] = embedding
+            results[orig_idx] = embedding
+
+    return [results[i] for i in range(len(texts))]
