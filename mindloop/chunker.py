@@ -90,7 +90,15 @@ def cosine_similarities(embeddings: list[list[float]]) -> list[float]:
     return result
 
 
-def merge_chunks(chunks: list[Chunk], similarities: list[float]) -> list[Chunk]:
+# ~4 chars per token, 2048 tokens default budget.
+DEFAULT_MAX_CHUNK_CHARS = 8192
+
+
+def merge_chunks(
+    chunks: list[Chunk],
+    similarities: list[float],
+    max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS,
+) -> list[Chunk]:
     """Merge adjacent chunks whose similarity is above mean - 0.5 * stddev."""
     sims = np.array(similarities)
     threshold = sims.mean() - 0.5 * sims.std()
@@ -100,8 +108,9 @@ def merge_chunks(chunks: list[Chunk], similarities: list[float]) -> list[Chunk]:
 
     merged = [Chunk(turns=list(chunks[0].turns))]
     for i, sim in enumerate(similarities):
-        if sim >= threshold:
-            merged[-1].turns.extend(chunks[i + 1].turns)
+        candidate = Chunk(turns=merged[-1].turns + chunks[i + 1].turns)
+        if sim >= threshold and len(candidate.text) <= max_chunk_chars:
+            merged[-1] = candidate
         else:
             merged.append(Chunk(turns=list(chunks[i + 1].turns)))
 
