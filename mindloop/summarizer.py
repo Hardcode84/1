@@ -3,7 +3,10 @@
 from dataclasses import dataclass
 
 from mindloop.chunker import Chunk
-from mindloop.client import DEFAULT_MODEL, chat
+from mindloop.client import chat
+
+# SUMMARIZATION_MODEL = "tngtech/deepseek-r1t2-chimera:free"
+SUMMARIZATION_MODEL = "tngtech/deepseek-r1t-chimera:free"
 
 SYSTEM_PROMPT = """\
 You summarize conversation excerpts from a chat log.
@@ -25,9 +28,11 @@ def summarize_chunk(chunk: Chunk, model: str | None = None) -> ChunkSummary:
     messages = [{"role": "user", "content": chunk.text}]
     raw = chat(
         messages,
-        model=model or DEFAULT_MODEL,
+        model=model or SUMMARIZATION_MODEL,
         system_prompt=SYSTEM_PROMPT,
         stream=False,
+        temperature=0,
+        seed=42,
     )
 
     abstract = ""
