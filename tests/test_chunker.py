@@ -16,14 +16,9 @@ from mindloop.chunker import (
 )
 
 
-def _turn(h: int, m: int, s: int, role: str, text: str, blank: bool = False) -> Turn:
+def _turn(h: int, m: int, s: int, role: str, text: str) -> Turn:
     """Helper to create a Turn with a timestamp."""
-    return Turn(
-        timestamp=datetime(1900, 1, 1, h, m, s),
-        role=role,
-        text=text,
-        preceded_by_blank=blank,
-    )
+    return Turn(timestamp=datetime(1900, 1, 1, h, m, s), role=role, text=text)
 
 
 # --- parse_turns ---
@@ -79,30 +74,42 @@ def test_chunk_turns_single_chunk() -> None:
         _turn(14, 30, 0, "You", "hi"),
         _turn(14, 30, 5, "Bot", "hello"),
     ]
-    chunks = chunk_turns(turns, gap_threshold=120)
+    chunks = chunk_turns(turns)
     assert len(chunks) == 1
     assert len(chunks[0].turns) == 2
 
 
-def test_chunk_turns_split_by_gap() -> None:
+def test_chunk_turns_no_blank_lines() -> None:
     turns = [
         _turn(14, 30, 0, "You", "hi"),
         _turn(14, 30, 5, "Bot", "hello"),
         _turn(14, 35, 0, "You", "new topic"),
     ]
-    chunks = chunk_turns(turns, gap_threshold=120)
-    assert len(chunks) == 2
-    assert len(chunks[0].turns) == 2
-    assert len(chunks[1].turns) == 1
+    chunks = chunk_turns(turns)
+    assert len(chunks) == 1
+    assert len(chunks[0].turns) == 3
 
 
-def test_chunk_turns_split_by_blank() -> None:
+def test_chunk_turns_split_by_blank_in_content() -> None:
     turns = [
-        _turn(14, 30, 0, "You", "hi"),
-        _turn(14, 30, 5, "Bot", "hello", blank=True),
+        _turn(14, 30, 0, "Bot", "paragraph one\n\nparagraph two"),
     ]
-    chunks = chunk_turns(turns, gap_threshold=9999)
+    chunks = chunk_turns(turns)
     assert len(chunks) == 2
+    assert chunks[0].turns[0].text == "paragraph one"
+    assert chunks[1].turns[0].text == "paragraph two"
+
+
+def test_chunk_turns_blank_across_turns() -> None:
+    turns = [
+        _turn(14, 30, 0, "You", "question"),
+        _turn(14, 30, 5, "Bot", "first part\n\nsecond part"),
+        _turn(14, 31, 0, "You", "follow up"),
+    ]
+    chunks = chunk_turns(turns)
+    assert len(chunks) == 2
+    assert len(chunks[0].turns) == 2  # "question" + "first part".
+    assert len(chunks[1].turns) == 2  # "second part" + "follow up".
 
 
 # --- Chunk properties ---

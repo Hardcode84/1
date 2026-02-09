@@ -12,16 +12,12 @@ from mindloop.client import Embedding, Embeddings
 # JSONL role -> display role.
 _ROLE_MAP = {"user": "You", "assistant": "Bot"}
 
-# Default gap (in seconds) between turns that triggers a new chunk.
-DEFAULT_GAP_THRESHOLD = 120
-
 
 @dataclass
 class Turn:
     timestamp: datetime
     role: str
     text: str
-    preceded_by_blank: bool = False
 
 
 @dataclass
@@ -53,19 +49,24 @@ def parse_turns(path: Path) -> list[Turn]:
     return turns
 
 
-def chunk_turns(
-    turns: list[Turn], gap_threshold: int = DEFAULT_GAP_THRESHOLD
-) -> list[Chunk]:
-    """Group turns into chunks, splitting on time gaps and blank lines."""
+def chunk_turns(turns: list[Turn]) -> list[Chunk]:
+    """Group turns into chunks, splitting on blank lines inside message content."""
     if not turns:
         return []
 
-    chunks = [Chunk(turns=[turns[0]])]
-    for prev, cur in zip(turns, turns[1:]):
-        gap = (cur.timestamp - prev.timestamp).total_seconds()
-        if gap > gap_threshold or cur.preceded_by_blank:
-            chunks.append(Chunk())
-        chunks[-1].turns.append(cur)
+    chunks: list[Chunk] = [Chunk()]
+    for turn in turns:
+        # Split turn text on blank lines.
+        parts = turn.text.split("\n\n")
+        # First part extends the current chunk.
+        chunks[-1].turns.append(
+            Turn(timestamp=turn.timestamp, role=turn.role, text=parts[0])
+        )
+        # Each subsequent part starts a new chunk.
+        for part in parts[1:]:
+            chunks.append(
+                Chunk(turns=[Turn(timestamp=turn.timestamp, role=turn.role, text=part)])
+            )
 
     return chunks
 

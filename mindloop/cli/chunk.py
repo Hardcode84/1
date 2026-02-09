@@ -4,7 +4,6 @@ import argparse
 from pathlib import Path
 
 from mindloop.chunker import (
-    DEFAULT_GAP_THRESHOLD,
     Chunk,
     chunk_turns,
     cosine_similarities,
@@ -33,12 +32,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Split a chat log into chunks.")
     parser.add_argument("logfile", type=Path, help="Path to the log file.")
     parser.add_argument(
-        "--gap",
-        type=int,
-        default=DEFAULT_GAP_THRESHOLD,
-        help=f"Time gap in seconds to split chunks (default: {DEFAULT_GAP_THRESHOLD}).",
-    )
-    parser.add_argument(
         "--embed",
         action="store_true",
         help="Fetch embeddings for each chunk via OpenRouter.",
@@ -59,7 +52,7 @@ def main() -> None:
         print("No turns found in log file.")
         return
 
-    chunks = chunk_turns(turns, args.gap)
+    chunks = chunk_turns(turns)
 
     if args.embed:
         if not API_KEY:
