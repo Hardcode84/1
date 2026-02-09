@@ -26,7 +26,7 @@ class ChunkSummary:
 def summarize_chunk(chunk: Chunk, model: str | None = None) -> ChunkSummary:
     """Summarize a single chunk into abstract + expanded summary."""
     messages = [{"role": "user", "content": chunk.text}]
-    raw = chat(
+    msg = chat(
         messages,
         model=model or SUMMARIZATION_MODEL,
         system_prompt=SYSTEM_PROMPT,
@@ -34,6 +34,7 @@ def summarize_chunk(chunk: Chunk, model: str | None = None) -> ChunkSummary:
         temperature=0,
         seed=42,
     )
+    raw = msg.get("content", "")
 
     abstract = ""
     summary = ""

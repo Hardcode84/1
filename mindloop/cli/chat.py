@@ -47,9 +47,10 @@ def main() -> None:
         logging.info("You: %s", user_input)
         try:
             print("Bot: ", end="", flush=True)
-            reply = chat(messages)
+            msg = chat(messages)
             print()
-            messages.append({"role": "assistant", "content": reply})
+            reply = msg.get("content", "")
+            messages.append(msg)
             logging.info("Bot: %s", reply)
             print()
         except requests.HTTPError as e:

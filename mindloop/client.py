@@ -29,8 +29,8 @@ def chat(
     on_token: Callable[[str], None] = _default_on_token,
     temperature: float | None = None,
     seed: int | None = None,
-) -> str:
-    """Send a chat completion request. Streams by default."""
+) -> Message:
+    """Send a chat completion request. Returns the full response message dict."""
     full_messages = list(messages)
     if system_prompt is not None:
         full_messages.insert(0, {"role": "system", "content": system_prompt})
@@ -54,8 +54,8 @@ def chat(
         )
         response.raise_for_status()
         body = response.json()
-        result: str = body["choices"][0]["message"]["content"]
-        return result
+        msg: Message = body["choices"][0]["message"]
+        return msg
 
     payload["stream"] = True
     response = requests.post(
@@ -78,7 +78,7 @@ def chat(
         on_token(token)
         full_reply.append(token)
 
-    return "".join(full_reply)
+    return {"role": "assistant", "content": "".join(full_reply)}
 
 
 # Cache: (model, text) -> embedding vector.
