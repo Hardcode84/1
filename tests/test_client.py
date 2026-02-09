@@ -4,6 +4,8 @@ import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+
 from mindloop.client import _embedding_cache, chat, get_embeddings
 
 
@@ -127,7 +129,9 @@ def test_get_embeddings(mock_post: MagicMock) -> None:
     mock_post.return_value = _mock_embeddings([[0.1, 0.2], [0.3, 0.4]])
 
     result = get_embeddings(["hello", "world"])
-    assert result == [[0.1, 0.2], [0.3, 0.4]]
+    assert result.shape == (2, 2)
+    np.testing.assert_allclose(result[0], [0.1, 0.2], atol=1e-6)
+    np.testing.assert_allclose(result[1], [0.3, 0.4], atol=1e-6)
     mock_post.assert_called_once()
 
 
@@ -143,7 +147,7 @@ def test_get_embeddings_caching(mock_post: MagicMock) -> None:
     # Second call — cached.
     result = get_embeddings(["hello"])
     assert mock_post.call_count == 1
-    assert result == [[0.1, 0.2]]
+    np.testing.assert_allclose(result[0], [0.1, 0.2], atol=1e-6)
 
 
 @patch("mindloop.client.requests.post")
@@ -157,7 +161,8 @@ def test_get_embeddings_partial_cache(mock_post: MagicMock) -> None:
     # Request "hello" + "world" — only "world" should hit API.
     mock_post.return_value = _mock_embeddings([[0.3, 0.4]])
     result = get_embeddings(["hello", "world"])
-    assert result == [[0.1, 0.2], [0.3, 0.4]]
+    np.testing.assert_allclose(result[0], [0.1, 0.2], atol=1e-6)
+    np.testing.assert_allclose(result[1], [0.3, 0.4], atol=1e-6)
     # Second call sent only 1 text.
     sent_input = mock_post.call_args.kwargs["json"]["input"]
     assert sent_input == ["world"]

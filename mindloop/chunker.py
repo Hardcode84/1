@@ -8,6 +8,8 @@ from pathlib import Path
 
 import numpy as np
 
+from mindloop.client import Embeddings
+
 # Matches log lines like "14:30:05 You: hello" or "14:30:07 Bot: hi there".
 TURN_RE = re.compile(r"^(\d{2}:\d{2}:\d{2})\s+(You|Bot):\s+(.*)$")
 
@@ -105,11 +107,10 @@ def chunk_turns(
     return chunks
 
 
-def cosine_similarities(embeddings: list[list[float]]) -> list[float]:
+def cosine_similarities(embeddings: Embeddings) -> list[float]:
     """Compute cosine similarity between each consecutive pair of embeddings."""
-    vecs = np.array(embeddings)
-    norms = np.linalg.norm(vecs, axis=1, keepdims=True)
-    normalized = vecs / norms
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    normalized = embeddings / norms
     # Dot product of each row with the next one.
     result: list[float] = (normalized[:-1] * normalized[1:]).sum(axis=1).tolist()
     return result

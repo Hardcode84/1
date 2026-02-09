@@ -9,7 +9,7 @@ from types import TracebackType
 import numpy as np
 
 from mindloop.chunker import Chunk, Turn
-from mindloop.client import get_embeddings
+from mindloop.client import Embedding, Embeddings, get_embeddings
 from mindloop.summarizer import ChunkSummary
 
 DEFAULT_DB_PATH = Path("memory.db")
@@ -56,9 +56,8 @@ class MemoryStore:
     ) -> None:
         self.close()
 
-    def save(self, chunk_summary: ChunkSummary, embedding: list[float]) -> int:
+    def save(self, chunk_summary: ChunkSummary, embedding: Embedding) -> int:
         """Save a chunk summary with its embedding. Returns the row id."""
-        vec = np.array(embedding, dtype=np.float32)
         cursor = self.conn.execute(
             "INSERT INTO chunks (text, abstract, summary, time_range, embedding) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -67,21 +66,23 @@ class MemoryStore:
                 chunk_summary.abstract,
                 chunk_summary.summary,
                 chunk_summary.chunk.time_range,
-                vec.tobytes(),
+                embedding.astype(np.float32).tobytes(),
             ),
         )
         self.conn.commit()
         return cursor.lastrowid or 0
 
     def save_many(
-        self, summaries: list[ChunkSummary], embeddings: list[list[float]]
+        self, summaries: list[ChunkSummary], embeddings: Embeddings
     ) -> list[int]:
         """Save multiple chunk summaries with embeddings."""
-        return [self.save(summary, emb) for summary, emb in zip(summaries, embeddings)]
+        return [
+            self.save(summary, embeddings[i]) for i, summary in enumerate(summaries)
+        ]
 
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         """Find the most relevant chunks by cosine similarity to the query."""
-        query_emb = np.array(get_embeddings([query])[0], dtype=np.float32)
+        query_emb: Embedding = get_embeddings([query])[0]
 
         rows = self.conn.execute(
             "SELECT id, text, abstract, summary, time_range, embedding "

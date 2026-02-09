@@ -3,6 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from mindloop.chunker import (
@@ -191,21 +192,21 @@ def test_chunk_time_range() -> None:
 
 
 def test_cosine_identical_vectors() -> None:
-    embeddings = [[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]]
+    embeddings = np.array([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]])
     sims = cosine_similarities(embeddings)
     assert len(sims) == 2
     assert all(pytest.approx(s, abs=1e-6) == 1.0 for s in sims)
 
 
 def test_cosine_orthogonal_vectors() -> None:
-    embeddings = [[1.0, 0.0], [0.0, 1.0]]
+    embeddings = np.array([[1.0, 0.0], [0.0, 1.0]])
     sims = cosine_similarities(embeddings)
     assert len(sims) == 1
     assert pytest.approx(sims[0], abs=1e-6) == 0.0
 
 
 def test_cosine_opposite_vectors() -> None:
-    embeddings = [[1.0, 0.0], [-1.0, 0.0]]
+    embeddings = np.array([[1.0, 0.0], [-1.0, 0.0]])
     sims = cosine_similarities(embeddings)
     assert pytest.approx(sims[0], abs=1e-6) == -1.0
 

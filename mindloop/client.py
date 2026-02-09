@@ -5,6 +5,7 @@ import os
 from collections.abc import Callable
 from typing import Any
 
+import numpy as np
 import requests
 
 API_KEY: str = os.environ.get("OPENROUTER_API_KEY", "")
@@ -14,6 +15,11 @@ DEFAULT_EMBEDDING_MODEL: str = "openai/text-embedding-3-small"
 
 Message = dict[str, Any]
 Tool = dict[str, Any]
+
+# 1D embedding vector, shape (dim,), dtype float32.
+Embedding = np.ndarray
+# 2D embedding matrix, shape (n, dim), dtype float32.
+Embeddings = np.ndarray
 
 
 def _default_on_token(token: str) -> None:
@@ -82,14 +88,14 @@ def chat(
 
 
 # Cache: (model, text) -> embedding vector.
-_embedding_cache: dict[tuple[str, str], list[float]] = {}
+_embedding_cache: dict[tuple[str, str], Embedding] = {}
 
 
 def get_embeddings(
     texts: list[str], model: str = DEFAULT_EMBEDDING_MODEL
-) -> list[list[float]]:
-    """Fetch embeddings with per-text caching. Only uncached texts hit the API."""
-    results: dict[int, list[float]] = {}
+) -> Embeddings:
+    """Fetch embeddings with per-text caching. Returns (n, dim) float32 ndarray."""
+    results: dict[int, Embedding] = {}
     uncached: list[tuple[int, str]] = []
 
     for i, text in enumerate(texts):
@@ -110,8 +116,8 @@ def get_embeddings(
         # Sort by index to match input order within the batch.
         sorted_data = sorted(data, key=lambda x: x["index"])
         for (orig_idx, text), item in zip(uncached, sorted_data):
-            embedding: list[float] = item["embedding"]
-            _embedding_cache[(model, text)] = embedding
-            results[orig_idx] = embedding
+            vec: Embedding = np.array(item["embedding"], dtype=np.float32)
+            _embedding_cache[(model, text)] = vec
+            results[orig_idx] = vec
 
-    return [results[i] for i in range(len(texts))]
+    return np.stack([results[i] for i in range(len(texts))])

@@ -11,12 +11,10 @@ from mindloop.chunker import (
     merge_chunks,
     parse_log,
 )
-from mindloop.client import API_KEY, get_embeddings
+from mindloop.client import API_KEY, Embeddings, get_embeddings
 
 
-def print_chunks(
-    chunks: list[Chunk], embeddings: list[list[float]] | None = None
-) -> None:
+def print_chunks(chunks: list[Chunk], embeddings: Embeddings | None = None) -> None:
     similarities = (
         cosine_similarities(embeddings) if embeddings and len(embeddings) > 1 else None
     )
