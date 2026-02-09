@@ -1,5 +1,6 @@
 """Agentic loop: chat with tool use until the model produces a final text response."""
 
+import json
 from collections.abc import Callable
 
 from mindloop.client import Message, chat
@@ -56,7 +57,14 @@ def run_agent(
             name = call["function"]["name"]
             arguments = call["function"]["arguments"]
             on_step(f"[tool] {name}({arguments})")
-            tool_result = registry.execute(name, arguments)
+            # Sanitize malformed JSON so it doesn't poison future API calls.
+            try:
+                json.loads(arguments)
+            except (json.JSONDecodeError, TypeError):
+                call["function"]["arguments"] = "{}"
+                tool_result = f"Error: malformed arguments: {arguments}"
+            else:
+                tool_result = registry.execute(name, arguments)
             on_step(f"[result] {tool_result}")
             messages.append(
                 {
