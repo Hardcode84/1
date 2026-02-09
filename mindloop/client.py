@@ -86,7 +86,11 @@ def chat(
         data = line[6:]
         if data == b"[DONE]":
             break
-        delta = json.loads(data)["choices"][0]["delta"]
+        chunk = json.loads(data)
+        choices = chunk.get("choices")
+        if not choices:
+            continue
+        delta = choices[0].get("delta", {})
 
         # Accumulate reasoning tokens.
         for detail in delta.get("reasoning_details", []):
