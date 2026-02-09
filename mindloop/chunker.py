@@ -1,5 +1,6 @@
 """Chat log parsing, chunking, and semantic merging."""
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -9,6 +10,9 @@ import numpy as np
 
 # Matches log lines like "14:30:05 You: hello" or "14:30:07 Bot: hi there".
 TURN_RE = re.compile(r"^(\d{2}:\d{2}:\d{2})\s+(You|Bot):\s+(.*)$")
+
+# JSONL role -> display role.
+_ROLE_MAP = {"user": "You", "assistant": "Bot"}
 
 # Default gap (in seconds) between turns that triggers a new chunk.
 DEFAULT_GAP_THRESHOLD = 120
@@ -61,6 +65,27 @@ def parse_turns(path: Path) -> list[Turn]:
             # Continuation line — append to previous turn.
             turns[-1].text += "\n" + line.strip()
     return turns
+
+
+def parse_turns_jsonl(path: Path) -> list[Turn]:
+    """Parse a JSONL log file into a list of turns."""
+    turns: list[Turn] = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        entry = json.loads(line)
+        ts = datetime.fromisoformat(entry["timestamp"])
+        role = _ROLE_MAP.get(entry["role"], entry["role"])
+        turns.append(Turn(timestamp=ts, role=role, text=entry["content"]))
+    return turns
+
+
+def parse_log(path: Path) -> list[Turn]:
+    """Parse a log file, dispatching by extension (.jsonl vs .log)."""
+    if path.suffix == ".jsonl":
+        return parse_turns_jsonl(path)
+    return parse_turns(path)
 
 
 def chunk_turns(

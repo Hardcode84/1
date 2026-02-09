@@ -11,7 +11,9 @@ from mindloop.chunker import (
     chunk_turns,
     cosine_similarities,
     merge_chunks,
+    parse_log,
     parse_turns,
+    parse_turns_jsonl,
 )
 
 
@@ -60,6 +62,68 @@ def test_parse_turns_empty(tmp_path: Path) -> None:
     log = tmp_path / "chat.log"
     log.write_text("")
     assert parse_turns(log) == []
+
+
+# --- parse_turns_jsonl ---
+
+
+def test_parse_turns_jsonl_basic(tmp_path: Path) -> None:
+    log = tmp_path / "chat.jsonl"
+    log.write_text(
+        '{"timestamp": "2025-01-15T14:30:05", "role": "user", "content": "hello"}\n'
+        '{"timestamp": "2025-01-15T14:30:07", "role": "assistant", "content": "hi there"}\n'
+    )
+    turns = parse_turns_jsonl(log)
+    assert len(turns) == 2
+    assert turns[0].role == "You"
+    assert turns[0].text == "hello"
+    assert turns[1].role == "Bot"
+    assert turns[1].text == "hi there"
+
+
+def test_parse_turns_jsonl_multiline_content(tmp_path: Path) -> None:
+    log = tmp_path / "chat.jsonl"
+    log.write_text(
+        '{"timestamp": "2025-01-15T14:30:05", "role": "user", "content": "line one\\nline two"}\n'
+    )
+    turns = parse_turns_jsonl(log)
+    assert turns[0].text == "line one\nline two"
+
+
+def test_parse_turns_jsonl_empty(tmp_path: Path) -> None:
+    log = tmp_path / "chat.jsonl"
+    log.write_text("")
+    assert parse_turns_jsonl(log) == []
+
+
+def test_parse_turns_jsonl_preserves_timestamp(tmp_path: Path) -> None:
+    log = tmp_path / "chat.jsonl"
+    log.write_text(
+        '{"timestamp": "2025-01-15T14:30:05", "role": "user", "content": "hi"}\n'
+    )
+    turns = parse_turns_jsonl(log)
+    assert turns[0].timestamp == datetime(2025, 1, 15, 14, 30, 5)
+
+
+# --- parse_log dispatcher ---
+
+
+def test_parse_log_dispatches_jsonl(tmp_path: Path) -> None:
+    log = tmp_path / "chat.jsonl"
+    log.write_text(
+        '{"timestamp": "2025-01-15T14:30:05", "role": "user", "content": "hello"}\n'
+    )
+    turns = parse_log(log)
+    assert len(turns) == 1
+    assert turns[0].role == "You"
+
+
+def test_parse_log_dispatches_log(tmp_path: Path) -> None:
+    log = tmp_path / "chat.log"
+    log.write_text("14:30:05 You: hello\n")
+    turns = parse_log(log)
+    assert len(turns) == 1
+    assert turns[0].role == "You"
 
 
 # --- chunk_turns ---

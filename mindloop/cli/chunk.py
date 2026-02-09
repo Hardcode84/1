@@ -9,7 +9,7 @@ from mindloop.chunker import (
     chunk_turns,
     cosine_similarities,
     merge_chunks,
-    parse_turns,
+    parse_log,
 )
 from mindloop.client import API_KEY, get_embeddings
 
@@ -56,7 +56,7 @@ def main() -> None:
         print(f"File not found: {args.logfile}")
         return
 
-    turns = parse_turns(args.logfile)
+    turns = parse_log(args.logfile)
     if not turns:
         print("No turns found in log file.")
         return
@@ -68,8 +68,8 @@ def main() -> None:
             print("Set OPENROUTER_API_KEY for embeddings.")
             return
 
-        embeddings = get_embeddings([c.text for c in chunks])
         if len(chunks) >= 2:
+            embeddings = get_embeddings([c.text for c in chunks])
             sims = cosine_similarities(embeddings)
             print("=== Before merging ===\n")
             print_chunks(chunks, embeddings)
