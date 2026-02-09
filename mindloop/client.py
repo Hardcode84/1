@@ -73,18 +73,44 @@ def chat(
     response.raise_for_status()
 
     full_reply: list[str] = []
+    tool_calls_by_index: dict[int, dict[str, Any]] = {}
+
     for line in response.iter_lines():
         if not line or not line.startswith(b"data: "):
             continue
         data = line[6:]
         if data == b"[DONE]":
             break
-        chunk = json.loads(data)
-        token = chunk["choices"][0]["delta"].get("content", "")
-        on_token(token)
-        full_reply.append(token)
+        delta = json.loads(data)["choices"][0]["delta"]
 
-    return {"role": "assistant", "content": "".join(full_reply)}
+        # Accumulate content tokens.
+        token = delta.get("content", "")
+        if token:
+            on_token(token)
+            full_reply.append(token)
+
+        # Accumulate tool call deltas.
+        for tc_delta in delta.get("tool_calls", []):
+            idx = tc_delta["index"]
+            if idx not in tool_calls_by_index:
+                tool_calls_by_index[idx] = {
+                    "id": tc_delta.get("id", ""),
+                    "type": "function",
+                    "function": {"name": "", "arguments": ""},
+                }
+            tc = tool_calls_by_index[idx]
+            func_delta = tc_delta.get("function", {})
+            if "name" in func_delta:
+                tc["function"]["name"] += func_delta["name"]
+            if "arguments" in func_delta:
+                tc["function"]["arguments"] += func_delta["arguments"]
+
+    result: Message = {"role": "assistant", "content": "".join(full_reply)}
+    if tool_calls_by_index:
+        result["tool_calls"] = [
+            tool_calls_by_index[i] for i in sorted(tool_calls_by_index)
+        ]
+    return result
 
 
 # Cache: (model, text) -> embedding vector.

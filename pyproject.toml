@@ -9,6 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
+mindloop-agent = "mindloop.cli.agent:main"
 mindloop-chat = "mindloop.cli.chat:main"
 mindloop-chunk = "mindloop.cli.chunk:main"
 
