@@ -33,8 +33,10 @@ def chat(
     tools: list[Tool] | None = None,
     stream: bool = True,
     on_token: Callable[[str], None] = _default_on_token,
+    on_thinking: Callable[[str], None] | None = None,
     temperature: float | None = None,
     seed: int | None = None,
+    reasoning_effort: str | None = None,
 ) -> Message:
     """Send a chat completion request. Returns the full response message dict."""
     full_messages = list(messages)
@@ -51,6 +53,8 @@ def chat(
         payload["temperature"] = temperature
     if seed is not None:
         payload["seed"] = seed
+    if reasoning_effort is not None:
+        payload["reasoning"] = {"effort": reasoning_effort}
 
     if not stream:
         response = requests.post(
@@ -73,6 +77,7 @@ def chat(
     response.raise_for_status()
 
     full_reply: list[str] = []
+    full_reasoning: list[str] = []
     tool_calls_by_index: dict[int, dict[str, Any]] = {}
 
     for line in response.iter_lines():
@@ -82,6 +87,14 @@ def chat(
         if data == b"[DONE]":
             break
         delta = json.loads(data)["choices"][0]["delta"]
+
+        # Accumulate reasoning tokens.
+        for detail in delta.get("reasoning_details", []):
+            text = detail.get("text", "")
+            if text:
+                if on_thinking is not None:
+                    on_thinking(text)
+                full_reasoning.append(text)
 
         # Accumulate content tokens.
         token = delta.get("content", "")
@@ -106,6 +119,8 @@ def chat(
                 tc["function"]["arguments"] += func_delta["arguments"]
 
     result: Message = {"role": "assistant", "content": "".join(full_reply)}
+    if full_reasoning:
+        result["reasoning"] = "".join(full_reasoning)
     if tool_calls_by_index:
         result["tool_calls"] = [
             tool_calls_by_index[i] for i in sorted(tool_calls_by_index)

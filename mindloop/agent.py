@@ -18,6 +18,8 @@ def run_agent(
     model: str | None = None,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     on_step: Callable[[str], None] = _noop,
+    on_thinking: Callable[[str], None] | None = None,
+    reasoning_effort: str = "high",
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
     from mindloop.client import DEFAULT_MODEL
@@ -33,6 +35,8 @@ def run_agent(
             tools=registry.definitions(),
             stream=True,
             on_token=on_step,
+            on_thinking=on_thinking,
+            reasoning_effort=reasoning_effort,
         )
         messages.append(response)
 

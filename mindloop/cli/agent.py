@@ -16,6 +16,11 @@ def _print_step(text: str) -> None:
         print(text, end="", flush=True)
 
 
+def _print_thinking(text: str) -> None:
+    """Print reasoning tokens dimmed."""
+    print(f"\033[2m{text}\033[0m", end="", flush=True)
+
+
 def main() -> None:
     if not API_KEY:
         print("Set OPENROUTER_API_KEY environment variable first.")
@@ -24,7 +29,7 @@ def main() -> None:
 
     system_prompt = _PROMPT_PATH.read_text().strip()
     print("Starting agent...\n")
-    run_agent(system_prompt, on_step=_print_step)
+    run_agent(system_prompt, on_step=_print_step, on_thinking=_print_thinking)
     print()
 
 
