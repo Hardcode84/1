@@ -10,7 +10,7 @@ import numpy as np
 from mindloop.client import Embedding, Embeddings
 
 # JSONL role -> display role.
-_ROLE_MAP = {"user": "You", "assistant": "Bot"}
+_ROLE_MAP = {"user": "You", "assistant": "Bot", "tool": "Tool"}
 
 
 @dataclass
@@ -45,7 +45,12 @@ def parse_turns(path: Path) -> list[Turn]:
         entry = json.loads(line)
         ts = datetime.fromisoformat(entry["timestamp"])
         role = _ROLE_MAP.get(entry["role"], entry["role"])
-        turns.append(Turn(timestamp=ts, role=role, text=entry["content"]))
+        # Emit reasoning as a separate turn before the main content.
+        reasoning = entry.get("reasoning")
+        if reasoning:
+            turns.append(Turn(timestamp=ts, role=f"{role} thinking", text=reasoning))
+        content = entry.get("content") or ""
+        turns.append(Turn(timestamp=ts, role=role, text=content))
     return turns
 
 

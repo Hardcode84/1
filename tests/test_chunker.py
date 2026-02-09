@@ -63,6 +63,30 @@ def test_parse_turns_preserves_timestamp(tmp_path: Path) -> None:
     assert turns[0].timestamp == datetime(2025, 1, 15, 14, 30, 5)
 
 
+def test_parse_turns_with_reasoning(tmp_path: Path) -> None:
+    log = tmp_path / "chat.jsonl"
+    log.write_text(
+        '{"timestamp": "2025-01-15T14:30:05", "role": "assistant",'
+        ' "content": "answer", "reasoning": "let me think"}\n'
+    )
+    turns = parse_turns(log)
+    assert len(turns) == 2
+    assert turns[0].role == "Bot thinking"
+    assert turns[0].text == "let me think"
+    assert turns[1].role == "Bot"
+    assert turns[1].text == "answer"
+
+
+def test_parse_turns_without_reasoning(tmp_path: Path) -> None:
+    log = tmp_path / "chat.jsonl"
+    log.write_text(
+        '{"timestamp": "2025-01-15T14:30:05", "role": "assistant", "content": "hi"}\n'
+    )
+    turns = parse_turns(log)
+    assert len(turns) == 1
+    assert turns[0].role == "Bot"
+
+
 # --- chunk_turns ---
 
 
