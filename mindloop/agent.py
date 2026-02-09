@@ -16,6 +16,10 @@ def _noop(_msg: str) -> None:
     pass
 
 
+def _noop_message(_msg: Message) -> None:
+    pass
+
+
 def run_agent(
     system_prompt: str,
     registry: ToolRegistry = default_registry,
@@ -23,6 +27,7 @@ def run_agent(
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     on_step: Callable[[str], None] = _noop,
     on_thinking: Callable[[str], None] | None = None,
+    on_message: Callable[[Message], None] = _noop_message,
     reasoning_effort: str = "high",
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
@@ -43,6 +48,7 @@ def run_agent(
             reasoning_effort=reasoning_effort,
         )
         messages.append(response)
+        on_message(response)
 
         tool_calls = response.get("tool_calls")
         if not tool_calls:
@@ -50,7 +56,9 @@ def run_agent(
             if len(messages) >= 2 and messages[-2].get("content") == _USER_UNAVAILABLE:
                 return str(response.get("content", ""))
             # Otherwise, nudge the model to keep going.
-            messages.append({"role": "user", "content": _USER_UNAVAILABLE})
+            nudge: Message = {"role": "user", "content": _USER_UNAVAILABLE}
+            messages.append(nudge)
+            on_message(nudge)
             continue
 
         for call in tool_calls:
@@ -66,13 +74,13 @@ def run_agent(
             else:
                 tool_result = registry.execute(name, arguments)
             on_step(f"[result] {tool_result}")
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call["id"],
-                    "content": tool_result,
-                }
-            )
+            tool_msg: Message = {
+                "role": "tool",
+                "tool_call_id": call["id"],
+                "content": tool_result,
+            }
+            messages.append(tool_msg)
+            on_message(tool_msg)
 
     # Safety valve: return whatever the model last said.
     return str(messages[-1].get("content", "")) if messages else ""
