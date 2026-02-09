@@ -1,7 +1,6 @@
 """Chat log parsing, chunking, and semantic merging."""
 
 import json
-import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -9,9 +8,6 @@ from pathlib import Path
 import numpy as np
 
 from mindloop.client import Embedding, Embeddings
-
-# Matches log lines like "14:30:05 You: hello" or "14:30:07 Bot: hi there".
-TURN_RE = re.compile(r"^(\d{2}:\d{2}:\d{2})\s+(You|Bot):\s+(.*)$")
 
 # JSONL role -> display role.
 _ROLE_MAP = {"user": "You", "assistant": "Bot"}
@@ -44,32 +40,6 @@ class Chunk:
 
 
 def parse_turns(path: Path) -> list[Turn]:
-    """Parse log file into a list of turns."""
-    turns = []
-    saw_blank = False
-    for line in path.read_text().splitlines():
-        if not line.strip():
-            saw_blank = True
-            continue
-        m = TURN_RE.match(line)
-        if m:
-            ts = datetime.strptime(m.group(1), "%H:%M:%S")
-            turns.append(
-                Turn(
-                    timestamp=ts,
-                    role=m.group(2),
-                    text=m.group(3),
-                    preceded_by_blank=saw_blank,
-                )
-            )
-            saw_blank = False
-        elif turns:
-            # Continuation line — append to previous turn.
-            turns[-1].text += "\n" + line.strip()
-    return turns
-
-
-def parse_turns_jsonl(path: Path) -> list[Turn]:
     """Parse a JSONL log file into a list of turns."""
     turns: list[Turn] = []
     for line in path.read_text().splitlines():
@@ -81,13 +51,6 @@ def parse_turns_jsonl(path: Path) -> list[Turn]:
         role = _ROLE_MAP.get(entry["role"], entry["role"])
         turns.append(Turn(timestamp=ts, role=role, text=entry["content"]))
     return turns
-
-
-def parse_log(path: Path) -> list[Turn]:
-    """Parse a log file, dispatching by extension (.jsonl vs .log)."""
-    if path.suffix == ".jsonl":
-        return parse_turns_jsonl(path)
-    return parse_turns(path)
 
 
 def chunk_turns(
