@@ -15,6 +15,7 @@ SUMMARY: <2-4 sentence expanded overview>\
 
 @dataclass
 class ChunkSummary:
+    chunk: Chunk
     abstract: str
     summary: str
 
@@ -38,8 +39,8 @@ def summarize_chunk(chunk: Chunk, model: str | None = None) -> ChunkSummary:
             summary = line.split(":", 1)[1].strip()
 
     if not abstract and not summary:
-        return ChunkSummary(abstract="(parse error)", summary=raw)
-    return ChunkSummary(abstract=abstract, summary=summary)
+        return ChunkSummary(chunk=chunk, abstract="(parse error)", summary=raw)
+    return ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
 
 
 def summarize_chunks(
