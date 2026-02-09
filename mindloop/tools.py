@@ -140,15 +140,17 @@ def _read(path: str, offset: int = 0, limit: int = _MAX_LINES) -> str:
 default_registry = ToolRegistry()
 default_registry.add(
     name="ls",
-    description="List files and directories in the given path.",
-    params=[Param(name="path", description="Directory path to list.")],
+    description="List files and directories. Paths are relative to the working directory.",
+    params=[
+        Param(name="path", description="Relative path within the working directory.")
+    ],
     func=_ls,
 )
 default_registry.add(
     name="read",
-    description="Read the contents of a file. Shows first 100 lines by default.",
+    description="Read file contents. Paths are relative to the working directory. Shows first 100 lines by default.",
     params=[
-        Param(name="path", description="Path to the file to read."),
+        Param(name="path", description="Relative path within the working directory."),
         Param(
             name="offset",
             description="Line number to start from (0-based).",
