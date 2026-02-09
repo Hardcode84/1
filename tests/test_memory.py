@@ -68,3 +68,27 @@ def test_search_top_k_limits_results(store: MemoryStore) -> None:
         results = store.search("query", top_k=3)
 
     assert len(results) == 3
+
+
+def test_deactivate_excludes_from_search(store: MemoryStore) -> None:
+    id1 = store.save(_summary("cats", abstract="cats"), [1.0, 0.0])
+    store.save(_summary("dogs", abstract="dogs"), [0.0, 1.0])
+
+    store.deactivate([id1])
+    assert store.count() == 1
+    assert store.count(active_only=False) == 2
+
+    with patch("mindloop.memory.get_embeddings", return_value=[[1.0, 0.0]]):
+        results = store.search("cats")
+    # "cats" is deactivated, only "dogs" should appear.
+    assert len(results) == 1
+    assert results[0].chunk_summary.abstract == "dogs"
+
+
+def test_activate_restores_to_search(store: MemoryStore) -> None:
+    id1 = store.save(_summary("cats", abstract="cats"), [1.0, 0.0])
+    store.deactivate([id1])
+    assert store.count() == 0
+
+    store.activate([id1])
+    assert store.count() == 1

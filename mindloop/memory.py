@@ -31,10 +31,12 @@ def _init_db(conn: sqlite3.Connection) -> None:
             summary TEXT NOT NULL,
             time_range TEXT NOT NULL,
             embedding BLOB NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """
     )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_active ON chunks(active)")
     conn.commit()
 
 
@@ -82,7 +84,8 @@ class MemoryStore:
         query_emb = np.array(get_embeddings([query])[0], dtype=np.float32)
 
         rows = self.conn.execute(
-            "SELECT id, text, abstract, summary, time_range, embedding FROM chunks"
+            "SELECT id, text, abstract, summary, time_range, embedding "
+            "FROM chunks WHERE active = 1"
         ).fetchall()
 
         if not rows:
@@ -125,9 +128,28 @@ class MemoryStore:
 
         return results
 
-    def count(self) -> int:
+    def deactivate(self, chunk_ids: list[int]) -> None:
+        """Mark chunks as inactive. They remain in the DB but are excluded from search."""
+        self.conn.executemany(
+            "UPDATE chunks SET active = 0 WHERE id = ?",
+            [(cid,) for cid in chunk_ids],
+        )
+        self.conn.commit()
+
+    def activate(self, chunk_ids: list[int]) -> None:
+        """Re-activate previously deactivated chunks."""
+        self.conn.executemany(
+            "UPDATE chunks SET active = 1 WHERE id = ?",
+            [(cid,) for cid in chunk_ids],
+        )
+        self.conn.commit()
+
+    def count(self, active_only: bool = True) -> int:
         """Return the number of stored chunks."""
-        row = self.conn.execute("SELECT COUNT(*) FROM chunks").fetchone()
+        query = "SELECT COUNT(*) FROM chunks"
+        if active_only:
+            query += " WHERE active = 1"
+        row = self.conn.execute(query).fetchone()
         return row[0] if row else 0
 
     def close(self) -> None:
