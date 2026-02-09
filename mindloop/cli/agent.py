@@ -29,17 +29,23 @@ def _format_message(message: dict[str, Any]) -> str:
     """Format a message dict as a human-readable string."""
     role = message.get("role", "unknown")
     content = message.get("content") or ""
+    reasoning = message.get("reasoning")
     tool_calls = message.get("tool_calls")
+    parts: list[str] = []
+    if reasoning:
+        parts.append(f"[{role} thinking] {reasoning}")
     if role == "tool":
         call_id = message.get("tool_call_id", "")
-        return f"[tool result {call_id}] {content}"
-    if tool_calls:
-        parts = [
+        parts.append(f"[tool result {call_id}] {content}")
+    elif tool_calls:
+        calls = [
             f"  {tc['function']['name']}({tc['function']['arguments']})"
             for tc in tool_calls
         ]
-        return f"[{role}] tool calls:\n" + "\n".join(parts)
-    return f"[{role}] {content}"
+        parts.append(f"[{role}] tool calls:\n" + "\n".join(calls))
+    else:
+        parts.append(f"[{role}] {content}")
+    return "\n".join(parts)
 
 
 def _make_logger(jsonl_path: Path, log_path: Path) -> Callable[[dict[str, Any]], None]:
