@@ -221,7 +221,7 @@ def test_merge_all_similar() -> None:
         Chunk(turns=[_turn(14, 0, 2, "You", "c")]),
     ]
     # All high similarity — should merge into one.
-    sims = [0.9, 0.9]
+    sims = np.array([0.9, 0.9])
     merged = merge_chunks(chunks, sims)
     assert len(merged) == 1
     assert len(merged[0].turns) == 3
@@ -234,7 +234,7 @@ def test_merge_none_similar() -> None:
         Chunk(turns=[_turn(14, 0, 2, "You", "c")]),
     ]
     # One high, one low — threshold will split at the low one.
-    sims = [0.9, 0.1]
+    sims = np.array([0.9, 0.1])
     merged = merge_chunks(chunks, sims)
     assert len(merged) == 2
 
@@ -244,7 +244,7 @@ def test_merge_respects_max_chars() -> None:
         Chunk(turns=[_turn(14, 0, 0, "You", "a" * 100)]),
         Chunk(turns=[_turn(14, 0, 1, "Bot", "b" * 100)]),
     ]
-    sims = [0.99]
+    sims = np.array([0.99])
     # Tiny limit prevents merging.
     merged = merge_chunks(chunks, sims, max_chunk_chars=50)
     assert len(merged) == 2

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from mindloop.client import Embeddings
+from mindloop.client import Embedding, Embeddings
 
 # Matches log lines like "14:30:05 You: hello" or "14:30:07 Bot: hi there".
 TURN_RE = re.compile(r"^(\d{2}:\d{2}:\d{2})\s+(You|Bot):\s+(.*)$")
@@ -107,12 +107,12 @@ def chunk_turns(
     return chunks
 
 
-def cosine_similarities(embeddings: Embeddings) -> list[float]:
-    """Compute cosine similarity between each consecutive pair of embeddings."""
+def cosine_similarities(embeddings: Embeddings) -> Embedding:
+    """Compute cosine similarity between each consecutive pair. Returns 1D ndarray."""
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
     normalized = embeddings / norms
     # Dot product of each row with the next one.
-    result: list[float] = (normalized[:-1] * normalized[1:]).sum(axis=1).tolist()
+    result: Embedding = (normalized[:-1] * normalized[1:]).sum(axis=1)
     return result
 
 
@@ -122,14 +122,13 @@ DEFAULT_MAX_CHUNK_CHARS = 8192
 
 def merge_chunks(
     chunks: list[Chunk],
-    similarities: list[float],
+    similarities: Embedding,
     max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS,
 ) -> list[Chunk]:
     """Merge adjacent chunks whose similarity is above mean - 0.5 * stddev."""
-    sims = np.array(similarities)
-    threshold = sims.mean() - 0.5 * sims.std()
+    threshold = float(similarities.mean() - 0.5 * similarities.std())
     print(
-        f"Merge threshold: {threshold:.4f} (mean={sims.mean():.4f}, std={sims.std():.4f})\n"
+        f"Merge threshold: {threshold:.4f} (mean={similarities.mean():.4f}, std={similarities.std():.4f})\n"
     )
 
     merged = [Chunk(turns=list(chunks[0].turns))]
