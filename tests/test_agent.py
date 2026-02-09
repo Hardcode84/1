@@ -138,3 +138,26 @@ def test_nudge_then_tool_call_continues(mock_chat: MagicMock) -> None:
     result = run_agent("prompt", registry=_echo_registry())
     assert result == "done"
     assert mock_chat.call_count == 4
+
+
+@patch("mindloop.agent.chat")
+def test_malformed_tool_call_arguments(mock_chat: MagicMock) -> None:
+    """Malformed JSON arguments are reported to the model and sanitized."""
+    bad_args = '{"path": "./"README.md"}'
+    mock_chat.side_effect = [
+        _make_tool_response([_make_tool_call("c1", "read", bad_args)]),
+        _make_final_response("sorry"),
+        _make_final_response("done"),
+    ]
+    result = run_agent("prompt", registry=_echo_registry())
+    assert result == "done"
+
+    # Verify the tool result reports the malformed arguments.
+    second_call_messages = mock_chat.call_args_list[1][0][0]
+    tool_msg = [m for m in second_call_messages if m["role"] == "tool"][0]
+    assert "malformed arguments" in tool_msg["content"]
+    assert bad_args in tool_msg["content"]
+
+    # Verify the arguments field was sanitized for the API.
+    assistant_msg = second_call_messages[0]
+    assert assistant_msg["tool_calls"][0]["function"]["arguments"] == "{}"
