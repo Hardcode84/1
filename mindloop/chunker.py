@@ -71,6 +71,33 @@ def chunk_turns(turns: list[Turn]) -> list[Chunk]:
     return chunks
 
 
+# Chunks shorter than this are absorbed into a neighbor.
+DEFAULT_MIN_CHUNK_CHARS = 80
+
+
+def compact_chunks(
+    chunks: list[Chunk], min_chars: int = DEFAULT_MIN_CHUNK_CHARS
+) -> list[Chunk]:
+    """Merge undersized chunks into their nearest neighbor."""
+    if not chunks:
+        return []
+
+    result: list[Chunk] = [chunks[0]]
+    for chunk in chunks[1:]:
+        if len(result[-1].text) < min_chars:
+            # Previous chunk is too small — absorb current into it.
+            result[-1] = Chunk(turns=result[-1].turns + chunk.turns)
+        else:
+            result.append(chunk)
+
+    # If the last chunk ended up too small, merge it back into the previous.
+    if len(result) >= 2 and len(result[-1].text) < min_chars:
+        result[-2] = Chunk(turns=result[-2].turns + result[-1].turns)
+        result.pop()
+
+    return result
+
+
 def cosine_similarities(embeddings: Embeddings) -> Embedding:
     """Compute cosine similarity between each consecutive pair. Returns 1D ndarray."""
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)

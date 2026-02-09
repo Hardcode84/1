@@ -6,6 +6,7 @@ from pathlib import Path
 from mindloop.chunker import (
     Chunk,
     chunk_turns,
+    compact_chunks,
     cosine_similarities,
     merge_chunks,
     parse_turns,
@@ -54,7 +55,7 @@ def main() -> None:
         print("No turns found in log file.")
         return
 
-    chunks = chunk_turns(turns)
+    chunks = compact_chunks(chunk_turns(turns))
 
     if args.embed:
         if not API_KEY:

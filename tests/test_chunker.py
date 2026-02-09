@@ -10,6 +10,7 @@ from mindloop.chunker import (
     Chunk,
     Turn,
     chunk_turns,
+    compact_chunks,
     cosine_similarities,
     merge_chunks,
     parse_turns,
@@ -110,6 +111,53 @@ def test_chunk_turns_blank_across_turns() -> None:
     assert len(chunks) == 2
     assert len(chunks[0].turns) == 2  # "question" + "first part".
     assert len(chunks[1].turns) == 2  # "second part" + "follow up".
+
+
+# --- compact_chunks ---
+
+
+def test_compact_chunks_empty() -> None:
+    assert compact_chunks([]) == []
+
+
+def test_compact_chunks_absorbs_small_into_next() -> None:
+    chunks = [
+        Chunk(turns=[_turn(14, 0, 0, "Bot", "----")]),
+        Chunk(turns=[_turn(14, 0, 1, "You", "a" * 100)]),
+    ]
+    result = compact_chunks(chunks, min_chars=20)
+    assert len(result) == 1
+    assert len(result[0].turns) == 2
+
+
+def test_compact_chunks_absorbs_small_trailing() -> None:
+    chunks = [
+        Chunk(turns=[_turn(14, 0, 0, "You", "a" * 100)]),
+        Chunk(turns=[_turn(14, 0, 1, "Bot", "ok")]),
+    ]
+    result = compact_chunks(chunks, min_chars=20)
+    assert len(result) == 1
+    assert len(result[0].turns) == 2
+
+
+def test_compact_chunks_keeps_large() -> None:
+    chunks = [
+        Chunk(turns=[_turn(14, 0, 0, "You", "a" * 100)]),
+        Chunk(turns=[_turn(14, 0, 1, "Bot", "b" * 100)]),
+    ]
+    result = compact_chunks(chunks, min_chars=20)
+    assert len(result) == 2
+
+
+def test_compact_chunks_consecutive_small() -> None:
+    chunks = [
+        Chunk(turns=[_turn(14, 0, 0, "Bot", "---")]),
+        Chunk(turns=[_turn(14, 0, 1, "Bot", "===")]),
+        Chunk(turns=[_turn(14, 0, 2, "You", "a" * 100)]),
+    ]
+    result = compact_chunks(chunks, min_chars=20)
+    assert len(result) == 1
+    assert len(result[0].turns) == 3
 
 
 # --- Chunk properties ---
