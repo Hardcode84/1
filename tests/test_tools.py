@@ -116,6 +116,60 @@ def test_read_not_a_file(tmp_path: Path) -> None:
     assert "not a file" in result
 
 
+def test_read_binary_file(tmp_path: Path) -> None:
+    (tmp_path / "img.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute("read", '{"path": "img.png"}')
+    assert "binary file" in result
+
+
+def test_read_large_file_truncated(tmp_path: Path) -> None:
+    lines = [f"line {i}\n" for i in range(250)]
+    (tmp_path / "big.txt").write_text("".join(lines))
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute("read", '{"path": "big.txt"}')
+    assert "line 0" in result
+    assert "line 99" in result
+    assert "line 100" not in result
+    assert "150 lines remaining" in result
+
+
+def test_read_with_offset(tmp_path: Path) -> None:
+    lines = [f"line {i}\n" for i in range(250)]
+    (tmp_path / "big.txt").write_text("".join(lines))
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute("read", '{"path": "big.txt", "offset": 200}')
+    assert "line 199" not in result
+    assert "line 200" in result
+    assert "line 249" in result
+    assert "remaining" not in result
+
+
+def test_read_with_limit(tmp_path: Path) -> None:
+    lines = [f"line {i}\n" for i in range(50)]
+    (tmp_path / "f.txt").write_text("".join(lines))
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute("read", '{"path": "f.txt", "limit": 10}')
+    assert "line 0" in result
+    assert "line 9" in result
+    assert "line 10" not in result
+    assert "40 lines remaining" in result
+
+
+def test_read_with_offset_and_limit(tmp_path: Path) -> None:
+    lines = [f"line {i}\n" for i in range(100)]
+    (tmp_path / "f.txt").write_text("".join(lines))
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "read", '{"path": "f.txt", "offset": 10, "limit": 5}'
+        )
+    assert "line 9" not in result
+    assert "line 10" in result
+    assert "line 14" in result
+    assert "line 15" not in result
+    assert "85 lines remaining" in result
+
+
 # --- path sanitization ---
 
 

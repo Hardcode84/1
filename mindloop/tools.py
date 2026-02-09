@@ -106,14 +106,33 @@ def _ls(path: str) -> str:
     return "\n".join(lines) if lines else "(empty directory)"
 
 
-def _read(path: str) -> str:
-    """Read file contents."""
+_BINARY_CHECK_SIZE = 8192
+_MAX_LINES = 100
+
+
+def _is_binary(p: Path) -> bool:
+    """Check if a file is binary by looking for null bytes in the first chunk."""
+    with p.open("rb") as f:
+        return b"\x00" in f.read(_BINARY_CHECK_SIZE)
+
+
+def _read(path: str, offset: int = 0, limit: int = _MAX_LINES) -> str:
+    """Read file contents with optional line offset and limit."""
     p = _sanitize_path(path)
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
     if not p.is_file():
         raise ToolError(f"{path} is not a file.")
-    return p.read_text()
+    if _is_binary(p):
+        return f"{path} is a binary file."
+    all_lines = p.read_text().splitlines(keepends=True)
+    total = len(all_lines)
+    selected = all_lines[offset : offset + limit]
+    result = "".join(selected)
+    remaining = total - offset - len(selected)
+    if remaining > 0:
+        result += f"\n... ({remaining} lines remaining)"
+    return result
 
 
 # --- Default registry with built-in tools ---
@@ -127,7 +146,21 @@ default_registry.add(
 )
 default_registry.add(
     name="read",
-    description="Read the contents of a file.",
-    params=[Param(name="path", description="Path to the file to read.")],
+    description="Read the contents of a file. Shows first 100 lines by default.",
+    params=[
+        Param(name="path", description="Path to the file to read."),
+        Param(
+            name="offset",
+            description="Line number to start from (0-based).",
+            type="integer",
+            required=False,
+        ),
+        Param(
+            name="limit",
+            description="Maximum number of lines to return.",
+            type="integer",
+            required=False,
+        ),
+    ],
     func=_read,
 )
