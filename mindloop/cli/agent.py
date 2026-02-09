@@ -75,12 +75,14 @@ def main() -> None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     jsonl_path = log_dir / f"agent_{timestamp}.jsonl"
     log_path = log_dir / f"agent_{timestamp}.log"
+    model = "deepseek/deepseek-v3.2"
 
     system_prompt = _PROMPT_PATH.read_text().strip()
     print(f"Starting agent... (logging to {log_path})\n")
     run_agent(
         system_prompt,
         on_step=_print_step,
+        model=model,
         on_thinking=_print_thinking,
         on_message=_make_logger(jsonl_path, log_path),
     )

@@ -6,7 +6,7 @@ from mindloop.chunker import Chunk
 from mindloop.client import chat
 
 # SUMMARIZATION_MODEL = "tngtech/deepseek-r1t2-chimera:free"
-SUMMARIZATION_MODEL = "tngtech/deepseek-r1t-chimera:free"
+SUMMARIZATION_MODEL = "deepseek/deepseek-v3.2"
 
 SYSTEM_PROMPT = """\
 You summarize conversation excerpts from a chat log.
