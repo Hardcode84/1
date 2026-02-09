@@ -117,9 +117,9 @@ def chat(
                 }
             tc = tool_calls_by_index[idx]
             func_delta = tc_delta.get("function", {})
-            if "name" in func_delta:
+            if func_delta.get("name"):
                 tc["function"]["name"] += func_delta["name"]
-            if "arguments" in func_delta:
+            if func_delta.get("arguments"):
                 tc["function"]["arguments"] += func_delta["arguments"]
 
     result: Message = {"role": "assistant", "content": "".join(full_reply)}

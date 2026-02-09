@@ -120,6 +120,85 @@ def test_chat_streaming_empty(mock_post: MagicMock) -> None:
     assert result == {"role": "assistant", "content": ""}
 
 
+@patch("mindloop.client.requests.post")
+def test_chat_streaming_tool_calls_with_null_fields(mock_post: MagicMock) -> None:
+    """Tool call deltas with None name/arguments don't crash."""
+    lines: list[bytes] = []
+    # First delta: id and name.
+    lines.append(
+        b"data: "
+        + json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_1",
+                                    "function": {"name": "ls", "arguments": None},
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ).encode()
+    )
+    # Second delta: arguments chunk.
+    lines.append(
+        b"data: "
+        + json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "function": {"name": None, "arguments": '{"path"'},
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ).encode()
+    )
+    # Third delta: rest of arguments.
+    lines.append(
+        b"data: "
+        + json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {"index": 0, "function": {"arguments": ': "."}'}}
+                            ]
+                        }
+                    }
+                ]
+            }
+        ).encode()
+    )
+    lines.append(b"data: [DONE]")
+
+    mock_resp = MagicMock()
+    mock_resp.iter_lines.return_value = lines
+    mock_post.return_value = mock_resp
+
+    result = chat(
+        [{"role": "user", "content": "list files"}],
+        stream=True,
+        on_token=lambda t: None,
+    )
+    assert result["tool_calls"] is not None
+    tc = result["tool_calls"][0]
+    assert tc["function"]["name"] == "ls"
+    assert tc["function"]["arguments"] == '{"path": "."}'
+
+
 # --- get_embeddings ---
 
 
