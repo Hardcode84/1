@@ -15,7 +15,9 @@ from mindloop.client import API_KEY, Embeddings, get_embeddings
 
 def print_chunks(chunks: list[Chunk], embeddings: Embeddings | None = None) -> None:
     similarities = (
-        cosine_similarities(embeddings) if embeddings and len(embeddings) > 1 else None
+        cosine_similarities(embeddings)
+        if embeddings is not None and len(embeddings) > 1
+        else None
     )
 
     for i, chunk in enumerate(chunks):
@@ -23,7 +25,7 @@ def print_chunks(chunks: list[Chunk], embeddings: Embeddings | None = None) -> N
         for turn in chunk.turns:
             ts = turn.timestamp.strftime("%H:%M:%S")
             print(f"  {ts} {turn.role}: {turn.text}")
-        if similarities and i < len(similarities):
+        if similarities is not None and i < len(similarities):
             print(f"  Similarity to next chunk: {similarities[i]:.4f}")
         print()
 
