@@ -65,9 +65,12 @@ def chat(
         response.raise_for_status()
         body = response.json()
         msg: Message = body["choices"][0]["message"]
+        if "usage" in body:
+            msg["usage"] = body["usage"]
         return msg
 
     payload["stream"] = True
+    payload["stream_options"] = {"include_usage": True}
     response = requests.post(
         f"{BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {API_KEY}"},
@@ -79,6 +82,7 @@ def chat(
     full_reply: list[str] = []
     full_reasoning: list[str] = []
     tool_calls_by_index: dict[int, dict[str, Any]] = {}
+    usage: dict[str, int] | None = None
 
     for line in response.iter_lines():
         if not line or not line.startswith(b"data: "):
@@ -87,6 +91,8 @@ def chat(
         if data == b"[DONE]":
             break
         chunk = json.loads(data)
+        if "usage" in chunk:
+            usage = chunk["usage"]
         choices = chunk.get("choices")
         if not choices:
             continue
@@ -129,6 +135,8 @@ def chat(
         result["tool_calls"] = [
             tool_calls_by_index[i] for i in sorted(tool_calls_by_index)
         ]
+    if usage is not None:
+        result["usage"] = usage
     return result
 
 

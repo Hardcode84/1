@@ -20,11 +20,26 @@ def _noop_message(_msg: Message) -> None:
     pass
 
 
+# Rough chars-per-token ratio for estimation.
+_CHARS_PER_TOKEN = 4
+
+DEFAULT_MAX_TOKENS = 200_000
+
+
+def _estimate_tokens(messages: list[Message], response: Message) -> int:
+    """Estimate total tokens for a call from character counts."""
+    prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
+    response_chars = len(str(response.get("content", "")))
+    response_chars += len(str(response.get("reasoning", "")))
+    return (prompt_chars + response_chars) // _CHARS_PER_TOKEN
+
+
 def run_agent(
     system_prompt: str,
     registry: ToolRegistry = default_registry,
     model: str | None = None,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     on_step: Callable[[str], None] = _noop,
     on_thinking: Callable[[str], None] | None = None,
     on_message: Callable[[Message], None] = _noop_message,
@@ -35,6 +50,7 @@ def run_agent(
 
     messages: list[Message] = []
     effective_model = model if model is not None else DEFAULT_MODEL
+    total_tokens = 0
 
     for _ in range(max_iterations):
         response = chat(
@@ -47,8 +63,17 @@ def run_agent(
             on_thinking=on_thinking,
             reasoning_effort=reasoning_effort,
         )
+        usage = response.get("usage")
+        if usage:
+            total_tokens += int(usage.get("total_tokens", 0))
+        else:
+            total_tokens += _estimate_tokens(messages, response)
         messages.append(response)
         on_message(response)
+
+        if total_tokens >= max_tokens:
+            on_step(f"\n[budget] {total_tokens} tokens used, limit {max_tokens}")
+            break
 
         tool_calls = response.get("tool_calls")
         if not tool_calls:

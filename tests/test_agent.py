@@ -161,3 +161,32 @@ def test_malformed_tool_call_arguments(mock_chat: MagicMock) -> None:
     # Verify the arguments field was sanitized for the API.
     assistant_msg = second_call_messages[0]
     assert assistant_msg["tool_calls"][0]["function"]["arguments"] == "{}"
+
+
+@patch("mindloop.agent.chat")
+def test_token_budget_stops_loop(mock_chat: MagicMock) -> None:
+    """Loop stops when cumulative token usage exceeds max_tokens."""
+    response_with_usage = {
+        **_make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')]),
+        "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+    }
+    mock_chat.return_value = response_with_usage
+    run_agent("prompt", registry=_echo_registry(), max_tokens=200)
+    # First call: 150 tokens (under 200), continues. Second call: 300 total (over 200), stops.
+    assert mock_chat.call_count == 2
+
+
+@patch("mindloop.agent.chat")
+def test_token_budget_estimated_when_no_usage(mock_chat: MagicMock) -> None:
+    """Token budget works via estimation when API returns no usage."""
+    # ~400 chars of content -> ~100 estimated tokens per response.
+    long_text = "x" * 400
+    mock_chat.return_value = _make_tool_response(
+        [_make_tool_call("c1", "echo", '{"text": "hi"}')]
+    )
+    mock_chat.return_value["content"] = long_text
+    # No "usage" key in response — estimation should kick in.
+    run_agent("prompt", registry=_echo_registry(), max_tokens=150)
+    # First call: ~100 estimated (under 150). Second call: prompt grows, estimate
+    # exceeds 150. Loop stops.
+    assert mock_chat.call_count == 2
