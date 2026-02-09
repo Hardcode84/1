@@ -67,8 +67,28 @@ class ToolRegistry:
         tool = self._tools.get(name)
         if tool is None or tool.func is None:
             return f"Error: unknown tool '{name}'."
-        kwargs: dict[str, Any] = json.loads(arguments)
-        return tool.func(**kwargs)
+        try:
+            kwargs: dict[str, Any] = json.loads(arguments)
+            return tool.func(**kwargs)
+        except Exception as e:
+            return f"Error: {e}"
+
+
+# --- Path sanitization ---
+
+_work_dir: Path = Path.cwd().resolve()
+
+
+class ToolError(Exception):
+    """Raised when a tool encounters an expected error."""
+
+
+def _sanitize_path(path: str) -> Path:
+    """Resolve path and verify it stays within the working directory."""
+    resolved = (_work_dir / path).resolve()
+    if not str(resolved).startswith(str(_work_dir)):
+        raise ToolError(f"{path} is outside the working directory.")
+    return resolved
 
 
 # --- Built-in tool implementations ---
@@ -76,11 +96,11 @@ class ToolRegistry:
 
 def _ls(path: str) -> str:
     """List directory contents."""
-    p = Path(path)
+    p = _sanitize_path(path)
     if not p.exists():
-        return f"Error: {path} does not exist."
+        raise ToolError(f"{path} does not exist.")
     if not p.is_dir():
-        return f"Error: {path} is not a directory."
+        raise ToolError(f"{path} is not a directory.")
     entries = sorted(p.iterdir())
     lines = [f"{'d' if e.is_dir() else 'f'}  {e.name}" for e in entries]
     return "\n".join(lines) if lines else "(empty directory)"
@@ -88,15 +108,12 @@ def _ls(path: str) -> str:
 
 def _read(path: str) -> str:
     """Read file contents."""
-    p = Path(path)
+    p = _sanitize_path(path)
     if not p.exists():
-        return f"Error: {path} does not exist."
+        raise ToolError(f"{path} does not exist.")
     if not p.is_file():
-        return f"Error: {path} is not a file."
-    try:
-        return p.read_text()
-    except Exception as e:
-        return f"Error reading {path}: {e}"
+        raise ToolError(f"{path} is not a file.")
+    return p.read_text()
 
 
 # --- Default registry with built-in tools ---
