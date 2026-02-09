@@ -6,6 +6,9 @@ from mindloop.client import Message, chat
 from mindloop.tools import ToolRegistry, default_registry
 
 DEFAULT_MAX_ITERATIONS = 20
+_USER_UNAVAILABLE = (
+    "User is unavailable. Continue autonomously using the tools provided."
+)
 
 
 def _noop(_msg: str) -> None:
@@ -42,7 +45,12 @@ def run_agent(
 
         tool_calls = response.get("tool_calls")
         if not tool_calls:
-            return str(response.get("content", ""))
+            # If the previous message was already our nudge, the model is done.
+            if len(messages) >= 2 and messages[-2].get("content") == _USER_UNAVAILABLE:
+                return str(response.get("content", ""))
+            # Otherwise, nudge the model to keep going.
+            messages.append({"role": "user", "content": _USER_UNAVAILABLE})
+            continue
 
         for call in tool_calls:
             name = call["function"]["name"]

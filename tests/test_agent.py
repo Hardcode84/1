@@ -3,7 +3,7 @@
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from mindloop.agent import run_agent
+from mindloop.agent import _USER_UNAVAILABLE, run_agent
 from mindloop.tools import Param, ToolRegistry
 
 
@@ -38,31 +38,44 @@ def _echo_registry() -> ToolRegistry:
 
 @patch("mindloop.agent.chat")
 def test_tool_call_then_final_response(mock_chat: MagicMock) -> None:
-    """Model calls a tool, gets result, then produces final text."""
+    """Model calls a tool, gets result, then gives final text after nudge."""
     mock_chat.side_effect = [
         _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')]),
+        # First text response triggers a nudge.
         _make_final_response("done"),
+        # After nudge, model responds again — now it's final.
+        _make_final_response("really done"),
     ]
     result = run_agent("prompt", registry=_echo_registry())
-    assert result == "done"
-    assert mock_chat.call_count == 2
-
-    # Verify tool result was fed back. Messages list is shared, so after the
-    # second chat() call the final assistant response is appended too.
-    final_messages = mock_chat.call_args_list[1][0][0]
-    tool_msg = final_messages[-2]
-    assert tool_msg["role"] == "tool"
-    assert tool_msg["tool_call_id"] == "c1"
-    assert tool_msg["content"] == "echoed: hi"
+    assert result == "really done"
+    assert mock_chat.call_count == 3
 
 
 @patch("mindloop.agent.chat")
-def test_immediate_final_response(mock_chat: MagicMock) -> None:
-    """Model produces final text without calling any tools."""
-    mock_chat.return_value = _make_final_response("hello")
+def test_nudge_injects_user_unavailable(mock_chat: MagicMock) -> None:
+    """First text-only response triggers a user-unavailable nudge."""
+    mock_chat.side_effect = [
+        _make_final_response("waiting for input"),
+        _make_final_response("ok continuing"),
+    ]
+    run_agent("prompt", registry=_echo_registry())
+
+    # After the first text response, a user message should be injected.
+    messages = mock_chat.call_args_list[1][0][0]
+    user_msgs = [m for m in messages if m.get("content") == _USER_UNAVAILABLE]
+    assert len(user_msgs) == 1
+
+
+@patch("mindloop.agent.chat")
+def test_double_text_response_terminates(mock_chat: MagicMock) -> None:
+    """After nudge, second text-only response is treated as final."""
+    mock_chat.side_effect = [
+        _make_final_response("question?"),
+        _make_final_response("ok done"),
+    ]
     result = run_agent("prompt", registry=_echo_registry())
-    assert result == "hello"
-    assert mock_chat.call_count == 1
+    assert result == "ok done"
+    assert mock_chat.call_count == 2
 
 
 @patch("mindloop.agent.chat")
@@ -87,13 +100,14 @@ def test_multiple_tool_calls_in_single_response(mock_chat: MagicMock) -> None:
             ]
         ),
         _make_final_response("both done"),
+        _make_final_response("final"),
     ]
     result = run_agent("prompt", registry=_echo_registry())
-    assert result == "both done"
+    assert result == "final"
 
     # Verify both tool results were appended.
-    final_messages = mock_chat.call_args_list[1][0][0]
-    tool_msgs = [m for m in final_messages if m["role"] == "tool"]
+    second_call_messages = mock_chat.call_args_list[1][0][0]
+    tool_msgs = [m for m in second_call_messages if m["role"] == "tool"]
     assert len(tool_msgs) == 2
     assert tool_msgs[0]["content"] == "echoed: a"
     assert tool_msgs[1]["content"] == "echoed: b"
@@ -102,7 +116,25 @@ def test_multiple_tool_calls_in_single_response(mock_chat: MagicMock) -> None:
 @patch("mindloop.agent.chat")
 def test_model_kwarg_passed_through(mock_chat: MagicMock) -> None:
     """Custom model parameter is forwarded to chat()."""
-    mock_chat.return_value = _make_final_response("ok")
+    mock_chat.side_effect = [
+        _make_final_response("ask"),
+        _make_final_response("ok"),
+    ]
     run_agent("prompt", registry=_echo_registry(), model="test-model")
     _, kwargs = mock_chat.call_args
     assert kwargs["model"] == "test-model"
+
+
+@patch("mindloop.agent.chat")
+def test_nudge_then_tool_call_continues(mock_chat: MagicMock) -> None:
+    """After nudge, model can resume tool use instead of finishing."""
+    mock_chat.side_effect = [
+        _make_final_response("hmm let me think"),
+        # After nudge, model decides to use a tool.
+        _make_tool_response([_make_tool_call("c1", "echo", '{"text": "go"}')]),
+        _make_final_response("found it"),
+        _make_final_response("done"),
+    ]
+    result = run_agent("prompt", registry=_echo_registry())
+    assert result == "done"
+    assert mock_chat.call_count == 4
