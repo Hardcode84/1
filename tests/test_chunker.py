@@ -279,10 +279,8 @@ def test_parse_turns_md_basic(tmp_path: Path) -> None:
     turns = parse_turns_md(md)
     assert len(turns) == 3
     assert turns[0].text == "doc.md"
-    assert turns[1].role == "Intro"
-    assert turns[1].text == "Hello world."
-    assert turns[2].role == "Setup"
-    assert turns[2].text == "Install stuff."
+    assert turns[1].text == "# Intro\nHello world."
+    assert turns[2].text == "# Setup\nInstall stuff."
 
 
 def test_parse_turns_md_no_headings(tmp_path: Path) -> None:
@@ -291,7 +289,6 @@ def test_parse_turns_md_no_headings(tmp_path: Path) -> None:
     turns = parse_turns_md(md)
     assert len(turns) == 2
     assert turns[0].text == "doc.md"
-    assert turns[1].role == "Doc"
     assert "Just some text." in turns[1].text
 
 
@@ -307,9 +304,8 @@ def test_parse_turns_md_preamble(tmp_path: Path) -> None:
     turns = parse_turns_md(md)
     assert len(turns) == 3
     assert turns[0].text == "doc.md"
-    assert turns[1].role == "Doc"
     assert turns[1].text == "Preamble text."
-    assert turns[2].role == "First"
+    assert turns[2].text == "# First\nBody."
 
 
 def test_parse_turns_md_multiple_levels(tmp_path: Path) -> None:
@@ -318,18 +314,19 @@ def test_parse_turns_md_multiple_levels(tmp_path: Path) -> None:
     turns = parse_turns_md(md)
     assert len(turns) == 4
     assert turns[0].text == "doc.md"
-    assert turns[1].role == "Top"
-    assert turns[2].role == "Sub"
-    assert turns[3].role == "Deep"
+    assert turns[1].text == "# Top\nA."
+    assert turns[2].text == "## Sub\nB."
+    assert turns[3].text == "### Deep\nC."
 
 
-def test_parse_turns_md_empty_section_skipped(tmp_path: Path) -> None:
+def test_parse_turns_md_consecutive_headings(tmp_path: Path) -> None:
     md = tmp_path / "doc.md"
-    md.write_text("# Empty\n# HasContent\nSome text.\n")
+    md.write_text("# First\n# Second\nSome text.\n")
     turns = parse_turns_md(md)
-    assert len(turns) == 2
+    assert len(turns) == 3
     assert turns[0].text == "doc.md"
-    assert turns[1].role == "HasContent"
+    assert turns[1].text == "# First"
+    assert turns[2].text == "# Second\nSome text."
 
 
 def test_parse_turns_md_uses_file_mtime(tmp_path: Path) -> None:
@@ -337,7 +334,6 @@ def test_parse_turns_md_uses_file_mtime(tmp_path: Path) -> None:
     md.write_text("# Title\nContent.\n")
     turns = parse_turns_md(md)
     assert len(turns) == 2
-    # Timestamp should be close to file mtime.
     expected = datetime.fromtimestamp(md.stat().st_mtime)
     assert turns[0].timestamp == expected
     assert turns[1].timestamp == expected

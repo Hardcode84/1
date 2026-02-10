@@ -15,7 +15,11 @@ from mindloop.chunker import (
 from mindloop.client import API_KEY, Embeddings, get_embeddings
 
 
-def print_chunks(chunks: list[Chunk], embeddings: Embeddings | None = None) -> None:
+def print_chunks(
+    chunks: list[Chunk],
+    embeddings: Embeddings | None = None,
+    show_timestamps: bool = True,
+) -> None:
     similarities = (
         cosine_similarities(embeddings)
         if embeddings is not None and len(embeddings) > 1
@@ -23,10 +27,17 @@ def print_chunks(chunks: list[Chunk], embeddings: Embeddings | None = None) -> N
     )
 
     for i, chunk in enumerate(chunks):
-        print(f"--- Chunk {i + 1} [{chunk.time_range}] ({len(chunk.turns)} turns) ---")
+        header = f"--- Chunk {i + 1}"
+        if show_timestamps:
+            header += f" [{chunk.time_range}]"
+        header += f" ({len(chunk.turns)} turns) ---"
+        print(header)
         for turn in chunk.turns:
-            ts = turn.timestamp.strftime("%H:%M:%S")
-            print(f"  {ts} {turn.role}: {turn.text}")
+            if show_timestamps:
+                ts = turn.timestamp.strftime("%H:%M:%S")
+                print(f"  {ts} {turn.role}: {turn.text}")
+            else:
+                print(f"  {turn.text}")
         if similarities is not None and i < len(similarities):
             print(f"  Similarity to next chunk: {similarities[i]:.4f}")
         print()
@@ -51,7 +62,8 @@ def main() -> None:
         print(f"File not found: {args.logfile}")
         return
 
-    if args.logfile.suffix == ".md":
+    is_md = args.logfile.suffix == ".md"
+    if is_md:
         turns = parse_turns_md(args.logfile)
     else:
         turns = parse_turns(args.logfile)
@@ -70,12 +82,12 @@ def main() -> None:
             embeddings = get_embeddings([c.text for c in chunks])
             sims = cosine_similarities(embeddings)
             print("=== Before merging ===\n")
-            print_chunks(chunks, embeddings)
+            print_chunks(chunks, embeddings, show_timestamps=not is_md)
 
             chunks = merge_chunks(chunks, sims)
             print(f"=== After merging ({len(chunks)} chunks) ===\n")
 
-    print_chunks(chunks)
+    print_chunks(chunks, show_timestamps=not is_md)
 
     if args.summarize:
         if not API_KEY:

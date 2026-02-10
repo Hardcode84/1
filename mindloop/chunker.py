@@ -66,20 +66,17 @@ def parse_turns_md(path: Path) -> list[Turn]:
 
     ts = datetime.fromtimestamp(path.stat().st_mtime)
     turns: list[Turn] = [Turn(timestamp=ts, role="Doc", text=path.name)]
-    current_role = "Doc"
     current_lines: list[str] = []
 
     def _flush() -> None:
         body = "\n".join(current_lines).strip()
         if body:
-            turns.append(Turn(timestamp=ts, role=current_role, text=body))
+            turns.append(Turn(timestamp=ts, role="Doc", text=body))
 
     for line in content.splitlines():
-        m = _HEADING_RE.match(line)
-        if m:
+        if _HEADING_RE.match(line):
             _flush()
-            current_role = m.group(2).strip()
-            current_lines = []
+            current_lines = [line]
         else:
             current_lines.append(line)
 
