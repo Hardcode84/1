@@ -138,10 +138,25 @@ def test_read_with_offset(tmp_path: Path) -> None:
     lines = [f"line {i}\n" for i in range(250)]
     (tmp_path / "big.txt").write_text("".join(lines))
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "big.txt", "offset": 200}')
+        result = default_registry.execute(
+            "read", '{"path": "big.txt", "line_offset": 200}'
+        )
     assert "line 199" not in result
     assert "line 200" in result
     assert "line 249" in result
+    assert "remaining" not in result
+
+
+def test_read_with_negative_offset(tmp_path: Path) -> None:
+    lines = [f"line {i}\n" for i in range(20)]
+    (tmp_path / "f.txt").write_text("".join(lines))
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "read", '{"path": "f.txt", "line_offset": -5}'
+        )
+    assert "line 14" not in result
+    assert "line 15" in result
+    assert "line 19" in result
     assert "remaining" not in result
 
 
@@ -161,7 +176,7 @@ def test_read_with_offset_and_limit(tmp_path: Path) -> None:
     (tmp_path / "f.txt").write_text("".join(lines))
     with patch("mindloop.tools._work_dir", tmp_path):
         result = default_registry.execute(
-            "read", '{"path": "f.txt", "offset": 10, "line_limit": 5}'
+            "read", '{"path": "f.txt", "line_offset": 10, "line_limit": 5}'
         )
     assert "line 9" not in result
     assert "line 10" in result

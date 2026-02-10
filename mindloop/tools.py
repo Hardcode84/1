@@ -179,7 +179,7 @@ def _write(path: str, content: str) -> str:
 
 def _read(
     path: str,
-    offset: int = 0,
+    line_offset: int = 0,
     line_limit: int = _MAX_LINES,
     max_line_length: int = _MAX_LINE_LENGTH,
 ) -> str:
@@ -193,12 +193,13 @@ def _read(
         return f"{path} is a binary file."
     all_lines = p.read_text().splitlines(keepends=True)
     total = len(all_lines)
+    start = line_offset if line_offset >= 0 else max(0, total + line_offset)
     selected = [
         _truncate_line(line, max_line_length)
-        for line in all_lines[offset : offset + line_limit]
+        for line in all_lines[line_offset : line_offset + line_limit]
     ]
     result = "".join(selected)
-    remaining = total - offset - len(selected)
+    remaining = total - start - len(selected)
     if remaining > 0:
         result += f"\n... ({remaining} lines remaining)"
     return result
@@ -255,8 +256,8 @@ default_registry.add(
     params=[
         Param(name="path", description="Relative path within the working directory."),
         Param(
-            name="offset",
-            description="Line number to start from (0-based). Default: 0.",
+            name="line_offset",
+            description="Line number to start from (0-based). Negative counts from end. Default: 0.",
             type="integer",
             required=False,
         ),
