@@ -52,6 +52,17 @@ def run_agent(
     effective_model = model if model is not None else DEFAULT_MODEL
     total_tokens = 0
 
+    def _stop(reason: str) -> str:
+        """Log termination reason and return the last model content."""
+        stop_msg: Message = {
+            "role": "system",
+            "content": f"[stop] {reason} ({total_tokens} tokens used)",
+        }
+        on_message(stop_msg)
+        on_step(f"\n[stop] {reason} ({total_tokens} tokens used)")
+        last = messages[-1].get("content", "") if messages else ""
+        return str(last)
+
     for _ in range(max_iterations):
         response = chat(
             messages,
@@ -72,14 +83,13 @@ def run_agent(
         on_message(response)
 
         if total_tokens >= max_tokens:
-            on_step(f"\n[budget] {total_tokens} tokens used, limit {max_tokens}")
-            break
+            return _stop(f"token budget exceeded (limit {max_tokens})")
 
         tool_calls = response.get("tool_calls")
         if not tool_calls:
             # If the previous message was already our nudge, the model is done.
             if len(messages) >= 2 and messages[-2].get("content") == _USER_UNAVAILABLE:
-                return str(response.get("content", ""))
+                return _stop("model finished")
             # Otherwise, nudge the model to keep going.
             nudge: Message = {"role": "user", "content": _USER_UNAVAILABLE}
             messages.append(nudge)
@@ -107,5 +117,4 @@ def run_agent(
             messages.append(tool_msg)
             on_message(tool_msg)
 
-    # Safety valve: return whatever the model last said.
-    return str(messages[-1].get("content", "")) if messages else ""
+    return _stop(f"max iterations reached ({max_iterations})")
