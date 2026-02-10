@@ -7,7 +7,7 @@ from datetime import datetime
 from mindloop.client import Message, chat
 from mindloop.tools import ToolRegistry, default_registry
 
-DEFAULT_MAX_ITERATIONS = 20
+DEFAULT_MAX_ITERATIONS = 1000
 _USER_UNAVAILABLE = (
     "User is unavailable. Continue autonomously using the tools provided."
 )
