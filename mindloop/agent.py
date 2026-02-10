@@ -62,6 +62,10 @@ def _auto_confirm(_name: str, _arguments: str) -> bool:
     return True
 
 
+def _no_ask(message: str) -> str:
+    return "User is unavailable."
+
+
 def run_agent(
     system_prompt: str,
     registry: ToolRegistry | None = None,
@@ -72,6 +76,7 @@ def run_agent(
     on_thinking: Callable[[str], None] | None = None,
     on_message: Callable[[Message], None] = _noop_message,
     on_confirm: Callable[[str, str], bool] = _auto_confirm,
+    on_ask: Callable[[str], str] = _no_ask,
     reasoning_effort: str = "high",
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
@@ -113,6 +118,13 @@ def run_agent(
             Param(name="summary", description="Brief summary of what was accomplished.")
         ],
         func=_done,
+    )
+
+    registry.add(
+        name="ask",
+        description="Ask the user a question. User may not always be immediately available for an answer.",
+        params=[Param(name="message", description="Message to show the user.")],
+        func=on_ask,
     )
 
     def _stop(reason: str) -> str:

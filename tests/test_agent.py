@@ -171,6 +171,38 @@ def test_malformed_tool_call_arguments(mock_chat: MagicMock) -> None:
 
 
 @patch("mindloop.agent.chat")
+def test_ask_tool_returns_user_response(mock_chat: MagicMock) -> None:
+    """Ask tool passes message to callback and returns user's response."""
+    mock_chat.side_effect = [
+        _make_tool_response(
+            [_make_tool_call("c1", "ask", '{"message": "what next?"}')]
+        ),
+        _make_done_response("c2", "got answer"),
+    ]
+    on_ask = MagicMock(return_value="do nothing")
+    run_agent("prompt", registry=_echo_registry(), on_ask=on_ask)
+
+    on_ask.assert_called_once_with(message="what next?")
+    second_call_messages = mock_chat.call_args_list[1][0][0]
+    tool_msg = [m for m in second_call_messages if m["role"] == "tool"][0]
+    assert tool_msg["content"] == "do nothing"
+
+
+@patch("mindloop.agent.chat")
+def test_ask_tool_default_unavailable(mock_chat: MagicMock) -> None:
+    """Without on_ask callback, ask tool returns unavailable message."""
+    mock_chat.side_effect = [
+        _make_tool_response([_make_tool_call("c1", "ask", '{"message": "hello?"}')]),
+        _make_done_response("c2", "ok"),
+    ]
+    run_agent("prompt", registry=_echo_registry())
+
+    second_call_messages = mock_chat.call_args_list[1][0][0]
+    tool_msg = [m for m in second_call_messages if m["role"] == "tool"][0]
+    assert "unavailable" in tool_msg["content"].lower()
+
+
+@patch("mindloop.agent.chat")
 def test_on_confirm_denied(mock_chat: MagicMock) -> None:
     """Denied tool calls return an error to the model without executing."""
     mock_chat.side_effect = [

@@ -60,6 +60,12 @@ def _confirm_tool(name: str, arguments: str) -> bool:
     return reply in ("y", "yes")
 
 
+def _ask_user(message: str) -> str:
+    """Print agent's message and wait for user input."""
+    print(f"\n\033[36m[ask] {message}\033[0m")
+    return input("> ")
+
+
 def _make_logger(jsonl_path: Path, log_path: Path) -> Callable[[dict[str, Any]], None]:
     """Return a callback that logs each message in both formats."""
 
@@ -98,6 +104,7 @@ def main() -> None:
         on_thinking=_print_thinking,
         on_message=_make_logger(jsonl_path, log_path),
         on_confirm=_confirm_tool,
+        on_ask=_ask_user,
     )
     print()
 
