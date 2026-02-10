@@ -193,6 +193,83 @@ def test_read_long_lines_custom_max(tmp_path: Path) -> None:
     assert "chars truncated" in result
 
 
+# --- built-in edit ---
+
+
+def test_edit_single_replacement(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("hello world")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "edit",
+            '{"path": "f.txt", "old_string": "hello", "new_string": "goodbye"}',
+        )
+    assert "Replaced 1" in result
+    assert (tmp_path / "f.txt").read_text() == "goodbye world"
+
+
+def test_edit_not_found(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("hello world")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "edit",
+            '{"path": "f.txt", "old_string": "missing", "new_string": "x"}',
+        )
+    assert "not found" in result
+
+
+def test_edit_ambiguous_without_replace_all(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("aaa bbb aaa")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "edit",
+            '{"path": "f.txt", "old_string": "aaa", "new_string": "ccc"}',
+        )
+    assert "matches 2 locations" in result
+    # File should be unchanged.
+    assert (tmp_path / "f.txt").read_text() == "aaa bbb aaa"
+
+
+def test_edit_replace_all(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("aaa bbb aaa")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "edit",
+            '{"path": "f.txt", "old_string": "aaa", "new_string": "ccc", "replace_all": true}',
+        )
+    assert "Replaced 2" in result
+    assert (tmp_path / "f.txt").read_text() == "ccc bbb ccc"
+
+
+def test_edit_identical_strings(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("hello")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "edit",
+            '{"path": "f.txt", "old_string": "hello", "new_string": "hello"}',
+        )
+    assert "identical" in result
+
+
+def test_edit_nonexistent_file(tmp_path: Path) -> None:
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "edit",
+            '{"path": "nope.txt", "old_string": "a", "new_string": "b"}',
+        )
+    assert "does not exist" in result
+
+
+def test_edit_multiline(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("def foo():\n    return 1\n")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "edit",
+            '{"path": "f.txt", "old_string": "def foo():\\n    return 1", "new_string": "def foo():\\n    return 2"}',
+        )
+    assert "Replaced 1" in result
+    assert (tmp_path / "f.txt").read_text() == "def foo():\n    return 2\n"
+
+
 # --- path sanitization ---
 
 

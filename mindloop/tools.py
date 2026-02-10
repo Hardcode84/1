@@ -133,6 +133,39 @@ def _truncate_line(line: str, max_length: int) -> str:
     return f"{line[:max_length]}... ({truncated} chars truncated){nl}"
 
 
+def _edit(
+    path: str,
+    old_string: str,
+    new_string: str,
+    replace_all: bool = False,
+) -> str:
+    """Replace exact string occurrences in a file."""
+    p = _sanitize_path(path)
+    if not p.exists():
+        raise ToolError(f"{path} does not exist.")
+    if not p.is_file():
+        raise ToolError(f"{path} is not a file.")
+    if _is_binary(p):
+        raise ToolError(f"{path} is a binary file.")
+    if old_string == new_string:
+        raise ToolError("old_string and new_string are identical.")
+    content = p.read_text()
+    count = content.count(old_string)
+    if count == 0:
+        raise ToolError("old_string not found in file.")
+    if count > 1 and not replace_all:
+        raise ToolError(
+            f"old_string matches {count} locations. "
+            "Provide more context to make it unique, or set replace_all=true."
+        )
+    if replace_all:
+        result = content.replace(old_string, new_string)
+    else:
+        result = content.replace(old_string, new_string, 1)
+    p.write_text(result)
+    return f"Replaced {count if replace_all else 1} occurrence(s) in {path}."
+
+
 def _read(
     path: str,
     offset: int = 0,
@@ -170,6 +203,27 @@ default_registry.add(
         Param(name="path", description="Relative path within the working directory.")
     ],
     func=_ls,
+)
+default_registry.add(
+    name="edit",
+    description=(
+        "Replace exact string in a file. "
+        "old_string must be unique unless replace_all is true. "
+        "Read the file first to get the exact text. "
+        "Paths are relative to the working directory."
+    ),
+    params=[
+        Param(name="path", description="Relative path within the working directory."),
+        Param(name="old_string", description="Exact text to find in the file."),
+        Param(name="new_string", description="Text to replace it with."),
+        Param(
+            name="replace_all",
+            description="Replace all occurrences. Default: false.",
+            type="boolean",
+            required=False,
+        ),
+    ],
+    func=_edit,
 )
 default_registry.add(
     name="read",
