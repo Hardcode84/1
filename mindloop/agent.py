@@ -25,6 +25,28 @@ def _noop_message(_msg: Message) -> None:
 _CHARS_PER_TOKEN = 4
 
 DEFAULT_MAX_TOKENS = 200_000
+_BUDGET_WARNING_THRESHOLDS = (0.5, 0.8)
+
+
+def _inject_budget_warnings(
+    total_tokens: int,
+    max_tokens: int,
+    warned: set[float],
+    messages: list[Message],
+    on_message: Callable[[Message], None],
+) -> None:
+    """Inject system warnings when token usage crosses thresholds."""
+    for threshold in _BUDGET_WARNING_THRESHOLDS:
+        if threshold not in warned and total_tokens >= max_tokens * threshold:
+            warned.add(threshold)
+            pct = int(threshold * 100)
+            warn: Message = {
+                "role": "system",
+                "content": f"Warning: {pct}% of token budget used"
+                f" ({total_tokens} / {max_tokens}).",
+            }
+            messages.append(warn)
+            on_message(warn)
 
 
 def _estimate_tokens(messages: list[Message], response: Message) -> int:
@@ -52,6 +74,7 @@ def run_agent(
     messages: list[Message] = []
     effective_model = model if model is not None else DEFAULT_MODEL
     total_tokens = 0
+    warned_thresholds: set[float] = set()
 
     # Register a status tool with access to runtime state.
     agent_registry = registry.copy()
@@ -109,6 +132,9 @@ def run_agent(
             nudge: Message = {"role": "user", "content": _USER_UNAVAILABLE}
             messages.append(nudge)
             on_message(nudge)
+            _inject_budget_warnings(
+                total_tokens, max_tokens, warned_thresholds, messages, on_message
+            )
             continue
 
         for call in tool_calls:
@@ -131,5 +157,10 @@ def run_agent(
             }
             messages.append(tool_msg)
             on_message(tool_msg)
+
+        # Warn the model after all tool results are appended.
+        _inject_budget_warnings(
+            total_tokens, max_tokens, warned_thresholds, messages, on_message
+        )
 
     return _stop(f"max iterations reached ({max_iterations})")
