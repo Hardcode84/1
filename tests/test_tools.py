@@ -160,6 +160,20 @@ def test_read_with_negative_offset(tmp_path: Path) -> None:
     assert "remaining" not in result
 
 
+def test_read_with_negative_offset_and_limit(tmp_path: Path) -> None:
+    lines = [f"line {i}\n" for i in range(200)]
+    (tmp_path / "f.txt").write_text("".join(lines))
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "read", '{"path": "f.txt", "line_offset": -100, "line_limit": 200}'
+        )
+    # Should return lines 100-199 (last 100 lines).
+    assert "line 99" not in result
+    assert "line 100" in result
+    assert "line 199" in result
+    assert "remaining" not in result
+
+
 def test_read_with_limit(tmp_path: Path) -> None:
     lines = [f"line {i}\n" for i in range(50)]
     (tmp_path / "f.txt").write_text("".join(lines))

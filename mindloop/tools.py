@@ -196,7 +196,7 @@ def _read(
     start = line_offset if line_offset >= 0 else max(0, total + line_offset)
     selected = [
         _truncate_line(line, max_line_length)
-        for line in all_lines[line_offset : line_offset + line_limit]
+        for line in all_lines[start : start + line_limit]
     ]
     result = "".join(selected)
     remaining = total - start - len(selected)
