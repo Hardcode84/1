@@ -124,6 +124,14 @@ def run_agent(
         }
         on_message(stop_msg)
         on_step(f"\n[stop] {reason} ({total_tokens} tokens used)")
+        if agent_registry.stats:
+            stats_text = json.dumps(agent_registry.stats)
+            stats_msg: Message = {
+                "role": "system",
+                "content": f"[stats] {stats_text}",
+            }
+            on_message(stats_msg)
+            on_step(f"\n[stats] {stats_text}")
         last = messages[-1].get("content", "") if messages else ""
         return str(last)
 
