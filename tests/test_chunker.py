@@ -14,6 +14,7 @@ from mindloop.chunker import (
     cosine_similarities,
     merge_chunks,
     parse_turns,
+    parse_turns_md,
 )
 
 
@@ -267,3 +268,76 @@ def test_merge_respects_max_chars() -> None:
     # Tiny limit prevents merging.
     merged = merge_chunks(chunks, sims, max_chunk_chars=50)
     assert len(merged) == 2
+
+
+# --- parse_turns_md ---
+
+
+def test_parse_turns_md_basic(tmp_path: Path) -> None:
+    md = tmp_path / "doc.md"
+    md.write_text("# Intro\nHello world.\n\n# Setup\nInstall stuff.\n")
+    turns = parse_turns_md(md)
+    assert len(turns) == 3
+    assert turns[0].text == "doc.md"
+    assert turns[1].role == "Intro"
+    assert turns[1].text == "Hello world."
+    assert turns[2].role == "Setup"
+    assert turns[2].text == "Install stuff."
+
+
+def test_parse_turns_md_no_headings(tmp_path: Path) -> None:
+    md = tmp_path / "doc.md"
+    md.write_text("Just some text.\nAnother line.\n")
+    turns = parse_turns_md(md)
+    assert len(turns) == 2
+    assert turns[0].text == "doc.md"
+    assert turns[1].role == "Doc"
+    assert "Just some text." in turns[1].text
+
+
+def test_parse_turns_md_empty(tmp_path: Path) -> None:
+    md = tmp_path / "doc.md"
+    md.write_text("")
+    assert parse_turns_md(md) == []
+
+
+def test_parse_turns_md_preamble(tmp_path: Path) -> None:
+    md = tmp_path / "doc.md"
+    md.write_text("Preamble text.\n\n# First\nBody.\n")
+    turns = parse_turns_md(md)
+    assert len(turns) == 3
+    assert turns[0].text == "doc.md"
+    assert turns[1].role == "Doc"
+    assert turns[1].text == "Preamble text."
+    assert turns[2].role == "First"
+
+
+def test_parse_turns_md_multiple_levels(tmp_path: Path) -> None:
+    md = tmp_path / "doc.md"
+    md.write_text("# Top\nA.\n## Sub\nB.\n### Deep\nC.\n")
+    turns = parse_turns_md(md)
+    assert len(turns) == 4
+    assert turns[0].text == "doc.md"
+    assert turns[1].role == "Top"
+    assert turns[2].role == "Sub"
+    assert turns[3].role == "Deep"
+
+
+def test_parse_turns_md_empty_section_skipped(tmp_path: Path) -> None:
+    md = tmp_path / "doc.md"
+    md.write_text("# Empty\n# HasContent\nSome text.\n")
+    turns = parse_turns_md(md)
+    assert len(turns) == 2
+    assert turns[0].text == "doc.md"
+    assert turns[1].role == "HasContent"
+
+
+def test_parse_turns_md_uses_file_mtime(tmp_path: Path) -> None:
+    md = tmp_path / "doc.md"
+    md.write_text("# Title\nContent.\n")
+    turns = parse_turns_md(md)
+    assert len(turns) == 2
+    # Timestamp should be close to file mtime.
+    expected = datetime.fromtimestamp(md.stat().st_mtime)
+    assert turns[0].timestamp == expected
+    assert turns[1].timestamp == expected

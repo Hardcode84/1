@@ -10,6 +10,7 @@ from mindloop.chunker import (
     cosine_similarities,
     merge_chunks,
     parse_turns,
+    parse_turns_md,
 )
 from mindloop.client import API_KEY, Embeddings, get_embeddings
 
@@ -50,7 +51,10 @@ def main() -> None:
         print(f"File not found: {args.logfile}")
         return
 
-    turns = parse_turns(args.logfile)
+    if args.logfile.suffix == ".md":
+        turns = parse_turns_md(args.logfile)
+    else:
+        turns = parse_turns(args.logfile)
     if not turns:
         print("No turns found in log file.")
         return

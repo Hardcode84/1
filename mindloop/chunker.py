@@ -1,6 +1,7 @@
 """Chat log parsing, chunking, and semantic merging."""
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +52,38 @@ def parse_turns(path: Path) -> list[Turn]:
             turns.append(Turn(timestamp=ts, role=f"{role} thinking", text=reasoning))
         content = entry.get("content") or ""
         turns.append(Turn(timestamp=ts, role=role, text=content))
+    return turns
+
+
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)")
+
+
+def parse_turns_md(path: Path) -> list[Turn]:
+    """Parse a Markdown file into turns, splitting on headings."""
+    content = path.read_text()
+    if not content.strip():
+        return []
+
+    ts = datetime.fromtimestamp(path.stat().st_mtime)
+    turns: list[Turn] = [Turn(timestamp=ts, role="Doc", text=path.name)]
+    current_role = "Doc"
+    current_lines: list[str] = []
+
+    def _flush() -> None:
+        body = "\n".join(current_lines).strip()
+        if body:
+            turns.append(Turn(timestamp=ts, role=current_role, text=body))
+
+    for line in content.splitlines():
+        m = _HEADING_RE.match(line)
+        if m:
+            _flush()
+            current_role = m.group(2).strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    _flush()
     return turns
 
 
