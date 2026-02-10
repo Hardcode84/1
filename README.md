@@ -1,6 +1,6 @@
 # mindloop
 
-Autonomous agent toolkit powered by OpenRouter.
+A lightweight agent loop with tool use, streaming, and token budgeting. Built on top of the OpenRouter API.
 
 ## Setup
 
