@@ -48,7 +48,7 @@ def _format_message(message: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
-_DESTRUCTIVE_TOOLS = {"edit"}
+_DESTRUCTIVE_TOOLS = {"edit", "write"}
 
 
 def _confirm_tool(name: str, arguments: str) -> bool:

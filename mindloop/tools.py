@@ -166,10 +166,21 @@ def _edit(
     return f"Replaced {count if replace_all else 1} occurrence(s) in {path}."
 
 
+def _write(path: str, content: str) -> str:
+    """Create or overwrite a file with the given content."""
+    p = _sanitize_path(path)
+    if p.exists() and not p.is_file():
+        raise ToolError(f"{path} is not a file.")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content)
+    lines = content.count("\n") + (0 if content.endswith("\n") else 1)
+    return f"Wrote {lines} lines to {path}."
+
+
 def _read(
     path: str,
     offset: int = 0,
-    limit: int = _MAX_LINES,
+    line_limit: int = _MAX_LINES,
     max_line_length: int = _MAX_LINE_LENGTH,
 ) -> str:
     """Read file contents with optional line offset, limit, and line truncation."""
@@ -184,7 +195,7 @@ def _read(
     total = len(all_lines)
     selected = [
         _truncate_line(line, max_line_length)
-        for line in all_lines[offset : offset + limit]
+        for line in all_lines[offset : offset + line_limit]
     ]
     result = "".join(selected)
     remaining = total - offset - len(selected)
@@ -226,6 +237,19 @@ default_registry.add(
     func=_edit,
 )
 default_registry.add(
+    name="write",
+    description=(
+        "Create or overwrite a file. Creates parent directories if needed. "
+        "Prefer edit for modifying existing files. "
+        "Paths are relative to the working directory."
+    ),
+    params=[
+        Param(name="path", description="Relative path within the working directory."),
+        Param(name="content", description="Full file content to write."),
+    ],
+    func=_write,
+)
+default_registry.add(
     name="read",
     description="Read file contents. Paths are relative to the working directory.",
     params=[
@@ -237,7 +261,7 @@ default_registry.add(
             required=False,
         ),
         Param(
-            name="limit",
+            name="line_limit",
             description=f"Maximum number of lines to return. Default: {_MAX_LINES}.",
             type="integer",
             required=False,

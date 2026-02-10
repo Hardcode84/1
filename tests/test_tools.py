@@ -149,7 +149,7 @@ def test_read_with_limit(tmp_path: Path) -> None:
     lines = [f"line {i}\n" for i in range(50)]
     (tmp_path / "f.txt").write_text("".join(lines))
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "f.txt", "limit": 10}')
+        result = default_registry.execute("read", '{"path": "f.txt", "line_limit": 10}')
     assert "line 0" in result
     assert "line 9" in result
     assert "line 10" not in result
@@ -161,7 +161,7 @@ def test_read_with_offset_and_limit(tmp_path: Path) -> None:
     (tmp_path / "f.txt").write_text("".join(lines))
     with patch("mindloop.tools._work_dir", tmp_path):
         result = default_registry.execute(
-            "read", '{"path": "f.txt", "offset": 10, "limit": 5}'
+            "read", '{"path": "f.txt", "offset": 10, "line_limit": 5}'
         )
     assert "line 9" not in result
     assert "line 10" in result
@@ -191,6 +191,45 @@ def test_read_long_lines_custom_max(tmp_path: Path) -> None:
     assert "y" * 50 in result
     assert "y" * 51 not in result
     assert "chars truncated" in result
+
+
+# --- built-in write ---
+
+
+def test_write_new_file(tmp_path: Path) -> None:
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "write", '{"path": "new.txt", "content": "hello\\n"}'
+        )
+    assert "Wrote 1 lines" in result
+    assert (tmp_path / "new.txt").read_text() == "hello\n"
+
+
+def test_write_creates_parent_dirs(tmp_path: Path) -> None:
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "write", '{"path": "a/b/c.txt", "content": "deep"}'
+        )
+    assert "Wrote" in result
+    assert (tmp_path / "a" / "b" / "c.txt").read_text() == "deep"
+
+
+def test_write_overwrites_existing(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("old")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "write", '{"path": "f.txt", "content": "new"}'
+        )
+    assert "Wrote" in result
+    assert (tmp_path / "f.txt").read_text() == "new"
+
+
+def test_write_path_traversal_blocked(tmp_path: Path) -> None:
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "write", '{"path": "../escape.txt", "content": "bad"}'
+        )
+    assert "outside the working directory" in result
 
 
 # --- built-in edit ---
