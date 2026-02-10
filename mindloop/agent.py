@@ -5,7 +5,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from mindloop.client import Message, chat
-from mindloop.tools import ToolRegistry, default_registry
+from mindloop.tools import Param, ToolRegistry, default_registry
 
 DEFAULT_MAX_ITERATIONS = 1000
 _USER_UNAVAILABLE = (
@@ -97,6 +97,22 @@ def run_agent(
         func=_status,
     )
 
+    finished = False
+
+    def _done(summary: str) -> str:
+        nonlocal finished
+        finished = True
+        return summary
+
+    agent_registry.add(
+        name="done",
+        description="Call when you are finished. Terminates the session.",
+        params=[
+            Param(name="summary", description="Brief summary of what was accomplished.")
+        ],
+        func=_done,
+    )
+
     def _stop(reason: str) -> str:
         """Log termination reason and return the last model content."""
         stop_msg: Message = {
@@ -133,10 +149,7 @@ def run_agent(
         tool_calls = response.get("tool_calls")
         if not tool_calls:
             consecutive_tool_turns = 0
-            # If the previous message was already our nudge, the model is done.
-            if len(messages) >= 2 and messages[-2].get("content") == _USER_UNAVAILABLE:
-                return _stop("model finished")
-            # Otherwise, nudge the model to keep going.
+            # Nudge the model to keep going.
             nudge: Message = {"role": "user", "content": _USER_UNAVAILABLE}
             messages.append(nudge)
             on_message(nudge)
@@ -168,6 +181,9 @@ def run_agent(
             }
             messages.append(tool_msg)
             on_message(tool_msg)
+
+        if finished:
+            return _stop("model finished")
 
         consecutive_tool_turns += 1
 
