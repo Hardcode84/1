@@ -26,6 +26,7 @@ _CHARS_PER_TOKEN = 4
 
 DEFAULT_MAX_TOKENS = 200_000
 _BUDGET_WARNING_THRESHOLDS = (0.5, 0.8)
+_REFLECT_INTERVAL = 5
 
 
 def _inject_budget_warnings(
@@ -80,6 +81,7 @@ def run_agent(
     effective_model = model if model is not None else DEFAULT_MODEL
     total_tokens = 0
     warned_thresholds: set[float] = set()
+    consecutive_tool_turns = 0
 
     # Register a status tool with access to runtime state.
     agent_registry = registry.copy()
@@ -130,6 +132,7 @@ def run_agent(
 
         tool_calls = response.get("tool_calls")
         if not tool_calls:
+            consecutive_tool_turns = 0
             # If the previous message was already our nudge, the model is done.
             if len(messages) >= 2 and messages[-2].get("content") == _USER_UNAVAILABLE:
                 return _stop("model finished")
@@ -166,9 +169,21 @@ def run_agent(
             messages.append(tool_msg)
             on_message(tool_msg)
 
+        consecutive_tool_turns += 1
+
         # Warn the model after all tool results are appended.
         _inject_budget_warnings(
             total_tokens, max_tokens, warned_thresholds, messages, on_message
         )
+
+        # Nudge reflection after consecutive tool-only turns.
+        if consecutive_tool_turns % _REFLECT_INTERVAL == 0:
+            reflect: Message = {
+                "role": "system",
+                "content": "You've been using tools for a while. "
+                "Pause and reflect on what you've learned so far.",
+            }
+            messages.append(reflect)
+            on_message(reflect)
 
     return _stop(f"max iterations reached ({max_iterations})")

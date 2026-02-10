@@ -202,6 +202,59 @@ def test_on_confirm_approved(mock_chat: MagicMock) -> None:
     assert "echoed: hi" in tool_msg["content"]
 
 
+@patch("mindloop.agent._REFLECT_INTERVAL", 3)
+@patch("mindloop.agent.chat")
+def test_reflect_nudge_after_consecutive_tools(mock_chat: MagicMock) -> None:
+    """System reflect message injected after N consecutive tool-only turns."""
+    tool_resp = _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')])
+    mock_chat.side_effect = [
+        tool_resp,
+        tool_resp,
+        tool_resp,  # 3rd consecutive → reflect nudge.
+        _make_final_response("thinking now"),
+        _make_final_response("done"),
+    ]
+    on_msg = MagicMock()
+    run_agent("prompt", registry=_echo_registry(), on_message=on_msg)
+
+    # Find system reflect messages among all on_message calls.
+    system_msgs = [
+        c.args[0]
+        for c in on_msg.call_args_list
+        if c.args[0].get("role") == "system"
+        and "reflect" in c.args[0].get("content", "").lower()
+    ]
+    assert len(system_msgs) == 1
+
+
+@patch("mindloop.agent._REFLECT_INTERVAL", 3)
+@patch("mindloop.agent.chat")
+def test_reflect_counter_resets_on_text(mock_chat: MagicMock) -> None:
+    """Consecutive tool counter resets when model produces text."""
+    tool_resp = _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')])
+    mock_chat.side_effect = [
+        tool_resp,
+        tool_resp,
+        # Text response resets the counter.
+        _make_final_response("let me think"),
+        tool_resp,
+        tool_resp,
+        # Only 2 after reset — no nudge. Then final.
+        _make_final_response("ok"),
+        _make_final_response("done"),
+    ]
+    on_msg = MagicMock()
+    run_agent("prompt", registry=_echo_registry(), on_message=on_msg)
+
+    system_msgs = [
+        c.args[0]
+        for c in on_msg.call_args_list
+        if c.args[0].get("role") == "system"
+        and "reflect" in c.args[0].get("content", "").lower()
+    ]
+    assert len(system_msgs) == 0
+
+
 @patch("mindloop.agent.chat")
 def test_token_budget_stops_loop(mock_chat: MagicMock) -> None:
     """Loop stops when cumulative token usage exceeds max_tokens."""
