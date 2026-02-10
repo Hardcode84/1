@@ -54,7 +54,7 @@ def chat(
     if seed is not None:
         payload["seed"] = seed
     if reasoning_effort is not None:
-        payload["reasoning"] = {"effort": reasoning_effort}
+        payload["reasoning"] = {"enabled": True, "effort": reasoning_effort}
 
     if not stream:
         response = requests.post(
