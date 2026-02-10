@@ -3,7 +3,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from mindloop.tools import Param, ToolError, ToolRegistry, default_registry
+from mindloop.tools import Param, ToolError, ToolRegistry, create_default_registry
 
 
 # --- Param / ToolDef / to_api ---
@@ -70,27 +70,27 @@ def test_ls_directory(tmp_path: Path) -> None:
     (tmp_path / "subdir").mkdir()
 
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("ls", '{"path": "."}')
+        result = create_default_registry().execute("ls", '{"path": "."}')
     assert "f  a.txt" in result
     assert "d  subdir" in result
 
 
 def test_ls_nonexistent(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("ls", '{"path": "nope"}')
+        result = create_default_registry().execute("ls", '{"path": "nope"}')
     assert "does not exist" in result
 
 
 def test_ls_not_a_directory(tmp_path: Path) -> None:
     (tmp_path / "file.txt").write_text("hi")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("ls", '{"path": "file.txt"}')
+        result = create_default_registry().execute("ls", '{"path": "file.txt"}')
     assert "not a directory" in result
 
 
 def test_ls_empty_directory(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("ls", '{"path": "."}')
+        result = create_default_registry().execute("ls", '{"path": "."}')
     assert result == "(empty directory)"
 
 
@@ -100,26 +100,26 @@ def test_ls_empty_directory(tmp_path: Path) -> None:
 def test_read_file(tmp_path: Path) -> None:
     (tmp_path / "hello.txt").write_text("hello world")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "hello.txt"}')
+        result = create_default_registry().execute("read", '{"path": "hello.txt"}')
     assert result == "hello world"
 
 
 def test_read_nonexistent(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "nope.txt"}')
+        result = create_default_registry().execute("read", '{"path": "nope.txt"}')
     assert "does not exist" in result
 
 
 def test_read_not_a_file(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "."}')
+        result = create_default_registry().execute("read", '{"path": "."}')
     assert "not a file" in result
 
 
 def test_read_binary_file(tmp_path: Path) -> None:
     (tmp_path / "img.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "img.png"}')
+        result = create_default_registry().execute("read", '{"path": "img.png"}')
     assert "binary file" in result
 
 
@@ -127,7 +127,7 @@ def test_read_large_file_truncated(tmp_path: Path) -> None:
     lines = [f"line {i}\n" for i in range(250)]
     (tmp_path / "big.txt").write_text("".join(lines))
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "big.txt"}')
+        result = create_default_registry().execute("read", '{"path": "big.txt"}')
     assert "line 0" in result
     assert "line 99" in result
     assert "line 100" not in result
@@ -138,7 +138,7 @@ def test_read_with_offset(tmp_path: Path) -> None:
     lines = [f"line {i}\n" for i in range(250)]
     (tmp_path / "big.txt").write_text("".join(lines))
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "read", '{"path": "big.txt", "line_offset": 200}'
         )
     assert "line 199" not in result
@@ -151,7 +151,7 @@ def test_read_with_negative_offset(tmp_path: Path) -> None:
     lines = [f"line {i}\n" for i in range(20)]
     (tmp_path / "f.txt").write_text("".join(lines))
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "read", '{"path": "f.txt", "line_offset": -5}'
         )
     assert "line 14" not in result
@@ -164,7 +164,7 @@ def test_read_with_negative_offset_and_limit(tmp_path: Path) -> None:
     lines = [f"line {i}\n" for i in range(200)]
     (tmp_path / "f.txt").write_text("".join(lines))
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "read", '{"path": "f.txt", "line_offset": -100, "line_limit": 200}'
         )
     # Should return lines 100-199 (last 100 lines).
@@ -178,7 +178,9 @@ def test_read_with_limit(tmp_path: Path) -> None:
     lines = [f"line {i}\n" for i in range(50)]
     (tmp_path / "f.txt").write_text("".join(lines))
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "f.txt", "line_limit": 10}')
+        result = create_default_registry().execute(
+            "read", '{"path": "f.txt", "line_limit": 10}'
+        )
     assert "line 0" in result
     assert "line 9" in result
     assert "line 10" not in result
@@ -189,7 +191,7 @@ def test_read_with_offset_and_limit(tmp_path: Path) -> None:
     lines = [f"line {i}\n" for i in range(100)]
     (tmp_path / "f.txt").write_text("".join(lines))
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "read", '{"path": "f.txt", "line_offset": 10, "line_limit": 5}'
         )
     assert "line 9" not in result
@@ -203,7 +205,7 @@ def test_read_long_lines_truncated(tmp_path: Path) -> None:
     # 500 chars + \n = 501 char line, truncated at 200 -> 301 chars truncated.
     (tmp_path / "wide.txt").write_text("x" * 500 + "\nshort\n")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "wide.txt"}')
+        result = create_default_registry().execute("read", '{"path": "wide.txt"}')
     assert "x" * 200 in result
     assert "x" * 201 not in result
     assert "chars truncated" in result
@@ -214,7 +216,7 @@ def test_read_long_lines_custom_max(tmp_path: Path) -> None:
     # 100 chars + \n = 101 char line, truncated at 50 -> 51 chars truncated.
     (tmp_path / "wide.txt").write_text("y" * 100 + "\n")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "read", '{"path": "wide.txt", "max_line_length": 50}'
         )
     assert "y" * 50 in result
@@ -227,7 +229,7 @@ def test_read_long_lines_custom_max(tmp_path: Path) -> None:
 
 def test_write_new_file(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "write", '{"path": "new.txt", "content": "hello\\n"}'
         )
     assert "Wrote 1 lines" in result
@@ -236,7 +238,7 @@ def test_write_new_file(tmp_path: Path) -> None:
 
 def test_write_creates_parent_dirs(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "write", '{"path": "a/b/c.txt", "content": "deep"}'
         )
     assert "Wrote" in result
@@ -246,7 +248,7 @@ def test_write_creates_parent_dirs(tmp_path: Path) -> None:
 def test_write_overwrites_existing(tmp_path: Path) -> None:
     (tmp_path / "f.txt").write_text("old")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "write", '{"path": "f.txt", "content": "new"}'
         )
     assert "Wrote" in result
@@ -255,7 +257,7 @@ def test_write_overwrites_existing(tmp_path: Path) -> None:
 
 def test_write_path_traversal_blocked(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "write", '{"path": "../escape.txt", "content": "bad"}'
         )
     assert "outside the working directory" in result
@@ -267,7 +269,7 @@ def test_write_path_traversal_blocked(tmp_path: Path) -> None:
 def test_edit_single_replacement(tmp_path: Path) -> None:
     (tmp_path / "f.txt").write_text("hello world")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "edit",
             '{"path": "f.txt", "old_string": "hello", "new_string": "goodbye"}',
         )
@@ -278,7 +280,7 @@ def test_edit_single_replacement(tmp_path: Path) -> None:
 def test_edit_not_found(tmp_path: Path) -> None:
     (tmp_path / "f.txt").write_text("hello world")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "edit",
             '{"path": "f.txt", "old_string": "missing", "new_string": "x"}',
         )
@@ -288,7 +290,7 @@ def test_edit_not_found(tmp_path: Path) -> None:
 def test_edit_ambiguous_without_replace_all(tmp_path: Path) -> None:
     (tmp_path / "f.txt").write_text("aaa bbb aaa")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "edit",
             '{"path": "f.txt", "old_string": "aaa", "new_string": "ccc"}',
         )
@@ -300,7 +302,7 @@ def test_edit_ambiguous_without_replace_all(tmp_path: Path) -> None:
 def test_edit_replace_all(tmp_path: Path) -> None:
     (tmp_path / "f.txt").write_text("aaa bbb aaa")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "edit",
             '{"path": "f.txt", "old_string": "aaa", "new_string": "ccc", "replace_all": true}',
         )
@@ -311,7 +313,7 @@ def test_edit_replace_all(tmp_path: Path) -> None:
 def test_edit_identical_strings(tmp_path: Path) -> None:
     (tmp_path / "f.txt").write_text("hello")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "edit",
             '{"path": "f.txt", "old_string": "hello", "new_string": "hello"}',
         )
@@ -320,7 +322,7 @@ def test_edit_identical_strings(tmp_path: Path) -> None:
 
 def test_edit_nonexistent_file(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "edit",
             '{"path": "nope.txt", "old_string": "a", "new_string": "b"}',
         )
@@ -330,7 +332,7 @@ def test_edit_nonexistent_file(tmp_path: Path) -> None:
 def test_edit_multiline(tmp_path: Path) -> None:
     (tmp_path / "f.txt").write_text("def foo():\n    return 1\n")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute(
+        result = create_default_registry().execute(
             "edit",
             '{"path": "f.txt", "old_string": "def foo():\\n    return 1", "new_string": "def foo():\\n    return 2"}',
         )
@@ -343,26 +345,28 @@ def test_edit_multiline(tmp_path: Path) -> None:
 
 def test_path_traversal_blocked_ls(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("ls", '{"path": ".."}')
+        result = create_default_registry().execute("ls", '{"path": ".."}')
     assert "outside the working directory" in result
 
 
 def test_path_traversal_blocked_read(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "../etc/passwd"}')
+        result = create_default_registry().execute("read", '{"path": "../etc/passwd"}')
     assert "outside the working directory" in result
 
 
 def test_nested_traversal_blocked(tmp_path: Path) -> None:
     (tmp_path / "sub").mkdir()
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "sub/../../etc/passwd"}')
+        result = create_default_registry().execute(
+            "read", '{"path": "sub/../../etc/passwd"}'
+        )
     assert "outside the working directory" in result
 
 
 def test_absolute_path_outside_blocked(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "/etc/passwd"}')
+        result = create_default_registry().execute("read", '{"path": "/etc/passwd"}')
     assert "outside the working directory" in result
 
 
@@ -371,7 +375,7 @@ def test_subdir_access_allowed(tmp_path: Path) -> None:
     sub.mkdir()
     (sub / "file.txt").write_text("nested")
     with patch("mindloop.tools._work_dir", tmp_path):
-        result = default_registry.execute("read", '{"path": "sub/file.txt"}')
+        result = create_default_registry().execute("read", '{"path": "sub/file.txt"}')
     assert result == "nested"
 
 

@@ -5,7 +5,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from mindloop.client import Message, chat
-from mindloop.tools import Param, ToolRegistry, default_registry
+from mindloop.tools import Param, ToolRegistry, create_default_registry
 
 DEFAULT_MAX_ITERATIONS = 1000
 _USER_UNAVAILABLE = (
@@ -64,7 +64,7 @@ def _auto_confirm(_name: str, _arguments: str) -> bool:
 
 def run_agent(
     system_prompt: str,
-    registry: ToolRegistry = default_registry,
+    registry: ToolRegistry | None = None,
     model: str | None = None,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     max_tokens: int = DEFAULT_MAX_TOKENS,
@@ -76,6 +76,9 @@ def run_agent(
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
     from mindloop.client import DEFAULT_MODEL
+
+    if registry is None:
+        registry = create_default_registry()
 
     messages: list[Message] = []
     effective_model = model if model is not None else DEFAULT_MODEL

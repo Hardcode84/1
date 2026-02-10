@@ -1,5 +1,6 @@
 """Agent tool definitions and execution."""
 
+import copy
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -45,6 +46,7 @@ class ToolDef:
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, ToolDef] = {}
+        self.stats: dict[Any, Any] = {}
 
     def add(
         self,
@@ -59,9 +61,10 @@ class ToolRegistry:
         )
 
     def copy(self) -> "ToolRegistry":
-        """Return a shallow copy of this registry."""
+        """Return a deep copy of this registry."""
         clone = ToolRegistry()
         clone._tools = dict(self._tools)
+        clone.stats = copy.deepcopy(self.stats)
         return clone
 
     def definitions(self) -> list[dict[str, Any]]:
@@ -205,74 +208,86 @@ def _read(
     return result
 
 
-# --- Default registry with built-in tools ---
+# --- Default registry factory ---
 
-default_registry = ToolRegistry()
-default_registry.add(
-    name="ls",
-    description="List files and directories. Paths are relative to the working directory.",
-    params=[
-        Param(name="path", description="Relative path within the working directory.")
-    ],
-    func=_ls,
-)
-default_registry.add(
-    name="edit",
-    description=(
-        "Replace exact string in a file. "
-        "old_string must be unique unless replace_all is true. "
-        "Read the file first to get the exact text. "
-        "Paths are relative to the working directory."
-    ),
-    params=[
-        Param(name="path", description="Relative path within the working directory."),
-        Param(name="old_string", description="Exact text to find in the file."),
-        Param(name="new_string", description="Text to replace it with."),
-        Param(
-            name="replace_all",
-            description="Replace all occurrences. Default: false.",
-            type="boolean",
-            required=False,
+
+def create_default_registry() -> ToolRegistry:
+    """Create a fresh registry populated with the built-in tools."""
+    reg = ToolRegistry()
+    reg.add(
+        name="ls",
+        description="List files and directories. Paths are relative to the working directory.",
+        params=[
+            Param(
+                name="path", description="Relative path within the working directory."
+            )
+        ],
+        func=_ls,
+    )
+    reg.add(
+        name="edit",
+        description=(
+            "Replace exact string in a file. "
+            "old_string must be unique unless replace_all is true. "
+            "Read the file first to get the exact text. "
+            "Paths are relative to the working directory."
         ),
-    ],
-    func=_edit,
-)
-default_registry.add(
-    name="write",
-    description=(
-        "Create or overwrite a file. Creates parent directories if needed. "
-        "Prefer edit for modifying existing files. "
-        "Paths are relative to the working directory."
-    ),
-    params=[
-        Param(name="path", description="Relative path within the working directory."),
-        Param(name="content", description="Full file content to write."),
-    ],
-    func=_write,
-)
-default_registry.add(
-    name="read",
-    description="Read file contents. Paths are relative to the working directory.",
-    params=[
-        Param(name="path", description="Relative path within the working directory."),
-        Param(
-            name="line_offset",
-            description="Line number to start from (0-based). Negative counts from end. Default: 0.",
-            type="integer",
-            required=False,
+        params=[
+            Param(
+                name="path", description="Relative path within the working directory."
+            ),
+            Param(name="old_string", description="Exact text to find in the file."),
+            Param(name="new_string", description="Text to replace it with."),
+            Param(
+                name="replace_all",
+                description="Replace all occurrences. Default: false.",
+                type="boolean",
+                required=False,
+            ),
+        ],
+        func=_edit,
+    )
+    reg.add(
+        name="write",
+        description=(
+            "Create or overwrite a file. Creates parent directories if needed. "
+            "Prefer edit for modifying existing files. "
+            "Paths are relative to the working directory."
         ),
-        Param(
-            name="line_limit",
-            description=f"Maximum number of lines to return. Default: {_MAX_LINES}.",
-            type="integer",
-            required=False,
-        ),
-        Param(
-            name="max_line_length",
-            description=f"Maximum characters per line before truncation. Default: {_MAX_LINE_LENGTH}.",
-            type="integer",
-            required=False,
-        ),
-    ],
-    func=_read,
-)
+        params=[
+            Param(
+                name="path", description="Relative path within the working directory."
+            ),
+            Param(name="content", description="Full file content to write."),
+        ],
+        func=_write,
+    )
+    reg.add(
+        name="read",
+        description="Read file contents. Paths are relative to the working directory.",
+        params=[
+            Param(
+                name="path", description="Relative path within the working directory."
+            ),
+            Param(
+                name="line_offset",
+                description="Line number to start from (0-based). Negative counts from end. Default: 0.",
+                type="integer",
+                required=False,
+            ),
+            Param(
+                name="line_limit",
+                description=f"Maximum number of lines to return. Default: {_MAX_LINES}.",
+                type="integer",
+                required=False,
+            ),
+            Param(
+                name="max_line_length",
+                description=f"Maximum characters per line before truncation. Default: {_MAX_LINE_LENGTH}.",
+                type="integer",
+                required=False,
+            ),
+        ],
+        func=_read,
+    )
+    return reg
