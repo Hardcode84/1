@@ -11,7 +11,7 @@ import requests
 API_KEY: str = os.environ.get("OPENROUTER_API_KEY", "")
 BASE_URL: str = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL: str = "openrouter/free"
-DEFAULT_EMBEDDING_MODEL: str = "openai/text-embedding-3-small"
+DEFAULT_EMBEDDING_MODEL: str = "qwen/qwen3-embedding-8b"
 
 Message = dict[str, Any]
 Tool = dict[str, Any]
