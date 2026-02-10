@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Callable
+from datetime import datetime
 
 from mindloop.client import Message, chat
 from mindloop.tools import ToolRegistry, default_registry
@@ -52,6 +53,20 @@ def run_agent(
     effective_model = model if model is not None else DEFAULT_MODEL
     total_tokens = 0
 
+    # Register a status tool with access to runtime state.
+    agent_registry = registry.copy()
+
+    def _status() -> str:
+        now = datetime.now().isoformat(timespec="seconds")
+        return f"time: {now}\ntokens used: {total_tokens} / {max_tokens}"
+
+    agent_registry.add(
+        name="status",
+        description="Query system info: current time, token usage and limit.",
+        params=[],
+        func=_status,
+    )
+
     def _stop(reason: str) -> str:
         """Log termination reason and return the last model content."""
         stop_msg: Message = {
@@ -68,7 +83,7 @@ def run_agent(
             messages,
             model=effective_model,
             system_prompt=system_prompt,
-            tools=registry.definitions(),
+            tools=agent_registry.definitions(),
             stream=True,
             on_token=on_step,
             on_thinking=on_thinking,
@@ -107,7 +122,7 @@ def run_agent(
                 call["function"]["arguments"] = "{}"
                 tool_result = f"Error: malformed arguments: {arguments}"
             else:
-                tool_result = registry.execute(name, arguments)
+                tool_result = agent_registry.execute(name, arguments)
             on_step(f"[result] {tool_result}")
             tool_msg: Message = {
                 "role": "tool",

@@ -58,6 +58,12 @@ class ToolRegistry:
             name=name, description=description, params=params, func=func
         )
 
+    def copy(self) -> "ToolRegistry":
+        """Return a shallow copy of this registry."""
+        clone = ToolRegistry()
+        clone._tools = dict(self._tools)
+        return clone
+
     def definitions(self) -> list[dict[str, Any]]:
         """Return all tool definitions in OpenAI API format."""
         return [tool.to_api() for tool in self._tools.values()]
