@@ -101,11 +101,17 @@ def _sanitize_path(path: str) -> Path:
     return resolved
 
 
+def _track_file(reg: "ToolRegistry", tool: str, path: str) -> None:
+    """Record a file access in registry stats."""
+    reg.stats.setdefault(tool, {}).setdefault("files_accessed", []).append(path)
+
+
 # --- Built-in tool implementations ---
 
 
 def _ls(reg: "ToolRegistry", path: str) -> str:
     """List directory contents."""
+    _track_file(reg, "ls", path)
     p = _sanitize_path(path)
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
@@ -145,6 +151,7 @@ def _edit(
     replace_all: bool = False,
 ) -> str:
     """Replace exact string occurrences in a file."""
+    _track_file(reg, "edit", path)
     p = _sanitize_path(path)
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
@@ -173,6 +180,7 @@ def _edit(
 
 def _write(reg: "ToolRegistry", path: str, content: str) -> str:
     """Create or overwrite a file with the given content."""
+    _track_file(reg, "write", path)
     p = _sanitize_path(path)
     if p.exists() and not p.is_file():
         raise ToolError(f"{path} is not a file.")
@@ -190,6 +198,7 @@ def _read(
     max_line_length: int = _MAX_LINE_LENGTH,
 ) -> str:
     """Read file contents with optional line offset, limit, and line truncation."""
+    _track_file(reg, "read", path)
     p = _sanitize_path(path)
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
