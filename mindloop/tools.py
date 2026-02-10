@@ -4,6 +4,7 @@ import copy
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -103,7 +104,7 @@ def _sanitize_path(path: str) -> Path:
 # --- Built-in tool implementations ---
 
 
-def _ls(path: str) -> str:
+def _ls(reg: "ToolRegistry", path: str) -> str:
     """List directory contents."""
     p = _sanitize_path(path)
     if not p.exists():
@@ -137,6 +138,7 @@ def _truncate_line(line: str, max_length: int) -> str:
 
 
 def _edit(
+    reg: "ToolRegistry",
     path: str,
     old_string: str,
     new_string: str,
@@ -169,7 +171,7 @@ def _edit(
     return f"Replaced {count if replace_all else 1} occurrence(s) in {path}."
 
 
-def _write(path: str, content: str) -> str:
+def _write(reg: "ToolRegistry", path: str, content: str) -> str:
     """Create or overwrite a file with the given content."""
     p = _sanitize_path(path)
     if p.exists() and not p.is_file():
@@ -181,6 +183,7 @@ def _write(path: str, content: str) -> str:
 
 
 def _read(
+    reg: "ToolRegistry",
     path: str,
     line_offset: int = 0,
     line_limit: int = _MAX_LINES,
@@ -222,7 +225,7 @@ def create_default_registry() -> ToolRegistry:
                 name="path", description="Relative path within the working directory."
             )
         ],
-        func=_ls,
+        func=partial(_ls, reg),
     )
     reg.add(
         name="edit",
@@ -245,7 +248,7 @@ def create_default_registry() -> ToolRegistry:
                 required=False,
             ),
         ],
-        func=_edit,
+        func=partial(_edit, reg),
     )
     reg.add(
         name="write",
@@ -260,7 +263,7 @@ def create_default_registry() -> ToolRegistry:
             ),
             Param(name="content", description="Full file content to write."),
         ],
-        func=_write,
+        func=partial(_write, reg),
     )
     reg.add(
         name="read",
@@ -288,6 +291,6 @@ def create_default_registry() -> ToolRegistry:
                 required=False,
             ),
         ],
-        func=_read,
+        func=partial(_read, reg),
     )
     return reg
