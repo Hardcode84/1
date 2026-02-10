@@ -108,6 +108,7 @@ def _ls(path: str) -> str:
 
 _BINARY_CHECK_SIZE = 8192
 _MAX_LINES = 100
+_MAX_LINE_LENGTH = 200
 
 
 def _is_binary(p: Path) -> bool:
@@ -116,8 +117,23 @@ def _is_binary(p: Path) -> bool:
         return b"\x00" in f.read(_BINARY_CHECK_SIZE)
 
 
-def _read(path: str, offset: int = 0, limit: int = _MAX_LINES) -> str:
-    """Read file contents with optional line offset and limit."""
+def _truncate_line(line: str, max_length: int) -> str:
+    """Truncate a line if it exceeds max_length."""
+    if len(line) <= max_length:
+        return line
+    truncated = len(line) - max_length
+    # Strip trailing newline before appending indicator, then restore it.
+    nl = "\n" if line.endswith("\n") else ""
+    return f"{line[:max_length]}... ({truncated} chars truncated){nl}"
+
+
+def _read(
+    path: str,
+    offset: int = 0,
+    limit: int = _MAX_LINES,
+    max_line_length: int = _MAX_LINE_LENGTH,
+) -> str:
+    """Read file contents with optional line offset, limit, and line truncation."""
     p = _sanitize_path(path)
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
@@ -127,7 +143,10 @@ def _read(path: str, offset: int = 0, limit: int = _MAX_LINES) -> str:
         return f"{path} is a binary file."
     all_lines = p.read_text().splitlines(keepends=True)
     total = len(all_lines)
-    selected = all_lines[offset : offset + limit]
+    selected = [
+        _truncate_line(line, max_line_length)
+        for line in all_lines[offset : offset + limit]
+    ]
     result = "".join(selected)
     remaining = total - offset - len(selected)
     if remaining > 0:
@@ -148,18 +167,24 @@ default_registry.add(
 )
 default_registry.add(
     name="read",
-    description="Read file contents. Paths are relative to the working directory. Shows first 100 lines by default.",
+    description="Read file contents. Paths are relative to the working directory.",
     params=[
         Param(name="path", description="Relative path within the working directory."),
         Param(
             name="offset",
-            description="Line number to start from (0-based).",
+            description="Line number to start from (0-based). Default: 0.",
             type="integer",
             required=False,
         ),
         Param(
             name="limit",
-            description="Maximum number of lines to return.",
+            description=f"Maximum number of lines to return. Default: {_MAX_LINES}.",
+            type="integer",
+            required=False,
+        ),
+        Param(
+            name="max_line_length",
+            description=f"Maximum characters per line before truncation. Default: {_MAX_LINE_LENGTH}.",
             type="integer",
             required=False,
         ),

@@ -170,6 +170,29 @@ def test_read_with_offset_and_limit(tmp_path: Path) -> None:
     assert "85 lines remaining" in result
 
 
+def test_read_long_lines_truncated(tmp_path: Path) -> None:
+    # 500 chars + \n = 501 char line, truncated at 200 -> 301 chars truncated.
+    (tmp_path / "wide.txt").write_text("x" * 500 + "\nshort\n")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute("read", '{"path": "wide.txt"}')
+    assert "x" * 200 in result
+    assert "x" * 201 not in result
+    assert "chars truncated" in result
+    assert "short" in result
+
+
+def test_read_long_lines_custom_max(tmp_path: Path) -> None:
+    # 100 chars + \n = 101 char line, truncated at 50 -> 51 chars truncated.
+    (tmp_path / "wide.txt").write_text("y" * 100 + "\n")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = default_registry.execute(
+            "read", '{"path": "wide.txt", "max_line_length": 50}'
+        )
+    assert "y" * 50 in result
+    assert "y" * 51 not in result
+    assert "chars truncated" in result
+
+
 # --- path sanitization ---
 
 
