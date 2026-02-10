@@ -170,12 +170,16 @@ def _edit(
     return f"Replaced {count if replace_all else 1} occurrence(s) in {path}."
 
 
-def _write(reg: "ToolRegistry", path: str, content: str) -> str:
+def _write(
+    reg: "ToolRegistry", path: str, content: str, overwrite: bool = False
+) -> str:
     """Create or overwrite a file with the given content."""
     _track_file(reg, "write", path)
     p = _sanitize_path(path)
     if p.exists() and not p.is_file():
         raise ToolError(f"{path} is not a file.")
+    if p.exists() and not overwrite:
+        raise ToolError(f"{path} already exists. Set overwrite=true to replace it.")
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content)
     lines = content.count("\n") + (0 if content.endswith("\n") else 1)
@@ -263,6 +267,12 @@ def create_default_registry() -> ToolRegistry:
                 name="path", description="Relative path within the working directory."
             ),
             Param(name="content", description="Full file content to write."),
+            Param(
+                name="overwrite",
+                description="Set to true to overwrite an existing file. Default: false.",
+                type="boolean",
+                required=False,
+            ),
         ],
         func=partial(_write, reg),
     )

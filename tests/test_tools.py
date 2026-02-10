@@ -245,11 +245,21 @@ def test_write_creates_parent_dirs(tmp_path: Path) -> None:
     assert (tmp_path / "a" / "b" / "c.txt").read_text() == "deep"
 
 
-def test_write_overwrites_existing(tmp_path: Path) -> None:
+def test_write_existing_without_overwrite(tmp_path: Path) -> None:
     (tmp_path / "f.txt").write_text("old")
     with patch("mindloop.tools._work_dir", tmp_path):
         result = create_default_registry().execute(
             "write", '{"path": "f.txt", "content": "new"}'
+        )
+    assert "already exists" in result
+    assert (tmp_path / "f.txt").read_text() == "old"
+
+
+def test_write_existing_with_overwrite(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("old")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = create_default_registry().execute(
+            "write", '{"path": "f.txt", "content": "new", "overwrite": true}'
         )
     assert "Wrote" in result
     assert (tmp_path / "f.txt").read_text() == "new"
