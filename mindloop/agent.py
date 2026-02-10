@@ -24,7 +24,7 @@ def _noop_message(_msg: Message) -> None:
 # Rough chars-per-token ratio for estimation.
 _CHARS_PER_TOKEN = 4
 
-DEFAULT_MAX_TOKENS = 200_000
+DEFAULT_MAX_TOKENS = 200_000 * 5
 _BUDGET_WARNING_THRESHOLDS = (0.5, 0.8)
 _REFLECT_INTERVAL = 5
 
