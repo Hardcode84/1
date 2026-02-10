@@ -1,6 +1,8 @@
 """CLI entry point for the autonomous agent loop."""
 
 import json
+import select
+import sys
 from datetime import datetime
 from pathlib import Path
 from collections.abc import Callable
@@ -60,10 +62,18 @@ def _confirm_tool(name: str, arguments: str) -> bool:
     return reply in ("y", "yes")
 
 
+_ASK_TIMEOUT = 60
+
+
 def _ask_user(message: str) -> str:
-    """Print agent's message and wait for user input."""
+    """Print agent's message and wait for user input with timeout."""
     print(f"\n\033[36m[ask] {message}\033[0m")
-    return input("> ")
+    print(f"(waiting {_ASK_TIMEOUT}s for response)")
+    ready, _, _ = select.select([sys.stdin], [], [], _ASK_TIMEOUT)
+    if ready:
+        return sys.stdin.readline().rstrip("\n")
+    print("(no response, continuing)")
+    return "User is unavailable."
 
 
 def _make_logger(jsonl_path: Path, log_path: Path) -> Callable[[dict[str, Any]], None]:
