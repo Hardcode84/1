@@ -57,6 +57,10 @@ def _estimate_tokens(messages: list[Message], response: Message) -> int:
     return (prompt_chars + response_chars) // _CHARS_PER_TOKEN
 
 
+def _auto_confirm(_name: str, _arguments: str) -> bool:
+    return True
+
+
 def run_agent(
     system_prompt: str,
     registry: ToolRegistry = default_registry,
@@ -66,6 +70,7 @@ def run_agent(
     on_step: Callable[[str], None] = _noop,
     on_thinking: Callable[[str], None] | None = None,
     on_message: Callable[[Message], None] = _noop_message,
+    on_confirm: Callable[[str, str], bool] = _auto_confirm,
     reasoning_effort: str = "high",
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
@@ -148,7 +153,10 @@ def run_agent(
                 call["function"]["arguments"] = "{}"
                 tool_result = f"Error: malformed arguments: {arguments}"
             else:
-                tool_result = agent_registry.execute(name, arguments)
+                if not on_confirm(name, arguments):
+                    tool_result = f"Error: {name} was denied by the user."
+                else:
+                    tool_result = agent_registry.execute(name, arguments)
             on_step(f"[result] {tool_result}")
             tool_msg: Message = {
                 "role": "tool",

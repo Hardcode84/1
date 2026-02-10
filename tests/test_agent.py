@@ -164,6 +164,45 @@ def test_malformed_tool_call_arguments(mock_chat: MagicMock) -> None:
 
 
 @patch("mindloop.agent.chat")
+def test_on_confirm_denied(mock_chat: MagicMock) -> None:
+    """Denied tool calls return an error to the model without executing."""
+    mock_chat.side_effect = [
+        _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')]),
+        _make_final_response("ok denied"),
+        _make_final_response("done"),
+    ]
+    deny_all = MagicMock(return_value=False)
+    result = run_agent("prompt", registry=_echo_registry(), on_confirm=deny_all)
+    assert result == "done"
+
+    # Confirm callback was called with the tool name and arguments.
+    deny_all.assert_called_once_with("echo", '{"text": "hi"}')
+
+    # Model should see the denial message, not the tool result.
+    second_call_messages = mock_chat.call_args_list[1][0][0]
+    tool_msg = [m for m in second_call_messages if m["role"] == "tool"][0]
+    assert "denied" in tool_msg["content"]
+
+
+@patch("mindloop.agent.chat")
+def test_on_confirm_approved(mock_chat: MagicMock) -> None:
+    """Approved tool calls execute normally."""
+    mock_chat.side_effect = [
+        _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')]),
+        _make_final_response("got it"),
+        _make_final_response("done"),
+    ]
+    approve_all = MagicMock(return_value=True)
+    result = run_agent("prompt", registry=_echo_registry(), on_confirm=approve_all)
+    assert result == "done"
+
+    # Tool should have actually executed.
+    second_call_messages = mock_chat.call_args_list[1][0][0]
+    tool_msg = [m for m in second_call_messages if m["role"] == "tool"][0]
+    assert "echoed: hi" in tool_msg["content"]
+
+
+@patch("mindloop.agent.chat")
 def test_token_budget_stops_loop(mock_chat: MagicMock) -> None:
     """Loop stops when cumulative token usage exceeds max_tokens."""
     response_with_usage = {

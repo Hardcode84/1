@@ -48,6 +48,18 @@ def _format_message(message: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+_DESTRUCTIVE_TOOLS = {"edit"}
+
+
+def _confirm_tool(name: str, arguments: str) -> bool:
+    """Prompt user for confirmation on destructive tools."""
+    if name not in _DESTRUCTIVE_TOOLS:
+        return True
+    print(f"\n\033[33m[confirm] {name}({arguments})\033[0m")
+    reply = input("Allow? [y/N] ").strip().lower()
+    return reply in ("y", "yes")
+
+
 def _make_logger(jsonl_path: Path, log_path: Path) -> Callable[[dict[str, Any]], None]:
     """Return a callback that logs each message in both formats."""
 
@@ -85,6 +97,7 @@ def main() -> None:
         model=model,
         on_thinking=_print_thinking,
         on_message=_make_logger(jsonl_path, log_path),
+        on_confirm=_confirm_tool,
     )
     print()
 
