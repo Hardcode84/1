@@ -240,22 +240,31 @@ def test_merge_all_similar() -> None:
         Chunk(turns=[_turn(14, 0, 1, "Bot", "b")]),
         Chunk(turns=[_turn(14, 0, 2, "You", "c")]),
     ]
-    # All high similarity — should merge into one.
-    sims = np.array([0.9, 0.9])
-    merged = merge_chunks(chunks, sims)
+    # Nearly identical vectors — all should merge into one.
+    embeddings = np.array([[1.0, 0.1], [1.0, 0.0], [1.0, 0.05]])
+    merged = merge_chunks(chunks, embeddings)
     assert len(merged) == 1
     assert len(merged[0].turns) == 3
 
 
-def test_merge_none_similar() -> None:
+def test_merge_partial() -> None:
     chunks = [
-        Chunk(turns=[_turn(14, 0, 0, "You", "a")]),
-        Chunk(turns=[_turn(14, 0, 1, "Bot", "b")]),
-        Chunk(turns=[_turn(14, 0, 2, "You", "c")]),
+        Chunk(turns=[_turn(14, 0, 0, "You", "x" * 50)]),
+        Chunk(turns=[_turn(14, 0, 1, "Bot", "x" * 50)]),
+        Chunk(turns=[_turn(14, 0, 2, "You", "y" * 50)]),
+        Chunk(turns=[_turn(14, 0, 3, "Bot", "y" * 50)]),
     ]
-    # One high, one low — threshold will split at the low one.
-    sims = np.array([0.9, 0.1])
-    merged = merge_chunks(chunks, sims)
+    # Two similar pairs separated by a dissimilar boundary.
+    embeddings = np.array(
+        [
+            [1.0, 0.0],
+            [0.99, 0.14],
+            [-1.0, 0.0],
+            [-0.99, -0.14],
+        ]
+    )
+    # Max chars allows pairs but not all four.
+    merged = merge_chunks(chunks, embeddings, max_chunk_chars=150)
     assert len(merged) == 2
 
 
@@ -264,10 +273,44 @@ def test_merge_respects_max_chars() -> None:
         Chunk(turns=[_turn(14, 0, 0, "You", "a" * 100)]),
         Chunk(turns=[_turn(14, 0, 1, "Bot", "b" * 100)]),
     ]
-    sims = np.array([0.99])
-    # Tiny limit prevents merging.
-    merged = merge_chunks(chunks, sims, max_chunk_chars=50)
+    # Identical vectors but tiny size limit prevents merging.
+    embeddings = np.array([[1.0, 0.0], [1.0, 0.0]])
+    merged = merge_chunks(chunks, embeddings, max_chunk_chars=50)
     assert len(merged) == 2
+
+
+def test_merge_above_08_always_merges() -> None:
+    chunks = [
+        Chunk(turns=[_turn(14, 0, 0, "You", "a")]),
+        Chunk(turns=[_turn(14, 0, 1, "Bot", "b")]),
+    ]
+    # Similarity > 0.8 should always merge regardless of threshold.
+    embeddings = np.array([[1.0, 0.0], [0.9, 0.4]])  # cos ~ 0.91.
+    merged = merge_chunks(chunks, embeddings)
+    assert len(merged) == 1
+
+
+def test_merge_fixed_point() -> None:
+    # 6 small chunks, similar in triples: {0,1,2} and {3,4,5}.
+    # First pass merges adjacent pairs within each triple.
+    # Second pass merges the remainders within each group.
+    # max_chars prevents the two groups from collapsing into one.
+    chunks = [Chunk(turns=[_turn(14, 0, i, "Bot", "a" * 40)]) for i in range(6)]
+    embeddings = np.array(
+        [
+            [1.0, 0.0],
+            [0.98, 0.2],
+            [0.95, 0.31],
+            [-1.0, 0.0],
+            [-0.98, -0.2],
+            [-0.95, -0.31],
+        ]
+    )
+    # Each chunk text ~45 chars. 3 merged ~140. 6 merged ~280.
+    merged = merge_chunks(chunks, embeddings, max_chunk_chars=200)
+    assert len(merged) == 2
+    assert len(merged[0].turns) == 3
+    assert len(merged[1].turns) == 3
 
 
 # --- parse_turns_md ---

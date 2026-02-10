@@ -80,12 +80,11 @@ def main() -> None:
 
         if len(chunks) >= 2:
             embeddings = get_embeddings([c.text for c in chunks])
-            sims = cosine_similarities(embeddings)
             print("=== Before merging ===\n")
             print_chunks(chunks, embeddings, show_timestamps=not is_md)
 
-            chunks = merge_chunks(chunks, sims)
-            print(f"=== After merging ({len(chunks)} chunks) ===\n")
+            chunks = merge_chunks(chunks, embeddings)
+            print(f"\n=== After merging ({len(chunks)} chunks) ===\n")
 
     print_chunks(chunks, show_timestamps=not is_md)
 
