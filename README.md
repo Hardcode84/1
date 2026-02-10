@@ -27,7 +27,7 @@ mindloop-agent
 python -m mindloop.cli.agent
 ```
 
-Runs an autonomous agent loop driven by the built-in system prompt. The agent explores the working directory until it produces a final response.
+Runs an autonomous agent loop with tool use, streaming, and token budgeting.
 
 ### Log chunker
 
