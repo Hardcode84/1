@@ -1,6 +1,5 @@
 """Agent tool definitions and execution."""
 
-import copy
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -60,13 +59,6 @@ class ToolRegistry:
         self._tools[name] = ToolDef(
             name=name, description=description, params=params, func=func
         )
-
-    def copy(self) -> "ToolRegistry":
-        """Return a deep copy of this registry."""
-        clone = ToolRegistry()
-        clone._tools = dict(self._tools)
-        clone.stats = copy.deepcopy(self.stats)
-        return clone
 
     def definitions(self) -> list[dict[str, Any]]:
         """Return all tool definitions in OpenAI API format."""

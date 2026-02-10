@@ -86,14 +86,13 @@ def run_agent(
     warned_thresholds: set[float] = set()
     consecutive_tool_turns = 0
 
-    # Register a status tool with access to runtime state.
-    agent_registry = registry.copy()
+    # Register runtime tools directly on the registry.
 
     def _status() -> str:
         now = datetime.now().isoformat(timespec="seconds")
         return f"time: {now}\ntokens used: {total_tokens} / {max_tokens}"
 
-    agent_registry.add(
+    registry.add(
         name="status",
         description="Query system info: current time, token usage and limit.",
         params=[],
@@ -107,7 +106,7 @@ def run_agent(
         finished = True
         return summary
 
-    agent_registry.add(
+    registry.add(
         name="done",
         description="Call when you are finished. Terminates the session.",
         params=[
@@ -124,8 +123,8 @@ def run_agent(
         }
         on_message(stop_msg)
         on_step(f"\n[stop] {reason} ({total_tokens} tokens used)")
-        if agent_registry.stats:
-            stats_text = json.dumps(agent_registry.stats)
+        if registry.stats:
+            stats_text = json.dumps(registry.stats)
             stats_msg: Message = {
                 "role": "system",
                 "content": f"[stats] {stats_text}",
@@ -140,7 +139,7 @@ def run_agent(
             messages,
             model=effective_model,
             system_prompt=system_prompt,
-            tools=agent_registry.definitions(),
+            tools=registry.definitions(),
             stream=True,
             on_token=on_step,
             on_thinking=on_thinking,
@@ -183,7 +182,7 @@ def run_agent(
                 if not on_confirm(name, arguments):
                     tool_result = f"Error: {name} was denied by the user."
                 else:
-                    tool_result = agent_registry.execute(name, arguments)
+                    tool_result = registry.execute(name, arguments)
             on_step(f"[result] {tool_result}")
             tool_msg: Message = {
                 "role": "tool",
