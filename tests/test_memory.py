@@ -310,3 +310,99 @@ def test_lineage_tracks_active_status(store: MemoryStore) -> None:
     assert node.active
     assert node.source_a is not None and not node.source_a.active
     assert node.source_b is not None and node.source_b.active
+
+
+# --- hybrid search (BM25 + embeddings) ---
+
+
+def test_search_bm25_boosts_keyword_match(store: MemoryStore) -> None:
+    """BM25 should boost a chunk that matches the query keyword even when
+    all embeddings are identical."""
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    store.save(
+        _summary("the gfx942 architecture requires special flags", abstract="gfx"), emb
+    )
+    store.save(
+        _summary("general information about compilers", abstract="compilers"), emb
+    )
+    store.save(_summary("how to set up the environment", abstract="env"), emb)
+
+    with patch(
+        "mindloop.memory.get_embeddings",
+        return_value=np.array([[1.0, 0.0]], dtype=np.float32),
+    ):
+        results = store.search("gfx942")
+
+    # With identical embeddings, BM25 keyword match should push gfx to the top.
+    assert results[0].chunk_summary.abstract == "gfx"
+
+
+def test_search_hybrid_combines_both_signals(store: MemoryStore) -> None:
+    """A chunk that scores well on both embedding and BM25 should rank above
+    chunks that only score well on one."""
+    # Chunk A: good embedding, good keyword match.
+    store.save(
+        _summary("cats are wonderful pets", abstract="cats"),
+        np.array([0.9, 0.1], dtype=np.float32),
+    )
+    # Chunk B: good embedding, no keyword match.
+    store.save(
+        _summary("dogs are loyal animals", abstract="dogs"),
+        np.array([0.85, 0.15], dtype=np.float32),
+    )
+    # Chunk C: bad embedding, good keyword match.
+    store.save(
+        _summary("cats in ancient history", abstract="ancient cats"),
+        np.array([0.1, 0.9], dtype=np.float32),
+    )
+
+    with patch(
+        "mindloop.memory.get_embeddings",
+        return_value=np.array([[1.0, 0.0]], dtype=np.float32),
+    ):
+        results = store.search("cats", top_k=3)
+
+    # Chunk A should rank first — strong in both signals.
+    assert results[0].chunk_summary.abstract == "cats"
+
+
+def test_search_original_only_with_bm25(store: MemoryStore) -> None:
+    """original_only flag should filter correctly with hybrid search."""
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    id_a = store.save(_summary("unique keyword xyzzy", abstract="leaf"), emb)
+    store.save(
+        _summary("merged result with xyzzy", abstract="merged"),
+        emb,
+        source_a=id_a,
+        source_b=id_a,
+    )
+
+    with patch(
+        "mindloop.memory.get_embeddings",
+        return_value=np.array([[1.0, 0.0]], dtype=np.float32),
+    ):
+        results = store.search("xyzzy", original_only=True)
+
+    # Only the leaf should be returned.
+    abstracts = [r.chunk_summary.abstract for r in results]
+    assert "leaf" in abstracts
+    assert "merged" not in abstracts
+
+
+def test_search_graceful_without_fts_match(store: MemoryStore) -> None:
+    """Search still works when no FTS5 matches exist (falls back to embeddings)."""
+    store.save(
+        _summary("about something", abstract="something"),
+        np.array([1.0, 0.0], dtype=np.float32),
+    )
+
+    with patch(
+        "mindloop.memory.get_embeddings",
+        return_value=np.array([[1.0, 0.0]], dtype=np.float32),
+    ):
+        # Query with a word not in any chunk text.
+        results = store.search("nonexistent_word_zzz")
+
+    # Should still return the embedding match.
+    assert len(results) == 1
+    assert results[0].chunk_summary.abstract == "something"

@@ -43,6 +43,9 @@ class LineageNode:
         return self.source_a is None and self.source_b is None
 
 
+_RRF_K = 60
+
+
 def _init_db(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -67,7 +70,28 @@ def _init_db(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE chunks ADD COLUMN {col} INTEGER")
         except sqlite3.OperationalError:
             pass  # Column already exists.
+
+    # FTS5 full-text index for BM25 keyword search.
+    conn.execute(
+        """
+        CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+            text, abstract, summary,
+            content='chunks', content_rowid='id'
+        )
+    """
+    )
+    # Rebuild FTS index from existing rows (idempotent, fast for small tables).
+    conn.execute("INSERT OR IGNORE INTO chunks_fts(chunks_fts) VALUES('rebuild')")
     conn.commit()
+
+
+def _fts_escape(query: str) -> str:
+    """Escape a raw query string for safe use in FTS5 MATCH."""
+    # Double-quote each token so special chars are treated as literals.
+    tokens = query.split()
+    if not tokens:
+        return '""'
+    return " OR ".join(f'"{t}"' for t in tokens)
 
 
 class MemoryStore:
@@ -132,8 +156,19 @@ class MemoryStore:
                 source_b,
             ),
         )
+        row_id = cursor.lastrowid or 0
+        # Keep FTS5 index in sync.
+        self.conn.execute(
+            "INSERT INTO chunks_fts(rowid, text, abstract, summary) VALUES (?, ?, ?, ?)",
+            (
+                row_id,
+                chunk_summary.chunk.text,
+                chunk_summary.abstract,
+                chunk_summary.summary,
+            ),
+        )
         self._auto_commit()
-        return cursor.lastrowid or 0
+        return row_id
 
     def save_many(
         self, summaries: list[ChunkSummary], embeddings: Embeddings
@@ -146,11 +181,12 @@ class MemoryStore:
     def search(
         self, query: str, top_k: int = 5, original_only: bool = False
     ) -> list[SearchResult]:
-        """Find the most relevant chunks by cosine similarity to the query.
+        """Find the most relevant chunks via hybrid embedding + BM25 search.
 
-        When *original_only* is True, search only leaf chunks (those not
-        produced by merging) regardless of active status.  Otherwise search
-        active chunks only (merged results + unmerged originals).
+        Combines cosine similarity (embeddings) and BM25 (FTS5) using
+        Reciprocal Rank Fusion.  When *original_only* is True, search only
+        leaf chunks (those not produced by merging) regardless of active
+        status.  Otherwise search active chunks only.
         """
         query_emb: Embedding = get_embeddings([query])[0]
 
@@ -167,46 +203,72 @@ class MemoryStore:
         if not rows:
             return []
 
-        # Build matrix of stored embeddings.
-        ids = []
-        meta = []
-        vecs = []
+        # Build lookup of chunk metadata keyed by id.
+        meta_by_id: dict[int, tuple[str, str, str, str, int | None, int | None]] = {}
+        vecs_by_id: dict[int, np.ndarray] = {}
         for row in rows:
-            ids.append(row[0])
-            meta.append(
-                row[1:5] + row[6:8]
-            )  # text, abstract, summary, time_range, sources.
-            vecs.append(np.frombuffer(row[5], dtype=np.float32))
+            meta_by_id[row[0]] = row[1:5] + row[6:8]
+            vecs_by_id[row[0]] = np.frombuffer(row[5], dtype=np.float32)
 
-        matrix = np.stack(vecs)
-        # Cosine similarity: dot product of normalized vectors.
+        ids = list(meta_by_id.keys())
+
+        # --- Embedding ranks ---
+        matrix = np.stack([vecs_by_id[cid] for cid in ids])
         norms = np.linalg.norm(matrix, axis=1, keepdims=True)
         norms = np.maximum(norms, 1e-10)
         query_norm = max(float(np.linalg.norm(query_emb)), 1e-10)
-        scores: np.ndarray = (matrix @ query_emb) / (norms.squeeze() * query_norm)
+        cos_scores: np.ndarray = (matrix @ query_emb) / (norms.squeeze() * query_norm)
+        emb_order = np.argsort(cos_scores)[::-1]
+        emb_rank: dict[int, int] = {
+            ids[idx]: rank for rank, idx in enumerate(emb_order)
+        }
 
-        # Top-K indices.
-        top_indices = np.argsort(scores)[-top_k:][::-1]
+        # --- BM25 ranks via FTS5 ---
+        bm25_rank: dict[int, int] = {}
+        try:
+            fts_query = _fts_escape(query)
+            if original_only:
+                fts_join = (
+                    "SELECT c.id, f.rank FROM chunks_fts f "
+                    "JOIN chunks c ON c.id = f.rowid "
+                    "WHERE chunks_fts MATCH ? "
+                    "AND c.source_a IS NULL AND c.source_b IS NULL "
+                    "ORDER BY f.rank"
+                )
+            else:
+                fts_join = (
+                    "SELECT c.id, f.rank FROM chunks_fts f "
+                    "JOIN chunks c ON c.id = f.rowid "
+                    "WHERE chunks_fts MATCH ? AND c.active = 1 "
+                    "ORDER BY f.rank"
+                )
+            fts_rows = self.conn.execute(fts_join, (fts_query,)).fetchall()
+            for rank, (cid, _bm25_score) in enumerate(fts_rows):
+                bm25_rank[cid] = rank
+        except sqlite3.OperationalError:
+            pass  # FTS5 unavailable or query parse error — fall back to embedding only.
+
+        # --- Reciprocal Rank Fusion ---
+        all_ids = set(emb_rank) | set(bm25_rank)
+        fallback = len(all_ids)  # Penalty rank for missing entries.
+        rrf_scores: dict[int, float] = {}
+        for cid in all_ids:
+            e_rank = emb_rank.get(cid, fallback)
+            b_rank = bm25_rank.get(cid, fallback)
+            rrf_scores[cid] = 1.0 / (_RRF_K + e_rank) + 1.0 / (_RRF_K + b_rank)
+
+        top_ids = sorted(rrf_scores, key=rrf_scores.__getitem__, reverse=True)[:top_k]
 
         results = []
-        for idx in top_indices:
-            text, abstract, summary, time_range, src_a, src_b = meta[idx]
-            # Reconstruct a minimal Chunk from stored text.
-            chunk = Chunk(
-                turns=[
-                    Turn(
-                        timestamp=datetime.min,
-                        role="",
-                        text=text,
-                    )
-                ]
-            )
+        for cid in top_ids:
+            text, abstract, summary, time_range, src_a, src_b = meta_by_id[cid]
+            chunk = Chunk(turns=[Turn(timestamp=datetime.min, role="", text=text)])
             cs = ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
             results.append(
                 SearchResult(
-                    id=ids[idx],
+                    id=cid,
                     chunk_summary=cs,
-                    score=float(scores[idx]),
+                    score=rrf_scores[cid],
                     source_a=src_a,
                     source_b=src_b,
                 )
