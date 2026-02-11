@@ -323,7 +323,9 @@ def add_memory_tools(
     """
     from mindloop.memory_tools import MemoryTools
 
-    mt = MemoryTools(db_path=db_path or Path("memory.db"), model=model)
+    mt = MemoryTools(
+        db_path=db_path or Path("memory.db"), model=model, stats=registry.stats
+    )
 
     registry.add(
         name="remember",

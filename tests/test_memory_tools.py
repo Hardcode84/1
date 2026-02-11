@@ -182,3 +182,23 @@ def test_add_memory_tools_execute_recall(tmp_path: Path) -> None:
         result = reg.execute("recall", '{"query": "test"}')
     assert "No memories found" in result
     mt.close()
+
+
+def test_stats_tracking(mt: MemoryTools) -> None:
+    """Each tool call increments its counter in stats."""
+    mt.store.save(_summary("fact"), _EMB)
+    with patch("mindloop.memory.get_embeddings", side_effect=_mock_embeddings):
+        mt.recall("test")
+        mt.recall("test")
+    mt.recall_detail(1)
+    assert mt._stats["memory"] == {"recall": 2, "recall_detail": 1}
+
+
+def test_stats_shared_with_registry(tmp_path: Path) -> None:
+    """Stats dict is shared between MemoryTools and ToolRegistry."""
+    reg = ToolRegistry()
+    mt = add_memory_tools(reg, db_path=tmp_path / "test.db")
+    with patch("mindloop.memory.get_embeddings", side_effect=_mock_embeddings):
+        reg.execute("recall", '{"query": "test"}')
+    assert reg.stats["memory"]["recall"] == 1
+    mt.close()

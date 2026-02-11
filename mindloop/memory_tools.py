@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
+from mindloop.chunker import Chunk, Turn
 from mindloop.memory import DEFAULT_DB_PATH, LineageNode, MemoryStore
 from mindloop.semantic_memory import save_memory
 from mindloop.summarizer import summarize_chunk
-from mindloop.chunker import Chunk, Turn
-from datetime import datetime
 
 
 def _format_lineage(node: LineageNode, prefix: str = "", is_last: bool = True) -> str:
@@ -39,17 +40,25 @@ class MemoryTools:
         self,
         db_path: Path = DEFAULT_DB_PATH,
         model: str = "openrouter/free",
+        stats: dict[Any, Any] | None = None,
     ) -> None:
         self._store = MemoryStore(db_path=db_path)
         self._model = model
+        self._stats = stats if stats is not None else {}
 
     @property
     def store(self) -> MemoryStore:
         """Expose the underlying store for testing."""
         return self._store
 
+    def _track(self, tool: str) -> None:
+        """Increment call count for a memory tool."""
+        counts = self._stats.setdefault("memory", {})
+        counts[tool] = counts.get(tool, 0) + 1
+
     def remember(self, text: str, abstract: str) -> str:
         """Save a memory. Auto-generates summary via LLM, then merges."""
+        self._track("remember")
         chunk = Chunk(turns=[Turn(timestamp=datetime.now(), role="memory", text=text)])
         cs = summarize_chunk(chunk, model=self._model)
         # Use the LLM-generated summary but keep the agent-provided abstract.
@@ -64,6 +73,7 @@ class MemoryTools:
 
     def recall(self, query: str, top_k: int = 5) -> str:
         """Search memory. Returns ranked results with id, abstract, summary, score."""
+        self._track("recall")
         results = self._store.search(query, top_k=top_k)
         if not results:
             return "No memories found."
@@ -78,6 +88,7 @@ class MemoryTools:
 
     def recall_detail(self, chunk_id: int) -> str:
         """Get full text and merge lineage for a chunk."""
+        self._track("recall_detail")
         row = self._store.conn.execute(
             "SELECT text, abstract, summary, active FROM chunks WHERE id = ?",
             (chunk_id,),
