@@ -26,6 +26,23 @@ class SearchResult:
     source_b: int | None = None
 
 
+@dataclass
+class LineageNode:
+    """A node in the merge lineage tree."""
+
+    id: int
+    text: str
+    abstract: str
+    active: bool
+    source_a: "LineageNode | None" = None
+    source_b: "LineageNode | None" = None
+
+    @property
+    def is_leaf(self) -> bool:
+        """True if this node has no sources (original input)."""
+        return self.source_a is None and self.source_b is None
+
+
 def _init_db(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -240,6 +257,40 @@ class MemoryStore:
             query += " WHERE active = 1"
         row = self.conn.execute(query).fetchone()
         return row[0] if row else 0
+
+    def lineage(self, chunk_id: int) -> LineageNode | None:
+        """Build the full merge tree rooted at *chunk_id*.
+
+        Recursively follows source_a / source_b links.  Returns None if
+        the chunk does not exist.
+        """
+        cache: dict[int, LineageNode] = {}
+
+        def _build(cid: int) -> LineageNode | None:
+            if cid in cache:
+                return cache[cid]
+            row = self.conn.execute(
+                "SELECT id, text, abstract, active, source_a, source_b "
+                "FROM chunks WHERE id = ?",
+                (cid,),
+            ).fetchone()
+            if row is None:
+                return None
+            node = LineageNode(
+                id=row[0],
+                text=row[1],
+                abstract=row[2],
+                active=bool(row[3]),
+            )
+            # Cache early to handle hypothetical cycles gracefully.
+            cache[cid] = node
+            if row[4] is not None:
+                node.source_a = _build(row[4])
+            if row[5] is not None:
+                node.source_b = _build(row[5])
+            return node
+
+        return _build(chunk_id)
 
     def close(self) -> None:
         self.conn.close()

@@ -239,3 +239,74 @@ def test_transaction_nested_inner_error_rolls_back_all(store: MemoryStore) -> No
         pass
     # Both saves should be rolled back.
     assert store.count() == 0
+
+
+# --- lineage ---
+
+
+def test_lineage_leaf(store: MemoryStore) -> None:
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    leaf_id = store.save(_summary("leaf", abstract="leaf_abs"), emb)
+    node = store.lineage(leaf_id)
+    assert node is not None
+    assert node.id == leaf_id
+    assert node.abstract == "leaf_abs"
+    assert node.is_leaf
+    assert node.source_a is None
+    assert node.source_b is None
+
+
+def test_lineage_single_merge(store: MemoryStore) -> None:
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    id_a = store.save(_summary("a", abstract="abs_a"), emb)
+    id_b = store.save(_summary("b", abstract="abs_b"), emb)
+    merged_id = store.save(
+        _summary("merged", abstract="abs_m"), emb, source_a=id_a, source_b=id_b
+    )
+
+    node = store.lineage(merged_id)
+    assert node is not None
+    assert node.id == merged_id
+    assert not node.is_leaf
+    assert node.source_a is not None and node.source_a.id == id_a
+    assert node.source_b is not None and node.source_b.id == id_b
+    assert node.source_a.is_leaf
+    assert node.source_b.is_leaf
+
+
+def test_lineage_deep_tree(store: MemoryStore) -> None:
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    id_a = store.save(_summary("a"), emb)
+    id_b = store.save(_summary("b"), emb)
+    id_ab = store.save(_summary("ab"), emb, source_a=id_a, source_b=id_b)
+    id_c = store.save(_summary("c"), emb)
+    id_abc = store.save(_summary("abc"), emb, source_a=id_ab, source_b=id_c)
+
+    root = store.lineage(id_abc)
+    assert root is not None
+    assert root.id == id_abc
+    # Left subtree is itself a merge.
+    assert root.source_a is not None and root.source_a.id == id_ab
+    assert root.source_a.source_a is not None and root.source_a.source_a.id == id_a
+    assert root.source_a.source_b is not None and root.source_a.source_b.id == id_b
+    # Right is a leaf.
+    assert root.source_b is not None and root.source_b.id == id_c
+    assert root.source_b.is_leaf
+
+
+def test_lineage_nonexistent(store: MemoryStore) -> None:
+    assert store.lineage(999) is None
+
+
+def test_lineage_tracks_active_status(store: MemoryStore) -> None:
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    id_a = store.save(_summary("a"), emb)
+    store.deactivate([id_a])
+    id_b = store.save(_summary("b"), emb)
+    merged_id = store.save(_summary("m"), emb, source_a=id_a, source_b=id_b)
+
+    node = store.lineage(merged_id)
+    assert node is not None
+    assert node.active
+    assert node.source_a is not None and not node.source_a.active
+    assert node.source_b is not None and node.source_b.active
