@@ -1,5 +1,6 @@
 """Semantic memory: save with automatic merge loop."""
 
+from collections.abc import Callable
 from datetime import datetime
 
 from mindloop.chunker import Chunk, Turn
@@ -23,6 +24,7 @@ def save_memory(
     max_rounds: int = _DEFAULT_MAX_ROUNDS,
     min_specificity: float = _DEFAULT_MIN_SPECIFICITY,
     prefer: str = "equal",
+    on_merge: Callable[[MergeResult], None] | None = None,
 ) -> int:
     """Save a memory, merging with similar existing memories until fixed point.
 
@@ -56,6 +58,8 @@ def save_memory(
                 summary = mr.summary
                 embedding = new_embedding
                 merged = True
+                if on_merge is not None:
+                    on_merge(mr)
                 break  # Restart search with merged text.
 
             if not merged:

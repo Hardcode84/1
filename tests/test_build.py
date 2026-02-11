@@ -22,6 +22,7 @@ def _mock_save_memory(
     abstract: str,
     summary: str,
     model: str = "openrouter/free",
+    **_kw: object,
 ) -> int:
     return 1
 
@@ -81,9 +82,9 @@ def test_files_processed_in_sorted_order(
     processed: list[str] = []
     original_process = process_file
 
-    def _tracking_process(path: Path, store: Any, model: str) -> int:
+    def _tracking_process(path: Path, store: Any, model: str, **kw: Any) -> int:
         processed.append(path.name)
-        return original_process(path, store, model)
+        return original_process(path, store, model, **kw)
 
     # Create files in reverse alphabetical order.
     for name in ["c.md", "a.md", "b.md"]:
@@ -133,3 +134,25 @@ def test_directories_are_skipped(
     # Only the real file should be processed.
     assert mock_summarize.call_count > 0
     assert mock_save.call_count > 0
+
+
+@patch("mindloop.cli.build.save_memory", side_effect=_mock_save_memory)
+@patch("mindloop.cli.build.summarize_chunk", side_effect=_mock_summarize_chunk)
+def test_verbose_prints_stages(
+    mock_summarize: MagicMock,
+    mock_save: MagicMock,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verbose mode prints original, summarized, and saved stages."""
+    md = tmp_path / "test.md"
+    md.write_text("# Heading\nSome content.\n")
+
+    store = MemoryStore(db_path=tmp_path / "test.db")
+    process_file(md, store, "openrouter/free", verbose=True)
+    store.close()
+
+    out = capsys.readouterr().out
+    assert "Original chunks:" in out
+    assert "Summarized [1]:" in out
+    assert "Saved [1]" in out
