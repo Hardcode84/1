@@ -1,5 +1,6 @@
 """CLI entry point for the autonomous agent loop."""
 
+import argparse
 import json
 import select
 import sys
@@ -93,7 +94,18 @@ def _make_logger(jsonl_path: Path, log_path: Path) -> Callable[[dict[str, Any]],
     return _log
 
 
+_DEFAULT_MODEL = "deepseek/deepseek-v3.2"
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the autonomous agent.")
+    parser.add_argument(
+        "--model",
+        default=_DEFAULT_MODEL,
+        help=f"Model to use (default: {_DEFAULT_MODEL}).",
+    )
+    args = parser.parse_args()
+
     if not API_KEY:
         print("Set OPENROUTER_API_KEY environment variable first.")
         print("Get a free key at https://openrouter.ai/keys")
@@ -104,7 +116,7 @@ def main() -> None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     jsonl_path = log_dir / f"agent_{timestamp}.jsonl"
     log_path = log_dir / f"agent_{timestamp}.log"
-    model = "deepseek/deepseek-v3.2"
+    model: str = args.model
 
     system_prompt = _PROMPT_PATH.read_text().strip()
 
