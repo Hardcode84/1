@@ -10,6 +10,7 @@ from typing import Any
 
 from mindloop.agent import run_agent
 from mindloop.client import API_KEY
+from mindloop.tools import add_memory_tools, create_default_registry
 
 _PROMPT_PATH = Path(__file__).resolve().parent.parent / "system_prompt.md"
 
@@ -106,16 +107,25 @@ def main() -> None:
     model = "deepseek/deepseek-v3.2"
 
     system_prompt = _PROMPT_PATH.read_text().strip()
-    print(f"Starting agent... (logging to {log_path})\n")
-    run_agent(
-        system_prompt,
-        on_step=_print_step,
-        model=model,
-        on_thinking=_print_thinking,
-        on_message=_make_logger(jsonl_path, log_path),
-        on_confirm=_confirm_tool,
-        on_ask=_ask_user,
-    )
+
+    db_path = Path("memory.db")
+    registry = create_default_registry()
+    mt = add_memory_tools(registry, db_path=db_path, model=model)
+
+    print(f"Starting agent... (logging to {log_path}, memory: {db_path})\n")
+    try:
+        run_agent(
+            system_prompt,
+            registry=registry,
+            on_step=_print_step,
+            model=model,
+            on_thinking=_print_thinking,
+            on_message=_make_logger(jsonl_path, log_path),
+            on_confirm=_confirm_tool,
+            on_ask=_ask_user,
+        )
+    finally:
+        mt.close()
     print()
 
 
