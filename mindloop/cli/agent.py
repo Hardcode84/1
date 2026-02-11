@@ -120,7 +120,9 @@ def main() -> None:
 
     system_prompt = _PROMPT_PATH.read_text().strip()
 
-    db_path = Path("memory.db")
+    mem_dir = Path("memory")
+    mem_dir.mkdir(exist_ok=True)
+    db_path = mem_dir / "memory.db"
     registry = create_default_registry()
     mt = add_memory_tools(registry, db_path=db_path, model=model)
 
