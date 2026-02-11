@@ -32,6 +32,7 @@ def save_memory(
     the final save are atomic.  Returns the row id of the final saved chunk.
     """
     embedding = get_embeddings([text])[0]
+    sources: list[int] = []
 
     with store.transaction():
         for _ in range(max_rounds):
@@ -53,6 +54,7 @@ def save_memory(
                     break
 
                 store.deactivate([result.id])
+                sources.append(result.id)
                 text = mr.text
                 abstract = mr.abstract
                 summary = mr.summary
@@ -67,4 +69,9 @@ def save_memory(
 
         chunk = Chunk(turns=[Turn(timestamp=datetime.now(), role="memory", text=text)])
         cs = ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
-        return store.save(cs, embedding)
+        return store.save(
+            cs,
+            embedding,
+            source_a=sources[0] if len(sources) >= 1 else None,
+            source_b=sources[1] if len(sources) >= 2 else None,
+        )

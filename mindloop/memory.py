@@ -22,6 +22,8 @@ class SearchResult:
     id: int
     chunk_summary: ChunkSummary
     score: float
+    source_a: int | None = None
+    source_b: int | None = None
 
 
 def _init_db(conn: sqlite3.Connection) -> None:
@@ -35,11 +37,19 @@ def _init_db(conn: sqlite3.Connection) -> None:
             time_range TEXT NOT NULL,
             embedding BLOB NOT NULL,
             active INTEGER NOT NULL DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            source_a INTEGER,
+            source_b INTEGER
         )
     """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_active ON chunks(active)")
+    # Migrate existing databases that lack the source columns.
+    for col in ("source_a", "source_b"):
+        try:
+            conn.execute(f"ALTER TABLE chunks ADD COLUMN {col} INTEGER")
+        except sqlite3.OperationalError:
+            pass  # Column already exists.
     conn.commit()
 
 
@@ -83,17 +93,26 @@ class MemoryStore:
         if self._transaction_depth == 0:
             self.conn.commit()
 
-    def save(self, chunk_summary: ChunkSummary, embedding: Embedding) -> int:
+    def save(
+        self,
+        chunk_summary: ChunkSummary,
+        embedding: Embedding,
+        source_a: int | None = None,
+        source_b: int | None = None,
+    ) -> int:
         """Save a chunk summary with its embedding. Returns the row id."""
         cursor = self.conn.execute(
-            "INSERT INTO chunks (text, abstract, summary, time_range, embedding) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO chunks "
+            "(text, abstract, summary, time_range, embedding, source_a, source_b) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 chunk_summary.chunk.text,
                 chunk_summary.abstract,
                 chunk_summary.summary,
                 chunk_summary.chunk.time_range,
                 embedding.astype(np.float32).tobytes(),
+                source_a,
+                source_b,
             ),
         )
         self._auto_commit()
@@ -112,7 +131,8 @@ class MemoryStore:
         query_emb: Embedding = get_embeddings([query])[0]
 
         rows = self.conn.execute(
-            "SELECT id, text, abstract, summary, time_range, embedding "
+            "SELECT id, text, abstract, summary, time_range, embedding, "
+            "source_a, source_b "
             "FROM chunks WHERE active = 1"
         ).fetchall()
 
@@ -125,7 +145,9 @@ class MemoryStore:
         vecs = []
         for row in rows:
             ids.append(row[0])
-            meta.append(row[1:5])  # text, abstract, summary, time_range.
+            meta.append(
+                row[1:5] + row[6:8]
+            )  # text, abstract, summary, time_range, sources.
             vecs.append(np.frombuffer(row[5], dtype=np.float32))
 
         matrix = np.stack(vecs)
@@ -140,7 +162,7 @@ class MemoryStore:
 
         results = []
         for idx in top_indices:
-            text, abstract, summary, time_range = meta[idx]
+            text, abstract, summary, time_range, src_a, src_b = meta[idx]
             # Reconstruct a minimal Chunk from stored text.
             chunk = Chunk(
                 turns=[
@@ -153,7 +175,13 @@ class MemoryStore:
             )
             cs = ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
             results.append(
-                SearchResult(id=ids[idx], chunk_summary=cs, score=float(scores[idx]))
+                SearchResult(
+                    id=ids[idx],
+                    chunk_summary=cs,
+                    score=float(scores[idx]),
+                    source_a=src_a,
+                    source_b=src_b,
+                )
             )
 
         return results

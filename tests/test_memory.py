@@ -32,6 +32,36 @@ def test_save_and_count(store: MemoryStore) -> None:
     assert store.count() == 1
 
 
+def test_save_with_sources(store: MemoryStore) -> None:
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    id_a = store.save(_summary("a"), emb)
+    id_b = store.save(_summary("b"), emb)
+    id_merged = store.save(_summary("merged"), emb, source_a=id_a, source_b=id_b)
+
+    with patch(
+        "mindloop.memory.get_embeddings",
+        return_value=np.array([[1.0, 0.0]], dtype=np.float32),
+    ):
+        results = store.search("merged", top_k=1)
+    # The top result should be the merged chunk with source info.
+    assert results[0].id == id_merged
+    assert results[0].source_a == id_a
+    assert results[0].source_b == id_b
+
+
+def test_save_without_sources_returns_none(store: MemoryStore) -> None:
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    store.save(_summary("no sources"), emb)
+
+    with patch(
+        "mindloop.memory.get_embeddings",
+        return_value=np.array([[1.0, 0.0]], dtype=np.float32),
+    ):
+        results = store.search("no sources", top_k=1)
+    assert results[0].source_a is None
+    assert results[0].source_b is None
+
+
 def test_save_many(store: MemoryStore) -> None:
     summaries = [_summary("a"), _summary("b"), _summary("c")]
     embeddings = np.array([[1.0, 0.0], [0.0, 1.0], [0.5, 0.5]], dtype=np.float32)

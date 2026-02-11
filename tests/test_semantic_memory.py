@@ -167,6 +167,54 @@ def test_save_aborts_merge_when_too_generic(store: MemoryStore) -> None:
     assert store.count(active_only=False) == 11
 
 
+def test_save_records_sources_on_merge(store: MemoryStore) -> None:
+    old_id = store.save(_summary("old fact"), _EMB_A)
+
+    mr = MergeResult(text="merged", abstract="abs", summary="sum")
+    with (
+        _patch_embeddings(_EMB_A),
+        patch("mindloop.semantic_memory.should_merge", return_value=True),
+        patch("mindloop.semantic_memory.merge_texts", return_value=mr),
+    ):
+        new_id = save_memory(store, "new", "abs", "sum", min_specificity=0.0)
+
+    # Read the saved row directly to check sources.
+    row = store.conn.execute(
+        "SELECT source_a, source_b FROM chunks WHERE id = ?", (new_id,)
+    ).fetchone()
+    assert row[0] == old_id
+    assert row[1] is None
+
+
+def test_save_records_both_sources_on_cascade(store: MemoryStore) -> None:
+    id_a = store.save(_summary("fact A"), _EMB_A)
+    id_b = store.save(_summary("fact B"), _EMB_A)
+
+    mr = MergeResult(text="merged", abstract="abs", summary="sum")
+    with (
+        _patch_embeddings(_EMB_A),
+        patch("mindloop.semantic_memory.should_merge", return_value=True),
+        patch("mindloop.semantic_memory.merge_texts", return_value=mr),
+    ):
+        new_id = save_memory(store, "new", "abs", "sum", min_specificity=0.0)
+
+    row = store.conn.execute(
+        "SELECT source_a, source_b FROM chunks WHERE id = ?", (new_id,)
+    ).fetchone()
+    assert {row[0], row[1]} == {id_a, id_b}
+
+
+def test_save_no_sources_without_merge(store: MemoryStore) -> None:
+    with _patch_embeddings(_EMB_A):
+        new_id = save_memory(store, "new fact", "abs", "sum")
+
+    row = store.conn.execute(
+        "SELECT source_a, source_b FROM chunks WHERE id = ?", (new_id,)
+    ).fetchone()
+    assert row[0] is None
+    assert row[1] is None
+
+
 def test_save_is_atomic_on_error(store: MemoryStore) -> None:
     store.save(_summary("existing"), _EMB_A)
 
