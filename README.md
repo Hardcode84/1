@@ -73,7 +73,21 @@ mindloop-query "merge algorithm" --db knowledge.db -k 3
 mindloop-query "embeddings" -v
 ```
 
-Returns ranked results with cosine similarity scores, abstracts, summaries, and merge lineage.
+Results are ranked using hybrid search (embedding cosine similarity + BM25 keyword matching via FTS5), combined with Reciprocal Rank Fusion.
+
+Use `--original` to search original (unmerged) chunks, or `--tree ID` to show the full merge lineage tree for a chunk.
+
+### Dump database
+
+```bash
+# Print all chunks to stdout.
+mindloop-dump
+
+# Write to file from a custom database.
+mindloop-dump --db knowledge.db -o dump.txt
+```
+
+Dumps every chunk (active and inactive) with its abstract, summary, full text, source lineage, and timestamp.
 
 ### Tests
 
