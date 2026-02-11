@@ -160,3 +160,52 @@ def test_activate_restores_to_search(store: MemoryStore) -> None:
 
     store.activate([id1])
     assert store.count() == 1
+
+
+# --- transaction ---
+
+
+def test_transaction_commits_on_success(store: MemoryStore) -> None:
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    with store.transaction():
+        store.save(_summary("a"), emb)
+        store.save(_summary("b"), emb)
+    assert store.count() == 2
+
+
+def test_transaction_rolls_back_on_error(store: MemoryStore) -> None:
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    store.save(_summary("existing"), emb)
+    try:
+        with store.transaction():
+            store.deactivate([1])
+            raise RuntimeError("simulated failure")
+    except RuntimeError:
+        pass
+    # Deactivation should have been rolled back.
+    assert store.count() == 1
+
+
+def test_transaction_nested(store: MemoryStore) -> None:
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    with store.transaction():
+        store.save(_summary("a"), emb)
+        with store.transaction():
+            store.save(_summary("b"), emb)
+        # Inner transaction doesn't commit yet.
+    # Outer transaction commits both.
+    assert store.count() == 2
+
+
+def test_transaction_nested_inner_error_rolls_back_all(store: MemoryStore) -> None:
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    try:
+        with store.transaction():
+            store.save(_summary("a"), emb)
+            with store.transaction():
+                store.save(_summary("b"), emb)
+                raise RuntimeError("inner failure")
+    except RuntimeError:
+        pass
+    # Both saves should be rolled back.
+    assert store.count() == 0

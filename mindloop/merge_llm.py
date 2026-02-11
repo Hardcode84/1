@@ -58,6 +58,7 @@ def should_merge(
         system_prompt=_SYSTEM_PROMPT,
         stream=False,
         temperature=0.0,
+        seed=42,
     )
     answer = (resp.get("content") or "").strip().lower()
     return answer.startswith("yes")
@@ -128,7 +129,12 @@ def merge_texts(
         },
     ]
     merge_resp = chat(
-        messages, model=model, system_prompt=system, stream=False, temperature=0.0
+        messages,
+        model=model,
+        system_prompt=system,
+        stream=False,
+        temperature=0.0,
+        seed=42,
     )
     merged_text = (merge_resp.get("content") or "").strip()
 
@@ -136,7 +142,12 @@ def merge_texts(
     messages.append({"role": "assistant", "content": merged_text})
     messages.append({"role": "user", "content": _SUMMARIZE_PROMPT})
     summary_resp = chat(
-        messages, model=model, system_prompt=system, stream=False, temperature=0.0
+        messages,
+        model=model,
+        system_prompt=system,
+        stream=False,
+        temperature=0.0,
+        seed=42,
     )
     raw = (summary_resp.get("content") or "").strip()
 

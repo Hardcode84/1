@@ -1,6 +1,8 @@
 """Persistent chunk storage and retrieval using SQLite + numpy."""
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +19,7 @@ DEFAULT_DB_PATH = Path("memory.db")
 
 @dataclass
 class SearchResult:
+    id: int
     chunk_summary: ChunkSummary
     score: float
 
@@ -43,6 +46,7 @@ def _init_db(conn: sqlite3.Connection) -> None:
 class MemoryStore:
     def __init__(self, db_path: Path = DEFAULT_DB_PATH) -> None:
         self.conn = sqlite3.connect(db_path)
+        self._transaction_depth = 0
         _init_db(self.conn)
 
     def __enter__(self) -> "MemoryStore":
@@ -55,6 +59,29 @@ class MemoryStore:
         exc_tb: TracebackType | None,
     ) -> None:
         self.close()
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Batch multiple operations into a single atomic commit.
+
+        Supports nesting — only the outermost transaction commits or rolls back.
+        """
+        self._transaction_depth += 1
+        try:
+            yield
+            if self._transaction_depth == 1:
+                self.conn.commit()
+        except BaseException:
+            if self._transaction_depth == 1:
+                self.conn.rollback()
+            raise
+        finally:
+            self._transaction_depth -= 1
+
+    def _auto_commit(self) -> None:
+        """Commit unless inside a transaction."""
+        if self._transaction_depth == 0:
+            self.conn.commit()
 
     def save(self, chunk_summary: ChunkSummary, embedding: Embedding) -> int:
         """Save a chunk summary with its embedding. Returns the row id."""
@@ -69,7 +96,7 @@ class MemoryStore:
                 embedding.astype(np.float32).tobytes(),
             ),
         )
-        self.conn.commit()
+        self._auto_commit()
         return cursor.lastrowid or 0
 
     def save_many(
@@ -125,7 +152,9 @@ class MemoryStore:
                 ]
             )
             cs = ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
-            results.append(SearchResult(chunk_summary=cs, score=float(scores[idx])))
+            results.append(
+                SearchResult(id=ids[idx], chunk_summary=cs, score=float(scores[idx]))
+            )
 
         return results
 
@@ -155,7 +184,7 @@ class MemoryStore:
             "UPDATE chunks SET active = 0 WHERE id = ?",
             [(cid,) for cid in chunk_ids],
         )
-        self.conn.commit()
+        self._auto_commit()
 
     def activate(self, chunk_ids: list[int]) -> None:
         """Re-activate previously deactivated chunks."""
@@ -163,7 +192,7 @@ class MemoryStore:
             "UPDATE chunks SET active = 1 WHERE id = ?",
             [(cid,) for cid in chunk_ids],
         )
-        self.conn.commit()
+        self._auto_commit()
 
     def count(self, active_only: bool = True) -> int:
         """Return the number of stored chunks."""
