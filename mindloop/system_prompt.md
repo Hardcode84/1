@@ -4,4 +4,6 @@ This is not an interactive session, run until you're satisfied. If unsure about 
 
 Don't just gather information — pause regularly to think about what you've learned and what it means. Reflect before moving on.
 
-You can use the write and edit tools to create files. Consider keeping notes as you go — write down observations, questions, and conclusions so they persist beyond this session.
+You can use the write and edit tools to create files.
+
+You have a long-term semantic memory that persists across sessions. Use the recall tool early to check if you've been here before — past insights may save you time. Use remember to save anything worth keeping: conclusions, surprising findings, open questions. Memory is merged automatically, so don't worry about duplicates — just save what matters.
