@@ -32,7 +32,8 @@ def save_memory(
     the final save are atomic.  Returns the row id of the final saved chunk.
     """
     embedding = get_embeddings([text])[0]
-    sources: list[int] = []
+    # Tracks the ID of the last saved intermediate merge node (None = new input).
+    last_id: int | None = None
 
     with store.transaction():
         for _ in range(max_rounds):
@@ -54,7 +55,17 @@ def save_memory(
                     break
 
                 store.deactivate([result.id])
-                sources.append(result.id)
+
+                # Save intermediate merge node (disabled) to preserve the tree.
+                chunk = Chunk(
+                    turns=[Turn(timestamp=datetime.now(), role="memory", text=mr.text)]
+                )
+                cs = ChunkSummary(chunk=chunk, abstract=mr.abstract, summary=mr.summary)
+                last_id = store.save(
+                    cs, new_embedding, source_a=last_id, source_b=result.id
+                )
+                store.deactivate([last_id])
+
                 text = mr.text
                 abstract = mr.abstract
                 summary = mr.summary
@@ -67,11 +78,12 @@ def save_memory(
             if not merged:
                 break  # Fixed point.
 
+        if last_id is not None:
+            # Activate the final merge node.
+            store.activate([last_id])
+            return last_id
+
+        # No merges happened — save as a new entry.
         chunk = Chunk(turns=[Turn(timestamp=datetime.now(), role="memory", text=text)])
         cs = ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
-        return store.save(
-            cs,
-            embedding,
-            source_a=sources[0] if len(sources) >= 1 else None,
-            source_b=sources[1] if len(sources) >= 2 else None,
-        )
+        return store.save(cs, embedding)

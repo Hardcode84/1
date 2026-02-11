@@ -112,9 +112,9 @@ def test_save_cascading_merges(store: MemoryStore) -> None:
     ):
         save_memory(store, "new fact", "abs", "sum", min_specificity=0.0)
 
-    # Both old chunks deactivated, one merged chunk saved.
+    # Both old chunks deactivated, one intermediate + one final.
     assert store.count() == 1
-    assert store.count(active_only=False) == 3
+    assert store.count(active_only=False) == 4
     assert merge_count == 2
 
 
@@ -178,15 +178,15 @@ def test_save_records_sources_on_merge(store: MemoryStore) -> None:
     ):
         new_id = save_memory(store, "new", "abs", "sum", min_specificity=0.0)
 
-    # Read the saved row directly to check sources.
+    # source_a=None (new input), source_b=absorbed chunk.
     row = store.conn.execute(
         "SELECT source_a, source_b FROM chunks WHERE id = ?", (new_id,)
     ).fetchone()
-    assert row[0] == old_id
-    assert row[1] is None
+    assert row[0] is None
+    assert row[1] == old_id
 
 
-def test_save_records_both_sources_on_cascade(store: MemoryStore) -> None:
+def test_save_records_tree_on_cascade(store: MemoryStore) -> None:
     id_a = store.save(_summary("fact A"), _EMB_A)
     id_b = store.save(_summary("fact B"), _EMB_A)
 
@@ -196,12 +196,26 @@ def test_save_records_both_sources_on_cascade(store: MemoryStore) -> None:
         patch("mindloop.semantic_memory.should_merge", return_value=True),
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
-        new_id = save_memory(store, "new", "abs", "sum", min_specificity=0.0)
+        final_id = save_memory(store, "new", "abs", "sum", min_specificity=0.0)
 
-    row = store.conn.execute(
-        "SELECT source_a, source_b FROM chunks WHERE id = ?", (new_id,)
+    # Final node points to intermediate + one absorbed chunk.
+    final = store.conn.execute(
+        "SELECT source_a, source_b FROM chunks WHERE id = ?", (final_id,)
     ).fetchone()
-    assert {row[0], row[1]} == {id_a, id_b}
+    intermediate_id = final[0]
+    absorbed_second = final[1]
+    assert intermediate_id is not None
+    assert absorbed_second in (id_a, id_b)
+
+    # Intermediate node: source_a=None (new input), source_b=other absorbed chunk.
+    inter = store.conn.execute(
+        "SELECT source_a, source_b, active FROM chunks WHERE id = ?",
+        (intermediate_id,),
+    ).fetchone()
+    assert inter[0] is None
+    assert inter[1] in (id_a, id_b)
+    assert inter[1] != absorbed_second
+    assert inter[2] == 0  # Intermediate is disabled.
 
 
 def test_save_no_sources_without_merge(store: MemoryStore) -> None:
