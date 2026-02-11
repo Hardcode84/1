@@ -30,12 +30,19 @@ def save_memory(
 
     The entire operation runs inside a transaction — all deactivations and
     the final save are atomic.  Returns the row id of the final saved chunk.
+    If an active chunk with identical text already exists, returns its id
+    without creating a duplicate.
     """
+    chunk = Chunk(turns=[Turn(timestamp=datetime.now(), role="memory", text=text)])
+    stored_text = chunk.text
+
+    existing = store.find_exact(stored_text)
+    if existing is not None:
+        return existing
+
     embedding = get_embeddings([text])[0]
 
     with store.transaction():
-        # Persist the incoming text as a disabled leaf so it is never lost.
-        chunk = Chunk(turns=[Turn(timestamp=datetime.now(), role="memory", text=text)])
         cs = ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
         last_id = store.save(cs, embedding)
         store.deactivate([last_id])

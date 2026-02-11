@@ -264,3 +264,13 @@ def test_save_is_atomic_on_error(store: MemoryStore) -> None:
 
     # Original chunk should still be active — transaction rolled back.
     assert store.count() == 1
+
+
+def test_save_deduplicates_exact_text(store: MemoryStore) -> None:
+    """Saving identical text twice returns the existing id without creating a duplicate."""
+    with _patch_embeddings(_EMB_A):
+        first_id = save_memory(store, "exact same text", "abs1", "sum1")
+        second_id = save_memory(store, "exact same text", "abs2", "sum2")
+
+    assert first_id == second_id
+    assert store.count() == 1

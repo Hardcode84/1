@@ -406,3 +406,25 @@ def test_search_graceful_without_fts_match(store: MemoryStore) -> None:
     # Should still return the embedding match.
     assert len(results) == 1
     assert results[0].chunk_summary.abstract == "something"
+
+
+def test_find_exact_returns_active_match(store: MemoryStore) -> None:
+    """find_exact returns the id of an active chunk with identical text."""
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    cs = _summary("hello world")
+    row_id = store.save(cs, emb)
+    assert store.find_exact(cs.chunk.text) == row_id
+
+
+def test_find_exact_ignores_inactive(store: MemoryStore) -> None:
+    """find_exact does not return deactivated chunks."""
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    cs = _summary("hello world")
+    row_id = store.save(cs, emb)
+    store.deactivate([row_id])
+    assert store.find_exact(cs.chunk.text) is None
+
+
+def test_find_exact_no_match(store: MemoryStore) -> None:
+    """find_exact returns None when no chunk matches."""
+    assert store.find_exact("nonexistent") is None

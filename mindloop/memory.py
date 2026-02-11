@@ -134,6 +134,13 @@ class MemoryStore:
         if self._transaction_depth == 0:
             self.conn.commit()
 
+    def find_exact(self, text: str) -> int | None:
+        """Return the id of an active chunk with exactly matching text, or None."""
+        row = self.conn.execute(
+            "SELECT id FROM chunks WHERE active = 1 AND text = ?", (text,)
+        ).fetchone()
+        return row[0] if row else None
+
     def save(
         self,
         chunk_summary: ChunkSummary,
