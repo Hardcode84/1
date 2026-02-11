@@ -129,6 +129,26 @@ class MemoryStore:
 
         return results
 
+    def specificity(self, embedding: Embedding, sim_threshold: float = 0.5) -> float:
+        """Measure how specific a chunk is based on its neighbor count.
+
+        Returns a value between 0.0 (generic, many neighbors) and
+        1.0 (specific, no neighbors). A neighbor is any active chunk
+        with cosine similarity >= *sim_threshold*.
+        """
+        rows = self.conn.execute(
+            "SELECT embedding FROM chunks WHERE active = 1"
+        ).fetchall()
+        if not rows:
+            return 1.0
+
+        matrix = np.stack([np.frombuffer(row[0], dtype=np.float32) for row in rows])
+        norms = np.maximum(np.linalg.norm(matrix, axis=1), 1e-10)
+        emb_norm = max(float(np.linalg.norm(embedding)), 1e-10)
+        scores = (matrix @ embedding) / (norms * emb_norm)
+        neighbor_count = int((scores >= sim_threshold).sum())
+        return 1.0 - neighbor_count / len(rows)
+
     def deactivate(self, chunk_ids: list[int]) -> None:
         """Mark chunks as inactive. They remain in the DB but are excluded from search."""
         self.conn.executemany(

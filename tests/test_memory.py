@@ -111,6 +111,46 @@ def test_deactivate_excludes_from_search(store: MemoryStore) -> None:
     assert results[0].chunk_summary.abstract == "dogs"
 
 
+def test_specificity_no_chunks(store: MemoryStore) -> None:
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    assert store.specificity(emb) == 1.0
+
+
+def test_specificity_no_neighbors(store: MemoryStore) -> None:
+    # Store a chunk orthogonal to the query.
+    store.save(_summary("a"), np.array([0.0, 1.0], dtype=np.float32))
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    assert store.specificity(emb) == 1.0
+
+
+def test_specificity_all_neighbors(store: MemoryStore) -> None:
+    # Store chunks identical to the query.
+    for _ in range(5):
+        store.save(_summary("a"), np.array([1.0, 0.0], dtype=np.float32))
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    assert store.specificity(emb) == 0.0
+
+
+def test_specificity_partial_neighbors(store: MemoryStore) -> None:
+    # 2 similar, 2 orthogonal.
+    store.save(_summary("a"), np.array([1.0, 0.0], dtype=np.float32))
+    store.save(_summary("b"), np.array([0.95, 0.31], dtype=np.float32))
+    store.save(_summary("c"), np.array([0.0, 1.0], dtype=np.float32))
+    store.save(_summary("d"), np.array([-1.0, 0.0], dtype=np.float32))
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    # 2 out of 4 are above 0.5 threshold.
+    assert store.specificity(emb) == 0.5
+
+
+def test_specificity_ignores_inactive(store: MemoryStore) -> None:
+    id1 = store.save(_summary("a"), np.array([1.0, 0.0], dtype=np.float32))
+    store.save(_summary("b"), np.array([0.0, 1.0], dtype=np.float32))
+    store.deactivate([id1])
+    emb = np.array([1.0, 0.0], dtype=np.float32)
+    # Only the orthogonal chunk is active.
+    assert store.specificity(emb) == 1.0
+
+
 def test_activate_restores_to_search(store: MemoryStore) -> None:
     id1 = store.save(
         _summary("cats", abstract="cats"), np.array([1.0, 0.0], dtype=np.float32)
