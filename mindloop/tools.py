@@ -1,11 +1,16 @@
 """Agent tool definitions and execution."""
 
+from __future__ import annotations
+
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mindloop.memory_tools import MemoryTools
 
 
 @dataclass
@@ -305,3 +310,66 @@ def create_default_registry() -> ToolRegistry:
         func=partial(_read, reg),
     )
     return reg
+
+
+def add_memory_tools(
+    registry: ToolRegistry,
+    db_path: Path | None = None,
+    model: str = "openrouter/free",
+) -> MemoryTools:
+    """Add remember / recall / recall_detail tools to *registry*.
+
+    Returns the :class:`MemoryTools` instance so the caller can close it.
+    """
+    from mindloop.memory_tools import MemoryTools
+
+    mt = MemoryTools(db_path=db_path or Path("memory.db"), model=model)
+
+    registry.add(
+        name="remember",
+        description=(
+            "Save a fact or insight to long-term memory. "
+            "Provide the full text you want to remember and a short abstract "
+            "(one-sentence label). The system auto-generates a summary and "
+            "merges with related memories."
+        ),
+        params=[
+            Param(name="text", description="The text to remember."),
+            Param(name="abstract", description="One-sentence label for this memory."),
+        ],
+        func=mt.remember,
+    )
+    registry.add(
+        name="recall",
+        description=(
+            "Search long-term memory by semantic similarity. "
+            "Returns ranked results with id, abstract, summary, and score. "
+            "Use recall_detail with an id to get the full text."
+        ),
+        params=[
+            Param(name="query", description="What to search for."),
+            Param(
+                name="top_k",
+                description="Maximum number of results. Default: 5.",
+                type="integer",
+                required=False,
+            ),
+        ],
+        func=mt.recall,
+    )
+    registry.add(
+        name="recall_detail",
+        description=(
+            "Get the full text and merge lineage for a specific memory chunk. "
+            "Use an id from a recall result."
+        ),
+        params=[
+            Param(
+                name="chunk_id",
+                description="The chunk id to retrieve.",
+                type="integer",
+            ),
+        ],
+        func=mt.recall_detail,
+    )
+    return mt
