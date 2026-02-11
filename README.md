@@ -48,6 +48,18 @@ mindloop-chunk logs/20260208_171554.log --summarize
 mindloop-chunk logs/20260208_171554.log --embed --summarize
 ```
 
+### Build semantic database
+
+```bash
+# Index all markdown files into memory.db.
+mindloop-build "docs/**/*.md"
+
+# Custom database path and model.
+mindloop-build "logs/*.jsonl" --db knowledge.db --model deepseek/deepseek-v3.2
+```
+
+Processes each file through the full pipeline: parse, chunk, summarize, and save into the semantic database with automatic merge.
+
 ### Tests
 
 ```bash

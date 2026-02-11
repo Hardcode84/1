@@ -12,6 +12,7 @@ dependencies = [
 mindloop-agent = "mindloop.cli.agent:main"
 mindloop-chat = "mindloop.cli.chat:main"
 mindloop-chunk = "mindloop.cli.chunk:main"
+mindloop-build = "mindloop.cli.build:main"
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov"]
