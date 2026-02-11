@@ -32,10 +32,14 @@ def save_memory(
     the final save are atomic.  Returns the row id of the final saved chunk.
     """
     embedding = get_embeddings([text])[0]
-    # Tracks the ID of the last saved intermediate merge node (None = new input).
-    last_id: int | None = None
 
     with store.transaction():
+        # Persist the incoming text as a disabled leaf so it is never lost.
+        chunk = Chunk(turns=[Turn(timestamp=datetime.now(), role="memory", text=text)])
+        cs = ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
+        last_id = store.save(cs, embedding)
+        store.deactivate([last_id])
+
         for _ in range(max_rounds):
             results = store.search(text, top_k=top_k)
 
@@ -56,7 +60,7 @@ def save_memory(
 
                 store.deactivate([result.id])
 
-                # Save intermediate merge node (disabled) to preserve the tree.
+                # Save merge node (disabled) to preserve the full tree.
                 chunk = Chunk(
                     turns=[Turn(timestamp=datetime.now(), role="memory", text=mr.text)]
                 )
@@ -78,12 +82,6 @@ def save_memory(
             if not merged:
                 break  # Fixed point.
 
-        if last_id is not None:
-            # Activate the final merge node.
-            store.activate([last_id])
-            return last_id
-
-        # No merges happened — save as a new entry.
-        chunk = Chunk(turns=[Turn(timestamp=datetime.now(), role="memory", text=text)])
-        cs = ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
-        return store.save(cs, embedding)
+        # Activate whichever node ended up final (leaf or last merge).
+        store.activate([last_id])
+        return last_id

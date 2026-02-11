@@ -84,9 +84,9 @@ def test_save_merges_similar_chunk(store: MemoryStore) -> None:
     ):
         row_id = save_memory(store, "new fact", "abs", "sum", min_specificity=0.0)
 
-    # Old chunk deactivated, merged chunk saved.
+    # Old chunk deactivated, incoming leaf preserved, merged chunk active.
     assert store.count() == 1
-    assert store.count(active_only=False) == 2
+    assert store.count(active_only=False) == 3
     assert row_id > 0
 
 
@@ -112,9 +112,9 @@ def test_save_cascading_merges(store: MemoryStore) -> None:
     ):
         save_memory(store, "new fact", "abs", "sum", min_specificity=0.0)
 
-    # Both old chunks deactivated, one intermediate + one final.
+    # Both old chunks deactivated, incoming leaf + intermediate + final.
     assert store.count() == 1
-    assert store.count(active_only=False) == 4
+    assert store.count(active_only=False) == 5
     assert merge_count == 2
 
 
@@ -159,10 +159,9 @@ def test_save_aborts_merge_when_too_generic(store: MemoryStore) -> None:
     ):
         save_memory(store, "new", "abs", "sum", min_specificity=0.95)
 
-    # First merge attempt triggers deactivate + specificity check.
-    # Specificity is too low, so the merge is reverted.
+    # First merge attempt triggers specificity check — too low, no merge.
     assert merge_count == 1
-    # All original chunks still active + new one saved.
+    # All original chunks still active + incoming leaf activated.
     assert store.count() == 11
     assert store.count(active_only=False) == 11
 
@@ -178,12 +177,22 @@ def test_save_records_sources_on_merge(store: MemoryStore) -> None:
     ):
         new_id = save_memory(store, "new", "abs", "sum", min_specificity=0.0)
 
-    # source_a=None (new input), source_b=absorbed chunk.
+    # source_a=incoming leaf, source_b=absorbed chunk.
     row = store.conn.execute(
         "SELECT source_a, source_b FROM chunks WHERE id = ?", (new_id,)
     ).fetchone()
-    assert row[0] is None
+    incoming_id = row[0]
+    assert incoming_id is not None
     assert row[1] == old_id
+
+    # Incoming leaf is preserved as disabled original.
+    leaf = store.conn.execute(
+        "SELECT source_a, source_b, active FROM chunks WHERE id = ?",
+        (incoming_id,),
+    ).fetchone()
+    assert leaf[0] is None
+    assert leaf[1] is None
+    assert leaf[2] == 0
 
 
 def test_save_records_tree_on_cascade(store: MemoryStore) -> None:
@@ -198,24 +207,34 @@ def test_save_records_tree_on_cascade(store: MemoryStore) -> None:
     ):
         final_id = save_memory(store, "new", "abs", "sum", min_specificity=0.0)
 
-    # Final node points to intermediate + one absorbed chunk.
+    # Final node points to first merge + one absorbed chunk.
     final = store.conn.execute(
         "SELECT source_a, source_b FROM chunks WHERE id = ?", (final_id,)
     ).fetchone()
-    intermediate_id = final[0]
+    first_merge_id = final[0]
     absorbed_second = final[1]
-    assert intermediate_id is not None
+    assert first_merge_id is not None
     assert absorbed_second in (id_a, id_b)
 
-    # Intermediate node: source_a=None (new input), source_b=other absorbed chunk.
-    inter = store.conn.execute(
+    # First merge node: source_a=incoming leaf, source_b=other absorbed chunk.
+    merge1 = store.conn.execute(
         "SELECT source_a, source_b, active FROM chunks WHERE id = ?",
-        (intermediate_id,),
+        (first_merge_id,),
     ).fetchone()
-    assert inter[0] is None
-    assert inter[1] in (id_a, id_b)
-    assert inter[1] != absorbed_second
-    assert inter[2] == 0  # Intermediate is disabled.
+    incoming_id = merge1[0]
+    assert incoming_id is not None
+    assert merge1[1] in (id_a, id_b)
+    assert merge1[1] != absorbed_second
+    assert merge1[2] == 0  # Intermediate is disabled.
+
+    # Incoming leaf at the bottom of the tree.
+    leaf = store.conn.execute(
+        "SELECT source_a, source_b, active FROM chunks WHERE id = ?",
+        (incoming_id,),
+    ).fetchone()
+    assert leaf[0] is None
+    assert leaf[1] is None
+    assert leaf[2] == 0
 
 
 def test_save_no_sources_without_merge(store: MemoryStore) -> None:

@@ -37,6 +37,11 @@ def main() -> None:
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Show full chunk text."
     )
+    parser.add_argument(
+        "--original",
+        action="store_true",
+        help="Search original (unmerged) chunks instead of merged ones.",
+    )
     args = parser.parse_args()
 
     db_path = Path(args.db)
@@ -46,7 +51,9 @@ def main() -> None:
 
     store = MemoryStore(db_path=db_path)
     try:
-        results = store.search(args.query, top_k=args.top_k)
+        results = store.search(
+            args.query, top_k=args.top_k, original_only=args.original
+        )
         if not results:
             print("No results found.")
             return

@@ -126,14 +126,25 @@ class MemoryStore:
             self.save(summary, embeddings[i]) for i, summary in enumerate(summaries)
         ]
 
-    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        """Find the most relevant chunks by cosine similarity to the query."""
+    def search(
+        self, query: str, top_k: int = 5, original_only: bool = False
+    ) -> list[SearchResult]:
+        """Find the most relevant chunks by cosine similarity to the query.
+
+        When *original_only* is True, search only leaf chunks (those not
+        produced by merging) regardless of active status.  Otherwise search
+        active chunks only (merged results + unmerged originals).
+        """
         query_emb: Embedding = get_embeddings([query])[0]
+
+        if original_only:
+            where = "WHERE source_a IS NULL AND source_b IS NULL"
+        else:
+            where = "WHERE active = 1"
 
         rows = self.conn.execute(
             "SELECT id, text, abstract, summary, time_range, embedding, "
-            "source_a, source_b "
-            "FROM chunks WHERE active = 1"
+            f"source_a, source_b FROM chunks {where}"
         ).fetchall()
 
         if not rows:
