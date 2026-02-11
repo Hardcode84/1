@@ -59,6 +59,7 @@ def should_merge(
         stream=False,
         temperature=0.0,
         seed=42,
+        cache_messages=False,
     )
     answer = (resp.get("content") or "").strip().lower()
     return answer.startswith("yes")
@@ -135,6 +136,7 @@ def merge_texts(
         stream=False,
         temperature=0.0,
         seed=42,
+        cache_messages=False,
     )
     merged_text = (merge_resp.get("content") or "").strip()
 
@@ -148,6 +150,7 @@ def merge_texts(
         stream=False,
         temperature=0.0,
         seed=42,
+        cache_messages=False,
     )
     raw = (summary_resp.get("content") or "").strip()
 

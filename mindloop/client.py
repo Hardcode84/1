@@ -27,11 +27,49 @@ def _default_on_token(token: str) -> None:
 
 
 _ANTHROPIC_PREFIXES = ("anthropic/", "claude")
+_CACHE_CONTROL = {"type": "ephemeral"}
 
 
 def _needs_cache_control(model: str) -> bool:
     """Check if the model requires explicit cache_control breakpoints."""
     return model.startswith(_ANTHROPIC_PREFIXES)
+
+
+def _to_multipart(content: Any) -> list[dict[str, Any]]:
+    """Ensure message content is in multipart (list-of-blocks) format."""
+    if isinstance(content, list):
+        return content
+    return [{"type": "text", "text": str(content)}]
+
+
+def _apply_cache_control(
+    payload: dict[str, Any], *, cache_messages: bool = True
+) -> None:
+    """Inject Anthropic cache_control breakpoints into a payload.
+
+    Adds up to 3 breakpoints (of 4 allowed):
+      1. Last tool definition — caches all tool schemas.
+      2. System message — caches the system prompt.
+      3. Last message — caches the conversation history prefix
+         (only when *cache_messages* is True).
+    """
+    # 1. Last tool definition.
+    tools = payload.get("tools")
+    if tools:
+        tools[-1]["cache_control"] = _CACHE_CONTROL
+
+    # 2. System message (first message if role=system).
+    msgs = payload.get("messages", [])
+    if msgs and msgs[0].get("role") == "system":
+        msgs[0]["content"] = _to_multipart(msgs[0]["content"])
+        msgs[0]["content"][-1]["cache_control"] = _CACHE_CONTROL
+
+    # 3. Last message — caches the entire conversation prefix.
+    if cache_messages and len(msgs) > 1:
+        last = dict(msgs[-1])  # Copy to avoid mutating caller's data.
+        last["content"] = _to_multipart(last["content"])
+        last["content"][-1]["cache_control"] = _CACHE_CONTROL
+        msgs[-1] = last
 
 
 def chat(
@@ -45,40 +83,28 @@ def chat(
     temperature: float | None = None,
     seed: int | None = None,
     reasoning_effort: str | None = None,
+    cache_messages: bool = True,
 ) -> Message:
     """Send a chat completion request. Returns the full response message dict."""
     full_messages = list(messages)
     if system_prompt is not None:
-        if _needs_cache_control(model):
-            # Multipart format with cache_control for Anthropic prompt caching.
-            full_messages.insert(
-                0,
-                {
-                    "role": "system",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": system_prompt,
-                            "cache_control": {"type": "ephemeral"},
-                        }
-                    ],
-                },
-            )
-        else:
-            full_messages.insert(0, {"role": "system", "content": system_prompt})
+        full_messages.insert(0, {"role": "system", "content": system_prompt})
 
     payload: dict[str, Any] = {
         "model": model,
         "messages": full_messages,
     }
     if tools:
-        payload["tools"] = tools
+        payload["tools"] = [dict(t) for t in tools]  # Shallow copy to avoid mutation.
     if temperature is not None:
         payload["temperature"] = temperature
     if seed is not None:
         payload["seed"] = seed
     if reasoning_effort is not None:
         payload["reasoning"] = {"enabled": True, "effort": reasoning_effort}
+
+    if _needs_cache_control(model):
+        _apply_cache_control(payload, cache_messages=cache_messages)
 
     if not stream:
         response = requests.post(

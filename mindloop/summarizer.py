@@ -33,6 +33,7 @@ def summarize_chunk(chunk: Chunk, model: str | None = None) -> ChunkSummary:
         stream=False,
         temperature=0,
         seed=42,
+        cache_messages=False,
     )
     raw = msg.get("content", "")
 
