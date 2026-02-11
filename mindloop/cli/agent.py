@@ -104,6 +104,11 @@ def main() -> None:
         default=_DEFAULT_MODEL,
         help=f"Model to use (default: {_DEFAULT_MODEL}).",
     )
+    parser.add_argument(
+        "--isolated",
+        action="store_true",
+        help="Run with fresh memory and no access to logs/artifacts/memory.",
+    )
     args = parser.parse_args()
 
     if not API_KEY:
@@ -111,19 +116,29 @@ def main() -> None:
         print("Get a free key at https://openrouter.ai/keys")
         return
 
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    model: str = args.model
+    isolated: bool = args.isolated
+
+    blocked_dirs: list[Path] | None = None
+    if isolated:
+        session_dir = Path("memory") / f"isolated_{timestamp}"
+        session_dir.mkdir(parents=True, exist_ok=True)
+        log_dir = session_dir
+        db_path = session_dir / "memory.db"
+        blocked_dirs = [Path("logs"), Path("artifacts"), Path("memory")]
+    else:
+        log_dir = Path("logs")
+        log_dir.mkdir(exist_ok=True)
+        mem_dir = Path("memory")
+        mem_dir.mkdir(exist_ok=True)
+        db_path = mem_dir / "memory.db"
+
     jsonl_path = log_dir / f"agent_{timestamp}.jsonl"
     log_path = log_dir / f"agent_{timestamp}.log"
-    model: str = args.model
 
     system_prompt = _PROMPT_PATH.read_text().strip()
-
-    mem_dir = Path("memory")
-    mem_dir.mkdir(exist_ok=True)
-    db_path = mem_dir / "memory.db"
-    registry = create_default_registry()
+    registry = create_default_registry(blocked_dirs=blocked_dirs)
     mt = add_memory_tools(registry, db_path=db_path, model=model)
 
     print(f"Starting agent... (logging to {log_path}, memory: {db_path})\n")

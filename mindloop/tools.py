@@ -49,9 +49,10 @@ class ToolDef:
 
 
 class ToolRegistry:
-    def __init__(self) -> None:
+    def __init__(self, blocked_dirs: list[Path] | None = None) -> None:
         self._tools: dict[str, ToolDef] = {}
         self.stats: dict[Any, Any] = {}
+        self.blocked_dirs: list[Path] = [d.resolve() for d in (blocked_dirs or [])]
 
     def add(
         self,
@@ -90,11 +91,14 @@ class ToolError(Exception):
     """Raised when a tool encounters an expected error."""
 
 
-def _sanitize_path(path: str) -> Path:
+def _sanitize_path(path: str, blocked_dirs: list[Path] | None = None) -> Path:
     """Resolve path and verify it stays within the working directory."""
     resolved = (_work_dir / path).resolve()
     if not str(resolved).startswith(str(_work_dir)):
         raise ToolError(f"{path} is outside the working directory.")
+    for blocked in blocked_dirs or ():
+        if resolved == blocked or str(resolved).startswith(str(blocked) + "/"):
+            raise ToolError(f"Access denied: {path}")
     return resolved
 
 
@@ -109,7 +113,7 @@ def _track_file(reg: "ToolRegistry", tool: str, path: str) -> None:
 def _ls(reg: "ToolRegistry", path: str) -> str:
     """List directory contents."""
     _track_file(reg, "ls", path)
-    p = _sanitize_path(path)
+    p = _sanitize_path(path, reg.blocked_dirs)
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
     if not p.is_dir():
@@ -149,7 +153,7 @@ def _edit(
 ) -> str:
     """Replace exact string occurrences in a file."""
     _track_file(reg, "edit", path)
-    p = _sanitize_path(path)
+    p = _sanitize_path(path, reg.blocked_dirs)
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
     if not p.is_file():
@@ -180,7 +184,7 @@ def _write(
 ) -> str:
     """Create or overwrite a file with the given content."""
     _track_file(reg, "write", path)
-    p = _sanitize_path(path)
+    p = _sanitize_path(path, reg.blocked_dirs)
     if p.exists() and not p.is_file():
         raise ToolError(f"{path} is not a file.")
     if p.exists() and not overwrite:
@@ -200,7 +204,7 @@ def _read(
 ) -> str:
     """Read file contents with optional line offset, limit, and line truncation."""
     _track_file(reg, "read", path)
-    p = _sanitize_path(path)
+    p = _sanitize_path(path, reg.blocked_dirs)
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
     if not p.is_file():
@@ -224,9 +228,11 @@ def _read(
 # --- Default registry factory ---
 
 
-def create_default_registry() -> ToolRegistry:
+def create_default_registry(
+    blocked_dirs: list[Path] | None = None,
+) -> ToolRegistry:
     """Create a fresh registry populated with the built-in tools."""
-    reg = ToolRegistry()
+    reg = ToolRegistry(blocked_dirs=blocked_dirs)
     reg.add(
         name="ls",
         description="List files and directories. Paths are relative to the working directory.",

@@ -439,3 +439,27 @@ def test_execute_catches_invalid_json() -> None:
     )
     result = registry.execute("echo", "not valid json")
     assert "Error:" in result
+
+
+def test_blocked_dirs_prevents_read(tmp_path: Path) -> None:
+    """File tools reject paths inside blocked directories."""
+    secret = tmp_path / "secrets"
+    secret.mkdir()
+    (secret / "key.txt").write_text("top secret")
+
+    reg = create_default_registry(blocked_dirs=[secret])
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = reg.execute("read", '{"path": "secrets/key.txt"}')
+    assert "Access denied" in result
+
+
+def test_blocked_dirs_allows_other_paths(tmp_path: Path) -> None:
+    """File tools allow paths outside blocked directories."""
+    (tmp_path / "ok.txt").write_text("visible")
+    secret = tmp_path / "secrets"
+    secret.mkdir()
+
+    reg = create_default_registry(blocked_dirs=[secret])
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = reg.execute("read", '{"path": "ok.txt"}')
+    assert "visible" in result
