@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from mindloop.merge_llm import should_merge
+from mindloop.merge_llm import merge_texts, should_merge
 
 
 def test_high_similarity_skips_llm() -> None:
@@ -52,3 +52,61 @@ def test_custom_thresholds() -> None:
         # Below custom low — no LLM call.
         assert should_merge("a", "b", cosine_sim=0.3, low=0.4) is False
         mock_chat.assert_not_called()
+
+
+# --- merge_texts ---
+
+
+def test_merge_texts_two_calls() -> None:
+    responses = [
+        {"content": "Merged content here."},
+        {"content": "ABSTRACT: A short summary.\nSUMMARY: A longer explanation."},
+    ]
+    with patch("mindloop.merge_llm.chat", side_effect=responses) as mock_chat:
+        result = merge_texts("chunk a", "chunk b")
+    assert mock_chat.call_count == 2
+    assert result.text == "Merged content here."
+    assert result.abstract == "A short summary."
+    assert result.summary == "A longer explanation."
+
+
+def test_merge_texts_second_call_has_conversation_context() -> None:
+    responses = [
+        {"content": "merged"},
+        {"content": "ABSTRACT: abs\nSUMMARY: sum"},
+    ]
+    with patch("mindloop.merge_llm.chat", side_effect=responses) as mock_chat:
+        merge_texts("a", "b")
+    # Second call should have 3 messages: user, assistant (merged), user (summarize).
+    second_call_messages = mock_chat.call_args_list[1][0][0]
+    assert len(second_call_messages) == 3
+    assert second_call_messages[1]["role"] == "assistant"
+    assert second_call_messages[1]["content"] == "merged"
+
+
+def test_merge_texts_prefer_a() -> None:
+    responses = [{"content": "merged"}, {"content": "ABSTRACT: a\nSUMMARY: s"}]
+    with patch("mindloop.merge_llm.chat", side_effect=responses) as mock_chat:
+        merge_texts("a", "b", prefer="a")
+    system = mock_chat.call_args_list[0][1]["system_prompt"]
+    assert "Chunk A is the primary source" in system
+
+
+def test_merge_texts_prefer_b() -> None:
+    responses = [{"content": "merged"}, {"content": "ABSTRACT: a\nSUMMARY: s"}]
+    with patch("mindloop.merge_llm.chat", side_effect=responses) as mock_chat:
+        merge_texts("a", "b", prefer="b")
+    system = mock_chat.call_args_list[0][1]["system_prompt"]
+    assert "Chunk B is the primary source" in system
+
+
+def test_merge_texts_unparseable_summary() -> None:
+    responses = [
+        {"content": "merged text"},
+        {"content": "The model did something unexpected."},
+    ]
+    with patch("mindloop.merge_llm.chat", side_effect=responses):
+        result = merge_texts("a", "b")
+    assert result.text == "merged text"
+    assert result.abstract == ""
+    assert result.summary == ""
