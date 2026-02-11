@@ -184,7 +184,12 @@ def run_agent(
             name = call["function"]["name"]
             arguments = call["function"]["arguments"]
             on_step(f"[tool] {name}({arguments})")
-            # Sanitize malformed JSON so it doesn't poison future API calls.
+            # Treat empty arguments as {} (models often omit args for no-param tools).
+            if not arguments or not arguments.strip():
+                arguments = "{}"
+                call["function"]["arguments"] = arguments
+
+            # Reject truly malformed JSON so the model learns its mistake.
             try:
                 json.loads(arguments)
             except (json.JSONDecodeError, TypeError):

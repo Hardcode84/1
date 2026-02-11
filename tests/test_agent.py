@@ -171,6 +171,24 @@ def test_malformed_tool_call_arguments(mock_chat: MagicMock) -> None:
 
 
 @patch("mindloop.agent.chat")
+def test_empty_arguments_treated_as_empty_object(mock_chat: MagicMock) -> None:
+    """Empty string arguments are normalised to {} and the tool executes."""
+    mock_chat.side_effect = [
+        _make_tool_response([_make_tool_call("c1", "echo", "")]),
+        _make_done_response("c2", "ok"),
+    ]
+    run_agent("prompt", registry=_echo_registry())
+
+    second_call_messages = mock_chat.call_args_list[1][0][0]
+    assistant_msg = second_call_messages[0]
+    assert assistant_msg["tool_calls"][0]["function"]["arguments"] == "{}"
+
+    # Tool was called (not rejected as malformed).
+    tool_msg = [m for m in second_call_messages if m["role"] == "tool"][0]
+    assert "malformed" not in tool_msg["content"]
+
+
+@patch("mindloop.agent.chat")
 def test_ask_tool_returns_user_response(mock_chat: MagicMock) -> None:
     """Ask tool passes message to callback and returns user's response."""
     mock_chat.side_effect = [
