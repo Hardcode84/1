@@ -58,7 +58,22 @@ mindloop-build "docs/**/*.md"
 mindloop-build "logs/*.jsonl" --db knowledge.db --model deepseek/deepseek-v3.2
 ```
 
-Processes each file through the full pipeline: parse, chunk, summarize, and save into the semantic database with automatic merge.
+Processes each file through the full pipeline: parse, chunk, summarize, and save into the semantic database with automatic merge. Use `-v` for verbose output showing each stage.
+
+### Query semantic database
+
+```bash
+# Search for relevant memories.
+mindloop-query "how does chunking work"
+
+# Top 3 results from a custom database.
+mindloop-query "merge algorithm" --db knowledge.db -k 3
+
+# Show full chunk text.
+mindloop-query "embeddings" -v
+```
+
+Returns ranked results with cosine similarity scores, abstracts, summaries, and merge lineage.
 
 ### Tests
 
