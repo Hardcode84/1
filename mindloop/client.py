@@ -26,6 +26,14 @@ def _default_on_token(token: str) -> None:
     print(token, end="", flush=True)
 
 
+_ANTHROPIC_PREFIXES = ("anthropic/", "claude")
+
+
+def _needs_cache_control(model: str) -> bool:
+    """Check if the model requires explicit cache_control breakpoints."""
+    return model.startswith(_ANTHROPIC_PREFIXES)
+
+
 def chat(
     messages: list[Message],
     model: str = DEFAULT_MODEL,
@@ -41,7 +49,23 @@ def chat(
     """Send a chat completion request. Returns the full response message dict."""
     full_messages = list(messages)
     if system_prompt is not None:
-        full_messages.insert(0, {"role": "system", "content": system_prompt})
+        if _needs_cache_control(model):
+            # Multipart format with cache_control for Anthropic prompt caching.
+            full_messages.insert(
+                0,
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": system_prompt,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                },
+            )
+        else:
+            full_messages.insert(0, {"role": "system", "content": system_prompt})
 
     payload: dict[str, Any] = {
         "model": model,
