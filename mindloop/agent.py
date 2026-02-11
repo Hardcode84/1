@@ -8,9 +8,7 @@ from mindloop.client import Message, chat
 from mindloop.tools import Param, ToolRegistry, create_default_registry
 
 DEFAULT_MAX_ITERATIONS = 1000
-_USER_UNAVAILABLE = (
-    "User is unavailable. Continue autonomously using the tools provided."
-)
+_USER_UNAVAILABLE = "Continue autonomously. Use the ask tool if you need user input."
 
 
 def _noop(_msg: str) -> None:
