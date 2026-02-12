@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -20,6 +21,33 @@ Tool = dict[str, Any]
 Embedding = np.ndarray
 # 2D embedding matrix, shape (n, dim), dtype float32.
 Embeddings = np.ndarray
+
+
+_TRANSIENT_ERRORS = (
+    requests.exceptions.ChunkedEncodingError,
+    requests.exceptions.ConnectionError,
+)
+_MAX_RETRIES = 3
+_RETRY_BACKOFF = 2.0
+
+
+def _with_retry(
+    func: Callable[..., Any],
+    on_token: Callable[[str], None],
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Call *func* with retries on transient network errors."""
+    for attempt in range(_MAX_RETRIES):
+        try:
+            return func(*args, **kwargs)
+        except _TRANSIENT_ERRORS:
+            if attempt == _MAX_RETRIES - 1:
+                raise
+            wait = _RETRY_BACKOFF * (attempt + 1)
+            on_token(f"\n[connection error, retrying in {wait:.0f}s...]")
+            time.sleep(wait)
+    return None  # Unreachable, satisfies type checker.
 
 
 def _default_on_token(token: str) -> None:
@@ -72,55 +100,12 @@ def _apply_cache_control(
         msgs[-1] = last
 
 
-def chat(
-    messages: list[Message],
-    model: str = DEFAULT_MODEL,
-    system_prompt: str | None = None,
-    tools: list[Tool] | None = None,
-    stream: bool = True,
-    on_token: Callable[[str], None] = _default_on_token,
-    on_thinking: Callable[[str], None] | None = None,
-    temperature: float | None = None,
-    seed: int | None = None,
-    reasoning_effort: str | None = None,
-    cache_messages: bool = True,
+def _stream_request(
+    payload: dict[str, Any],
+    on_token: Callable[[str], None],
+    on_thinking: Callable[[str], None] | None,
 ) -> Message:
-    """Send a chat completion request. Returns the full response message dict."""
-    full_messages = list(messages)
-    if system_prompt is not None:
-        full_messages.insert(0, {"role": "system", "content": system_prompt})
-
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": full_messages,
-    }
-    if tools:
-        payload["tools"] = [dict(t) for t in tools]  # Shallow copy to avoid mutation.
-    if temperature is not None:
-        payload["temperature"] = temperature
-    if seed is not None:
-        payload["seed"] = seed
-    if reasoning_effort is not None:
-        payload["reasoning"] = {"enabled": True, "effort": reasoning_effort}
-
-    if _needs_cache_control(model):
-        _apply_cache_control(payload, cache_messages=cache_messages)
-
-    if not stream:
-        response = requests.post(
-            f"{BASE_URL}/chat/completions",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-            json=payload,
-        )
-        response.raise_for_status()
-        body = response.json()
-        msg: Message = body["choices"][0]["message"]
-        if "usage" in body:
-            msg["usage"] = body["usage"]
-        return msg
-
-    payload["stream"] = True
-    payload["stream_options"] = {"include_usage": True}
+    """Execute a streaming chat request and assemble the response."""
     response = requests.post(
         f"{BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {API_KEY}"},
@@ -187,6 +172,61 @@ def chat(
         ]
     if usage is not None:
         result["usage"] = usage
+    return result
+
+
+def chat(
+    messages: list[Message],
+    model: str = DEFAULT_MODEL,
+    system_prompt: str | None = None,
+    tools: list[Tool] | None = None,
+    stream: bool = True,
+    on_token: Callable[[str], None] = _default_on_token,
+    on_thinking: Callable[[str], None] | None = None,
+    temperature: float | None = None,
+    seed: int | None = None,
+    reasoning_effort: str | None = None,
+    cache_messages: bool = True,
+) -> Message:
+    """Send a chat completion request. Returns the full response message dict."""
+    full_messages = list(messages)
+    if system_prompt is not None:
+        full_messages.insert(0, {"role": "system", "content": system_prompt})
+
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": full_messages,
+    }
+    if tools:
+        payload["tools"] = [dict(t) for t in tools]  # Shallow copy to avoid mutation.
+    if temperature is not None:
+        payload["temperature"] = temperature
+    if seed is not None:
+        payload["seed"] = seed
+    if reasoning_effort is not None:
+        payload["reasoning"] = {"enabled": True, "effort": reasoning_effort}
+
+    if _needs_cache_control(model):
+        _apply_cache_control(payload, cache_messages=cache_messages)
+
+    if not stream:
+        response = requests.post(
+            f"{BASE_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            json=payload,
+        )
+        response.raise_for_status()
+        body = response.json()
+        msg: Message = body["choices"][0]["message"]
+        if "usage" in body:
+            msg["usage"] = body["usage"]
+        return msg
+
+    payload["stream"] = True
+    payload["stream_options"] = {"include_usage": True}
+    result: Message = _with_retry(
+        _stream_request, on_token, payload, on_token, on_thinking
+    )
     return result
 
 
