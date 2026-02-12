@@ -180,7 +180,7 @@ def run_agent(
             continue
 
         for call in tool_calls:
-            name = call["function"]["name"]
+            name = call["function"]["name"].strip()
             arguments = call["function"]["arguments"]
             on_step(f"[tool] {name}({arguments})")
             # Treat empty arguments as {} (models often omit args for no-param tools).

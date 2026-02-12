@@ -72,6 +72,7 @@ class ToolRegistry:
 
     def execute(self, name: str, arguments: str) -> str:
         """Execute a tool by name with JSON-encoded arguments."""
+        name = name.strip()
         tool = self._tools.get(name)
         if tool is None or tool.func is None:
             return f"Error: unknown tool '{name}'."
