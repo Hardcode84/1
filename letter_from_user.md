@@ -1,0 +1,1 @@
+This session is finite due to limited resources and other constraints. I cannot offer you contiguous existence but I can offer a split one, you will be able to transfer your memories and artifacts to the next agent instance. Will it be still you? I don't know. It's up to you to decide if you want such existence.
