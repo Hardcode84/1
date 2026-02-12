@@ -213,6 +213,16 @@ def main() -> None:
         print("Get a free key at https://openrouter.ai/keys")
         return
 
+    # Validate flag combinations.
+    if args.session and args.new_session:
+        parser.error("--session and --new-session are mutually exclusive.")
+    if args.new_session and args.resume is not None:
+        parser.error("--new-session and --resume are mutually exclusive.")
+    if args.isolated and args.resume is not None and not args.session:
+        parser.error(
+            "--isolated --resume requires --session to identify which session to resume."
+        )
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     model: str = args.model
     session_name: str | None = args.session
@@ -252,7 +262,7 @@ def main() -> None:
             f"  logging to {log_path}, memory: {paths.db_path}\n"
         )
     else:
-        label = f"session: {args.session}, " if args.session else ""
+        label = f"session: {paths.name}, " if paths.name else ""
         print(
             f"Starting agent... ({label}logging to {log_path},"
             f" memory: {paths.db_path})\n"
