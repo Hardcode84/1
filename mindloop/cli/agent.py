@@ -302,7 +302,11 @@ def main() -> None:
     print()
 
     if paths.name:
-        print(f"To resume: mindloop-agent --session {paths.name} --resume")
+        model_flag = f" --model {model}" if model != _DEFAULT_MODEL else ""
+        print(
+            f"To resume:    mindloop-agent --session {paths.name} --resume{model_flag}"
+        )
+        print(f"New instance: mindloop-agent --session {paths.name}{model_flag}")
 
 
 if __name__ == "__main__":
