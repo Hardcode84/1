@@ -77,6 +77,7 @@ def run_agent(
     on_ask: Callable[[str], str] = _no_ask,
     reasoning_effort: str = "high",
     initial_messages: list[Message] | None = None,
+    instance: int = 0,
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
     from mindloop.client import DEFAULT_MODEL
@@ -96,7 +97,10 @@ def run_agent(
 
     def _status() -> str:
         now = datetime.now().isoformat(timespec="seconds")
-        return f"time: {now}\ntokens used: {total_tokens} / {max_tokens}"
+        lines = [f"time: {now}", f"tokens used: {total_tokens} / {max_tokens}"]
+        if instance:
+            lines.append(f"instance: {instance}")
+        return "\n".join(lines)
 
     registry.add(
         name="status",

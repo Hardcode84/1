@@ -282,6 +282,11 @@ def main() -> None:
             f" memory: {paths.db_path})\n"
         )
 
+    # Log the final system prompt.
+    logger = _make_logger(jsonl_path, log_path)
+    logger({"role": "system", "content": system_prompt})
+    print(f"\033[2m[system] {system_prompt}\033[0m\n")
+
     # Session workspace is isolated; skip confirmation for file operations.
     confirm = _confirm_tool if paths.workspace is None else None
 
@@ -292,10 +297,11 @@ def main() -> None:
             on_step=_print_step,
             model=model,
             on_thinking=_print_thinking,
-            on_message=_make_logger(jsonl_path, log_path),
+            on_message=logger,
             on_confirm=confirm,
             on_ask=_ask_user,
             initial_messages=initial_messages,
+            instance=paths.instance,
         )
     except KeyboardInterrupt:
         print("\n\nInterrupted.")
