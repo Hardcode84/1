@@ -21,3 +21,4 @@ artifacts/
 
 *.db
 memory/
+sessions/

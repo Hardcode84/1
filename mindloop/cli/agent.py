@@ -4,6 +4,8 @@ import argparse
 import json
 import select
 import sys
+import uuid
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from collections.abc import Callable
@@ -119,6 +121,62 @@ def _load_messages(path: Path) -> list[dict[str, Any]]:
     return messages
 
 
+def _latest_jsonl(log_dir: Path) -> Path | None:
+    """Find the most recent JSONL file in a directory."""
+    files = sorted(log_dir.glob("agent_*.jsonl"))
+    return files[-1] if files else None
+
+
+# --- Session path setup ---
+
+_SESSIONS_DIR = Path("sessions")
+_ISOLATED_BLOCKED = [
+    Path("logs"),
+    Path("artifacts"),
+    Path("memory"),
+    _SESSIONS_DIR,
+]
+
+
+@dataclass
+class SessionPaths:
+    """Resolved paths for a single agent run."""
+
+    log_dir: Path
+    db_path: Path
+    name: str | None = None
+    workspace: Path | None = None
+    blocked_dirs: list[Path] = field(default_factory=list)
+
+
+def _setup_session(session: str | None, isolated: bool, timestamp: str) -> SessionPaths:
+    """Resolve log, memory, and workspace paths."""
+    if isolated and not session:
+        session = f"isolated_{timestamp}"
+
+    if session:
+        root = _SESSIONS_DIR / session
+        log_dir = root / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        workspace = root / "workspace"
+        workspace.mkdir(exist_ok=True)
+        blocked = list(_ISOLATED_BLOCKED) if isolated else []
+        return SessionPaths(
+            log_dir=log_dir,
+            db_path=root / "memory.db",
+            name=session,
+            workspace=workspace,
+            blocked_dirs=blocked,
+        )
+
+    # Default: shared logs + memory.
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    mem_dir = Path("memory")
+    mem_dir.mkdir(exist_ok=True)
+    return SessionPaths(log_dir=log_dir, db_path=mem_dir / "memory.db")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the autonomous agent.")
     parser.add_argument(
@@ -127,14 +185,26 @@ def main() -> None:
         help=f"Model to use (default: {_DEFAULT_MODEL}).",
     )
     parser.add_argument(
+        "--session",
+        metavar="NAME",
+        help="Run inside a named session (sessions/<NAME>/).",
+    )
+    parser.add_argument(
+        "--new-session",
+        action="store_true",
+        help="Create a new session with an auto-generated name.",
+    )
+    parser.add_argument(
         "--isolated",
         action="store_true",
-        help="Run with fresh memory and no access to logs/artifacts/memory.",
+        help="Run with fresh memory and no access to logs/artifacts/memory/sessions.",
     )
     parser.add_argument(
         "--resume",
+        nargs="?",
+        const=True,
         metavar="JSONL",
-        help="Resume from a previous session JSONL log file.",
+        help="Resume from a JSONL log. With --session, auto-finds the latest log.",
     )
     args = parser.parse_args()
 
@@ -145,42 +215,48 @@ def main() -> None:
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     model: str = args.model
-    isolated: bool = args.isolated
+    session_name: str | None = args.session
+    if args.new_session:
+        session_name = uuid.uuid4().hex[:8]
+        while (_SESSIONS_DIR / session_name).exists():
+            session_name = uuid.uuid4().hex[:8]
+    paths = _setup_session(session_name, args.isolated, timestamp)
 
-    blocked_dirs: list[Path] | None = None
-    if isolated:
-        session_dir = Path("memory") / f"isolated_{timestamp}"
-        session_dir.mkdir(parents=True, exist_ok=True)
-        log_dir = session_dir
-        db_path = session_dir / "memory.db"
-        blocked_dirs = [Path("logs"), Path("artifacts"), Path("memory")]
-    else:
-        log_dir = Path("logs")
-        log_dir.mkdir(exist_ok=True)
-        mem_dir = Path("memory")
-        mem_dir.mkdir(exist_ok=True)
-        db_path = mem_dir / "memory.db"
-
-    jsonl_path = log_dir / f"agent_{timestamp}.jsonl"
-    log_path = log_dir / f"agent_{timestamp}.log"
+    jsonl_path = paths.log_dir / f"agent_{timestamp}.jsonl"
+    log_path = paths.log_dir / f"agent_{timestamp}.log"
 
     system_prompt = _PROMPT_PATH.read_text().strip()
-    registry = create_default_registry(blocked_dirs=blocked_dirs)
-    mt = add_memory_tools(registry, db_path=db_path, model=model)
+    registry = create_default_registry(
+        blocked_dirs=paths.blocked_dirs or None,
+        root_dir=paths.workspace,
+    )
+    mt = add_memory_tools(registry, db_path=paths.db_path, model=model)
 
+    # Handle --resume: explicit path or auto-find latest in session.
     initial_messages: list[dict[str, Any]] | None = None
-    if args.resume:
-        resume_path = Path(args.resume)
+    if args.resume is not None:
+        if args.resume is True:
+            # Auto-find latest JSONL in session log dir.
+            resume_path = _latest_jsonl(paths.log_dir)
+            if resume_path is None:
+                print(f"No JSONL logs found in {paths.log_dir}")
+                return
+        else:
+            resume_path = Path(args.resume)
         if not resume_path.exists():
             print(f"Resume file not found: {resume_path}")
             return
         initial_messages = _load_messages(resume_path)
         print(
             f"Resuming from {resume_path} ({len(initial_messages)} messages)\n"
-            f"  logging to {log_path}, memory: {db_path}\n"
+            f"  logging to {log_path}, memory: {paths.db_path}\n"
         )
     else:
-        print(f"Starting agent... (logging to {log_path}, memory: {db_path})\n")
+        label = f"session: {args.session}, " if args.session else ""
+        print(
+            f"Starting agent... ({label}logging to {log_path},"
+            f" memory: {paths.db_path})\n"
+        )
 
     try:
         run_agent(
@@ -197,6 +273,9 @@ def main() -> None:
     finally:
         mt.close()
     print()
+
+    if paths.name:
+        print(f"To resume: mindloop-agent --session {paths.name} --resume")
 
 
 if __name__ == "__main__":

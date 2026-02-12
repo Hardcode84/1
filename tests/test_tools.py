@@ -447,9 +447,8 @@ def test_blocked_dirs_prevents_read(tmp_path: Path) -> None:
     secret.mkdir()
     (secret / "key.txt").write_text("top secret")
 
-    reg = create_default_registry(blocked_dirs=[secret])
-    with patch("mindloop.tools._work_dir", tmp_path):
-        result = reg.execute("read", '{"path": "secrets/key.txt"}')
+    reg = create_default_registry(blocked_dirs=[secret], root_dir=tmp_path)
+    result = reg.execute("read", '{"path": "secrets/key.txt"}')
     assert "Access denied" in result
 
 
@@ -459,7 +458,6 @@ def test_blocked_dirs_allows_other_paths(tmp_path: Path) -> None:
     secret = tmp_path / "secrets"
     secret.mkdir()
 
-    reg = create_default_registry(blocked_dirs=[secret])
-    with patch("mindloop.tools._work_dir", tmp_path):
-        result = reg.execute("read", '{"path": "ok.txt"}')
+    reg = create_default_registry(blocked_dirs=[secret], root_dir=tmp_path)
+    result = reg.execute("read", '{"path": "ok.txt"}')
     assert "visible" in result
