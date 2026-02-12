@@ -258,6 +258,9 @@ def main() -> None:
             f" memory: {paths.db_path})\n"
         )
 
+    # Session workspace is isolated; skip confirmation for file operations.
+    confirm = _confirm_tool if paths.workspace is None else None
+
     try:
         run_agent(
             system_prompt,
@@ -266,7 +269,7 @@ def main() -> None:
             model=model,
             on_thinking=_print_thinking,
             on_message=_make_logger(jsonl_path, log_path),
-            on_confirm=_confirm_tool,
+            on_confirm=confirm,
             on_ask=_ask_user,
             initial_messages=initial_messages,
         )

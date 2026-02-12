@@ -73,7 +73,7 @@ def run_agent(
     on_step: Callable[[str], None] = _noop,
     on_thinking: Callable[[str], None] | None = None,
     on_message: Callable[[Message], None] = _noop_message,
-    on_confirm: Callable[[str, str], bool] = _auto_confirm,
+    on_confirm: Callable[[str, str], bool] | None = None,
     on_ask: Callable[[str], str] = _no_ask,
     reasoning_effort: str = "high",
     initial_messages: list[Message] | None = None,
@@ -81,6 +81,8 @@ def run_agent(
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
     from mindloop.client import DEFAULT_MODEL
 
+    if on_confirm is None:
+        on_confirm = _auto_confirm
     if registry is None:
         registry = create_default_registry()
 
