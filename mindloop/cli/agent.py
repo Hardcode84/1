@@ -297,14 +297,15 @@ def main() -> None:
             on_ask=_ask_user,
             initial_messages=initial_messages,
         )
+    except KeyboardInterrupt:
+        print("\n\nInterrupted.")
     finally:
         mt.close()
-    print()
 
     if paths.name:
         model_flag = f" --model {model}" if model != _DEFAULT_MODEL else ""
         print(
-            f"To resume:    mindloop-agent --session {paths.name} --resume{model_flag}"
+            f"\nTo resume:    mindloop-agent --session {paths.name} --resume{model_flag}"
         )
         print(f"New instance: mindloop-agent --session {paths.name}{model_flag}")
 
