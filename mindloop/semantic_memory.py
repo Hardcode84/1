@@ -61,11 +61,14 @@ def save_memory(
                 )
                 new_embedding = get_embeddings([mr.text])[0]
 
+                # Deactivate before specificity check so the absorbed chunk
+                # doesn't inflate the neighbor count against the merged result.
+                store.deactivate([result.id])
+
                 # Check if the merge would make the chunk too generic.
                 if store.specificity(new_embedding) < min_specificity:
+                    store.activate([result.id])
                     break
-
-                store.deactivate([result.id])
 
                 # Save merge node (disabled) to preserve the full tree.
                 chunk = Chunk(

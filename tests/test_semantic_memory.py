@@ -274,3 +274,31 @@ def test_save_deduplicates_exact_text(store: MemoryStore) -> None:
 
     assert first_id == second_id
     assert store.count() == 1
+
+
+def test_specificity_excludes_absorbed_chunk(store: MemoryStore) -> None:
+    """Specificity check does not count the absorbed chunk as a neighbor.
+
+    With 4 chunks (3 similar, 1 dissimilar) and min_specificity=0.3:
+    - Old (absorbed counted): 3/4 neighbors → specificity 0.25 → blocked.
+    - New (absorbed excluded): 2/3 neighbors → specificity 0.33 → passes.
+    """
+    _emb_sim = np.array([1.0, 0.0], dtype=np.float32)
+    _emb_diff = np.array([0.0, 1.0], dtype=np.float32)
+
+    # 3 similar + 1 dissimilar active chunks.
+    store.save(_summary("similar A"), _emb_sim)
+    store.save(_summary("similar B"), _emb_sim)
+    store.save(_summary("similar C"), _emb_sim)
+    store.save(_summary("different"), _emb_diff)
+
+    mr = MergeResult(text="merged similar", abstract="abs", summary="sum")
+    with (
+        _patch_embeddings(_emb_sim),
+        patch("mindloop.semantic_memory.should_merge", return_value=True),
+        patch("mindloop.semantic_memory.merge_texts", return_value=mr),
+    ):
+        save_memory(store, "new similar", "abs", "sum", min_specificity=0.3)
+
+    # Merge should have happened (not blocked by specificity).
+    assert store.count() < 5
