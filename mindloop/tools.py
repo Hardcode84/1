@@ -132,8 +132,8 @@ def _ls(reg: "ToolRegistry", path: str) -> str:
 
 
 _BINARY_CHECK_SIZE = 8192
-_MAX_LINES = 100
-_MAX_LINE_LENGTH = 200
+_MAX_LINES = 50
+_MAX_LINE_LENGTH = 100
 
 
 def _is_binary(p: Path) -> bool:

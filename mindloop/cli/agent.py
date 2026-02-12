@@ -66,7 +66,7 @@ def _confirm_tool(name: str, arguments: str) -> bool:
     return reply in ("y", "yes")
 
 
-_ASK_TIMEOUT = 60
+_ASK_TIMEOUT = 120
 
 
 def _ask_user(message: str) -> str:
