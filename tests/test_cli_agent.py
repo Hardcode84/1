@@ -133,6 +133,45 @@ def test_setup_default_paths(tmp_path: Path) -> None:
     assert not paths.blocked_dirs
 
 
+def test_setup_session_copies_template(tmp_path: Path) -> None:
+    """Template files are copied into a fresh workspace."""
+    tpl = tmp_path / "tpl"
+    tpl.mkdir()
+    (tpl / "hello.txt").write_text("hi")
+    (tpl / "sub").mkdir()
+    (tpl / "sub" / "nested.txt").write_text("deep")
+
+    with (
+        patch("mindloop.cli.agent._SESSIONS_DIR", tmp_path / "sessions"),
+        patch("mindloop.cli.agent._TEMPLATE_DIR", tpl),
+    ):
+        paths = _setup_session("tpl_run", isolated=False, timestamp="20260212_000000")
+
+    assert paths.workspace is not None
+    assert (paths.workspace / "hello.txt").read_text() == "hi"
+    assert (paths.workspace / "sub" / "nested.txt").read_text() == "deep"
+
+
+def test_setup_session_skips_template_on_existing(tmp_path: Path) -> None:
+    """Template is not re-copied when workspace already exists."""
+    tpl = tmp_path / "tpl"
+    tpl.mkdir()
+    (tpl / "hello.txt").write_text("hi")
+
+    sessions = tmp_path / "sessions"
+    ws = sessions / "existing" / "workspace"
+    ws.mkdir(parents=True)
+
+    with (
+        patch("mindloop.cli.agent._SESSIONS_DIR", sessions),
+        patch("mindloop.cli.agent._TEMPLATE_DIR", tpl),
+    ):
+        paths = _setup_session("existing", isolated=False, timestamp="20260212_000000")
+
+    assert paths.workspace is not None
+    assert not (paths.workspace / "hello.txt").exists()
+
+
 def test_latest_jsonl(tmp_path: Path) -> None:
     """Finds the most recent JSONL file by sorted name."""
     (tmp_path / "agent_20260211_100000.jsonl").write_text("{}\n")

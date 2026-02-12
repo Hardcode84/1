@@ -3,6 +3,7 @@
 import argparse
 import json
 import select
+import shutil
 import sys
 import uuid
 from dataclasses import dataclass, field
@@ -130,6 +131,7 @@ def _latest_jsonl(log_dir: Path) -> Path | None:
 # --- Session path setup ---
 
 _SESSIONS_DIR = Path("sessions")
+_TEMPLATE_DIR = Path("workspace_template")
 _ISOLATED_BLOCKED = [
     Path("logs"),
     Path("artifacts"),
@@ -159,7 +161,10 @@ def _setup_session(session: str | None, isolated: bool, timestamp: str) -> Sessi
         log_dir = root / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         workspace = root / "workspace"
+        fresh = not workspace.exists()
         workspace.mkdir(exist_ok=True)
+        if fresh and _TEMPLATE_DIR.is_dir():
+            shutil.copytree(_TEMPLATE_DIR, workspace, dirs_exist_ok=True)
         blocked = list(_ISOLATED_BLOCKED) if isolated else []
         return SessionPaths(
             log_dir=log_dir,
