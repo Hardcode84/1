@@ -124,7 +124,7 @@ def _load_messages(path: Path) -> list[dict[str, Any]]:
 
 def _latest_jsonl(log_dir: Path) -> Path | None:
     """Find the most recent JSONL file in a directory."""
-    files = sorted(log_dir.glob("agent_*.jsonl"))
+    files = sorted(log_dir.glob("*_agent_*.jsonl"))
     return files[-1] if files else None
 
 
@@ -147,6 +147,7 @@ class SessionPaths:
     log_dir: Path
     db_path: Path
     name: str | None = None
+    instance: int = 0
     workspace: Path | None = None
     blocked_dirs: list[Path] = field(default_factory=list)
 
@@ -165,11 +166,13 @@ def _setup_session(session: str | None, isolated: bool, timestamp: str) -> Sessi
         workspace.mkdir(exist_ok=True)
         if fresh and _TEMPLATE_DIR.is_dir():
             shutil.copytree(_TEMPLATE_DIR, workspace, dirs_exist_ok=True)
+        instance = len(list(log_dir.glob("*_agent_*.jsonl"))) + 1
         blocked = list(_ISOLATED_BLOCKED) if isolated else []
         return SessionPaths(
             log_dir=log_dir,
             db_path=root / "memory.db",
             name=session,
+            instance=instance,
             workspace=workspace,
             blocked_dirs=blocked,
         )
@@ -237,10 +240,16 @@ def main() -> None:
             session_name = uuid.uuid4().hex[:8]
     paths = _setup_session(session_name, args.isolated, timestamp)
 
-    jsonl_path = paths.log_dir / f"agent_{timestamp}.jsonl"
-    log_path = paths.log_dir / f"agent_{timestamp}.log"
+    if paths.instance:
+        log_prefix = f"{paths.instance:03d}_agent_{timestamp}"
+    else:
+        log_prefix = f"agent_{timestamp}"
+    jsonl_path = paths.log_dir / f"{log_prefix}.jsonl"
+    log_path = paths.log_dir / f"{log_prefix}.log"
 
     system_prompt = _PROMPT_PATH.read_text().strip()
+    if paths.instance:
+        system_prompt += f"\n\nYou are instance {paths.instance}."
     registry = create_default_registry(
         blocked_dirs=paths.blocked_dirs or None,
         root_dir=paths.workspace,

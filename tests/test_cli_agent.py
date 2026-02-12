@@ -172,15 +172,29 @@ def test_setup_session_skips_template_on_existing(tmp_path: Path) -> None:
     assert not (paths.workspace / "hello.txt").exists()
 
 
+def test_setup_session_instance_counter(tmp_path: Path) -> None:
+    """Instance number increments with each run in a session."""
+    sessions = tmp_path / "sessions"
+    with patch("mindloop.cli.agent._SESSIONS_DIR", sessions):
+        p1 = _setup_session("run", isolated=False, timestamp="20260212_100000")
+    assert p1.instance == 1
+
+    # Simulate a log file from the first run.
+    (p1.log_dir / "001_agent_20260212_100000.jsonl").write_text("{}\n")
+
+    with patch("mindloop.cli.agent._SESSIONS_DIR", sessions):
+        p2 = _setup_session("run", isolated=False, timestamp="20260212_110000")
+    assert p2.instance == 2
+
+
 def test_latest_jsonl(tmp_path: Path) -> None:
     """Finds the most recent JSONL file by sorted name."""
-    (tmp_path / "agent_20260211_100000.jsonl").write_text("{}\n")
-    (tmp_path / "agent_20260212_100000.jsonl").write_text("{}\n")
-    (tmp_path / "agent_20260210_100000.jsonl").write_text("{}\n")
+    (tmp_path / "001_agent_20260211_100000.jsonl").write_text("{}\n")
+    (tmp_path / "002_agent_20260212_100000.jsonl").write_text("{}\n")
 
     latest = _latest_jsonl(tmp_path)
     assert latest is not None
-    assert latest.name == "agent_20260212_100000.jsonl"
+    assert latest.name == "002_agent_20260212_100000.jsonl"
 
 
 def test_latest_jsonl_empty(tmp_path: Path) -> None:
