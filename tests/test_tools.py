@@ -129,9 +129,9 @@ def test_read_large_file_truncated(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
         result = create_default_registry().execute("read", '{"path": "big.txt"}')
     assert "line 0" in result
-    assert "line 99" in result
-    assert "line 100" not in result
-    assert "150 lines remaining" in result
+    assert "line 49" in result
+    assert "line 50" not in result
+    assert "200 lines remaining" in result
 
 
 def test_read_with_offset(tmp_path: Path) -> None:
@@ -202,12 +202,12 @@ def test_read_with_offset_and_limit(tmp_path: Path) -> None:
 
 
 def test_read_long_lines_truncated(tmp_path: Path) -> None:
-    # 500 chars + \n = 501 char line, truncated at 200 -> 301 chars truncated.
+    # 500 chars + \n = 501 char line, truncated at 100 -> 401 chars truncated.
     (tmp_path / "wide.txt").write_text("x" * 500 + "\nshort\n")
     with patch("mindloop.tools._work_dir", tmp_path):
         result = create_default_registry().execute("read", '{"path": "wide.txt"}')
-    assert "x" * 200 in result
-    assert "x" * 201 not in result
+    assert "x" * 100 in result
+    assert "x" * 101 not in result
     assert "chars truncated" in result
     assert "short" in result
 
