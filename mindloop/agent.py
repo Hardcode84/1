@@ -76,6 +76,7 @@ def run_agent(
     on_confirm: Callable[[str, str], bool] = _auto_confirm,
     on_ask: Callable[[str], str] = _no_ask,
     reasoning_effort: str = "high",
+    initial_messages: list[Message] | None = None,
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
     from mindloop.client import DEFAULT_MODEL
@@ -83,7 +84,7 @@ def run_agent(
     if registry is None:
         registry = create_default_registry()
 
-    messages: list[Message] = []
+    messages: list[Message] = list(initial_messages) if initial_messages else []
     effective_model = model if model is not None else DEFAULT_MODEL
     total_tokens = 0
     warned_thresholds: set[float] = set()

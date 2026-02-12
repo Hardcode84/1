@@ -96,6 +96,28 @@ def _make_logger(jsonl_path: Path, log_path: Path) -> Callable[[dict[str, Any]],
 
 _DEFAULT_MODEL = "deepseek/deepseek-v3.2"
 
+# System messages injected by the agent loop that shouldn't be replayed.
+_SKIP_PREFIXES = ("[stop]", "[stats]", "Warning:")
+
+
+def _load_messages(path: Path) -> list[dict[str, Any]]:
+    """Load messages from a JSONL log, stripping metadata and agent-loop noise."""
+    messages: list[dict[str, Any]] = []
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        entry = json.loads(line)
+        # Strip log-only fields.
+        entry.pop("timestamp", None)
+        entry.pop("usage", None)
+        # Skip system messages injected by the agent loop.
+        if entry.get("role") == "system":
+            content = entry.get("content", "")
+            if any(content.startswith(p) for p in _SKIP_PREFIXES):
+                continue
+        messages.append(entry)
+    return messages
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the autonomous agent.")
@@ -108,6 +130,11 @@ def main() -> None:
         "--isolated",
         action="store_true",
         help="Run with fresh memory and no access to logs/artifacts/memory.",
+    )
+    parser.add_argument(
+        "--resume",
+        metavar="JSONL",
+        help="Resume from a previous session JSONL log file.",
     )
     args = parser.parse_args()
 
@@ -141,7 +168,20 @@ def main() -> None:
     registry = create_default_registry(blocked_dirs=blocked_dirs)
     mt = add_memory_tools(registry, db_path=db_path, model=model)
 
-    print(f"Starting agent... (logging to {log_path}, memory: {db_path})\n")
+    initial_messages: list[dict[str, Any]] | None = None
+    if args.resume:
+        resume_path = Path(args.resume)
+        if not resume_path.exists():
+            print(f"Resume file not found: {resume_path}")
+            return
+        initial_messages = _load_messages(resume_path)
+        print(
+            f"Resuming from {resume_path} ({len(initial_messages)} messages)\n"
+            f"  logging to {log_path}, memory: {db_path}\n"
+        )
+    else:
+        print(f"Starting agent... (logging to {log_path}, memory: {db_path})\n")
+
     try:
         run_agent(
             system_prompt,
@@ -152,6 +192,7 @@ def main() -> None:
             on_message=_make_logger(jsonl_path, log_path),
             on_confirm=_confirm_tool,
             on_ask=_ask_user,
+            initial_messages=initial_messages,
         )
     finally:
         mt.close()

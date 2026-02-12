@@ -330,3 +330,19 @@ def test_token_budget_estimated_when_no_usage(mock_chat: MagicMock) -> None:
     # First call: ~100 estimated (under 150). Second call: prompt grows, estimate
     # exceeds 150. Loop stops.
     assert mock_chat.call_count == 2
+
+
+@patch("mindloop.agent.chat")
+def test_initial_messages_seeded(mock_chat: MagicMock) -> None:
+    """Initial messages are included in the first chat call."""
+    mock_chat.side_effect = [
+        _make_done_response("c1", "resumed"),
+    ]
+    history = [
+        {"role": "assistant", "content": "previous response"},
+        {"role": "user", "content": "continue"},
+    ]
+    run_agent("prompt", registry=_echo_registry(), initial_messages=history)
+    first_call_messages = mock_chat.call_args_list[0][0][0]
+    assert first_call_messages[0] == history[0]
+    assert first_call_messages[1] == history[1]
