@@ -81,6 +81,17 @@ Tool calls as importance multiplier:
 - `read`, `ls`, `recall` = observational.
 - `action_weight = 1 + alpha * consequential_tool_count`.
 
+## Why not store recaps in semantic memory
+
+Recaps are kept as workspace files, not saved into semantic memory. Reasons:
+
+- **Specificity**. Recaps are broad summaries with many semantic neighbors. They'd score low on the specificity metric and risk being rejected by `save_memory` or diluting recall results.
+- **Merge pollution**. The `save_memory` merge loop could blend procedural state ("I was editing chunker.py") with declarative knowledge about chunker.py's architecture. Those are different kinds of knowledge.
+- **Staleness**. Procedural context ("in the middle of refactoring X") goes stale once X is done. Declarative memories don't have this problem.
+- **Redundancy**. The agent already calls `remember` during the session for anything it considers important. The recap mostly captures transient procedural state.
+
+If cross-session recall becomes valuable (recalling what happened N sessions ago, not just the previous one), revisit this. Possible approaches: store chunk summaries individually with a `[session N]` tag, or use `store.save()` directly with no merge loop.
+
 ## Resolved questions
 
 - **Token budget**: 1000 tokens default, configurable via `--budget`.
