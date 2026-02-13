@@ -29,7 +29,7 @@ _TRANSIENT_ERRORS = (
     requests.exceptions.ReadTimeout,
     requests.exceptions.ConnectTimeout,
 )
-_MAX_RETRIES = 3
+_MAX_RETRIES = 4
 _RETRY_BACKOFF = 2.0
 _REQUEST_TIMEOUT = 60
 
@@ -40,10 +40,14 @@ def _with_retry(
     *args: Any,
     **kwargs: Any,
 ) -> Any:
-    """Call *func* with retries on transient network errors."""
+    """Call *func* with retries on transient network errors and KeyboardInterrupt."""
     for attempt in range(_MAX_RETRIES):
         try:
             return func(*args, **kwargs)
+        except KeyboardInterrupt:
+            if attempt == _MAX_RETRIES - 1:
+                raise
+            on_error("\n[interrupted, retrying...]")
         except _TRANSIENT_ERRORS:
             if attempt == _MAX_RETRIES - 1:
                 raise

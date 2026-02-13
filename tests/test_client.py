@@ -322,4 +322,24 @@ def test_retry_exhausted_raises(mock_post: MagicMock, mock_sleep: MagicMock) -> 
         assert False, "Expected ReadTimeout"
     except requests.exceptions.ReadTimeout:
         pass
-    assert mock_post.call_count == 3
+    assert mock_post.call_count == 4
+
+
+@patch("mindloop.client.time.sleep")
+@patch("mindloop.client.requests.post")
+def test_keyboard_interrupt_retries(
+    mock_post: MagicMock, mock_sleep: MagicMock
+) -> None:
+    """KeyboardInterrupt during request retries without backoff."""
+    mock_post.side_effect = [
+        KeyboardInterrupt(),
+        _mock_streaming(["hello"]),
+    ]
+    result = chat(
+        [{"role": "user", "content": "hi"}],
+        stream=True,
+        on_token=lambda t: None,
+    )
+    assert result["content"] == "hello"
+    assert mock_post.call_count == 2
+    mock_sleep.assert_not_called()
