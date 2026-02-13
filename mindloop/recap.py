@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from mindloop.chunker import Turn, chunk_turns, compact_chunks
 from mindloop.summarizer import ChunkSummary, summarize_chunks
+
+
+def _noop(_msg: str) -> None:
+    pass
+
 
 # Tool call results that should be skipped entirely.
 _SKIP_TOOLS = {"status"}
@@ -123,17 +129,22 @@ def generate_recap(
     messages: list[dict[str, Any]],
     model: str | None = None,
     token_budget: int = 1000,
+    log: Callable[[str], None] = _noop,
 ) -> str:
     """Full recap pipeline: collapse, chunk, summarize, score, select."""
+    log(f"Collapsing {len(messages)} messages...")
     turns = collapse_messages(messages)
     if not turns:
         return ""
+    log(f"  {len(turns)} turns.")
 
     chunks = compact_chunks(chunk_turns(turns))
     if not chunks:
         return ""
+    log(f"Chunked into {len(chunks)} chunks.")
 
-    summaries = summarize_chunks(chunks, model=model)
+    log(f"Summarizing {len(chunks)} chunks...")
+    summaries = summarize_chunks(chunks, model=model, log=log)
     if not summaries:
         return ""
 
@@ -160,6 +171,10 @@ def generate_recap(
     # Re-sort by original position for chronological output.
     selected.sort(key=lambda x: x[0])
 
+    log(
+        f"Selected {len(selected)}/{len(summaries)} summaries"
+        f" (~{used // _CHARS_PER_TOKEN} tokens)."
+    )
     return "\n".join(text for _, text in selected)
 
 

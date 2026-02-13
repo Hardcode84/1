@@ -1,9 +1,15 @@
 """Chunk summarization into abstract + expanded summary."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from mindloop.chunker import Chunk
 from mindloop.client import chat
+
+
+def _noop(_msg: str) -> None:
+    pass
+
 
 # SUMMARIZATION_MODEL = "tngtech/deepseek-r1t2-chimera:free"
 SUMMARIZATION_MODEL = "deepseek/deepseek-v3.2"
@@ -51,7 +57,13 @@ def summarize_chunk(chunk: Chunk, model: str | None = None) -> ChunkSummary:
 
 
 def summarize_chunks(
-    chunks: list[Chunk], model: str | None = None
+    chunks: list[Chunk],
+    model: str | None = None,
+    log: Callable[[str], None] = _noop,
 ) -> list[ChunkSummary]:
     """Summarize a list of chunks sequentially."""
-    return [summarize_chunk(chunk, model=model) for chunk in chunks]
+    results: list[ChunkSummary] = []
+    for i, chunk in enumerate(chunks, 1):
+        log(f"  Summarizing chunk {i}/{len(chunks)}...")
+        results.append(summarize_chunk(chunk, model=model))
+    return results

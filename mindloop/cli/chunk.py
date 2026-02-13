@@ -96,7 +96,7 @@ def main() -> None:
         from mindloop.summarizer import summarize_chunks
 
         print("=== Summaries ===\n")
-        summaries = summarize_chunks(chunks)
+        summaries = summarize_chunks(chunks, log=print)
         for i, summary in enumerate(summaries, 1):
             print(f"--- Chunk {i} ---")
             print(f"  Abstract: {summary.abstract}")

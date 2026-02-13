@@ -60,7 +60,9 @@ def main() -> None:
         print("No messages found in log file.", file=sys.stderr)
         sys.exit(1)
 
-    recap = generate_recap(messages, model=args.model, token_budget=args.budget)
+    recap = generate_recap(
+        messages, model=args.model, token_budget=args.budget, log=print
+    )
     if not recap:
         print("No recap generated (too few messages?).", file=sys.stderr)
         sys.exit(1)
