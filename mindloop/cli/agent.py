@@ -14,6 +14,7 @@ from typing import Any
 
 from mindloop.agent import run_agent
 from mindloop.client import API_KEY
+from mindloop.recap import generate_recap, load_recap, save_recap
 from mindloop.tools import add_memory_tools, create_default_registry
 
 _PROMPT_PATH = Path(__file__).resolve().parent.parent / "system_prompt.md"
@@ -282,6 +283,19 @@ def main() -> None:
             f" memory: {paths.db_path})\n"
         )
 
+    # Load or generate recap from previous instance.
+    if paths.workspace and initial_messages is None:
+        recap_path = paths.workspace / "_recap.md"
+        recap = load_recap(recap_path)
+        if recap is None:
+            prev_log = _latest_jsonl(paths.log_dir)
+            if prev_log and prev_log != jsonl_path:
+                prev_msgs = _load_messages(prev_log)
+                if prev_msgs:
+                    recap = generate_recap(prev_msgs, model=model)
+        if recap:
+            system_prompt += f"\n\n## Previous session recap\n{recap}"
+
     # Log the final system prompt.
     logger = _make_logger(jsonl_path, log_path)
     logger({"role": "system", "content": system_prompt})
@@ -307,6 +321,15 @@ def main() -> None:
         print("\n\nInterrupted.")
     finally:
         mt.close()
+        # Generate recap for the next instance.
+        if paths.workspace and jsonl_path.exists():
+            try:
+                msgs = _load_messages(jsonl_path)
+                if msgs:
+                    recap = generate_recap(msgs, model=model)
+                    save_recap(paths.workspace / "_recap.md", recap)
+            except Exception:
+                pass  # Don't crash cleanup on recap failure.
 
     if paths.name:
         model_flag = f" --model {model}" if model != _DEFAULT_MODEL else ""

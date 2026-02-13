@@ -16,7 +16,8 @@ merge_llm.py       LLM-based merge decisions (three-tier: auto/LLM/never by simi
 chunker.py         Parse JSONL/markdown into chunks, compact, merge by similarity.
 summarizer.py      LLM-generated abstract + summary per chunk.
 client.py          OpenRouter API wrapper (chat, embeddings, streaming, retry).
-cli/               Six entry points: agent, chat, chunk, build, query, dump.
+recap.py           Session recap: collapse tool calls, summarize, persist between instances.
+cli/               Seven entry points: agent, chat, chunk, build, query, dump, recap.
 ```
 
 ## Commands

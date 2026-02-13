@@ -89,6 +89,21 @@ mindloop-dump --db knowledge.db -o dump.txt
 
 Dumps every chunk (active and inactive) with its abstract, summary, full text, source lineage, and timestamp.
 
+### Session recap
+
+```bash
+# Generate recap from an agent log and print to stdout.
+mindloop-recap logs/001_agent_20260210_120000.jsonl
+
+# Write to file.
+mindloop-recap logs/001_agent_20260210_120000.jsonl -o _recap.md
+
+# Custom token budget and model.
+mindloop-recap logs/001_agent_20260210_120000.jsonl --budget 500 --model deepseek/deepseek-v3.2
+```
+
+Collapses tool calls into concise natural-language descriptions, chunks and summarizes the session, then selects the most relevant summaries with recency bias within a token budget. Recaps are also generated automatically at session shutdown and injected into the next instance's system prompt.
+
 ### Tests
 
 ```bash
