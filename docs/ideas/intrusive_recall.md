@@ -69,6 +69,11 @@ If memory is dominated by certain topics (because past instances wrote extensive
 
 For agents exploring continuity across instances, memories from a predecessor surfacing unbidden mirrors how human intrusive thoughts work. The agent didn't form these memories, but they came from "its" memory store. This blurs the boundary between self-generated thought and externally injected context.
 
+## Related
+
+- **Pinned memories** (`pinned_memories.md`): agent-controlled "core" memories that always appear as intrusive recall candidates, bypassing the similarity threshold.
+- **Memory activation** (`memory_activation.md`): activation/decay model that subsumes the retrieval cooldown idea above.
+
 ## Design principle
 
 Transparency is non-negotiable. The agent must know these are retrieved associations from past sessions, not its own spontaneous ideas. Clear labeling and honest framing preserve whatever autonomy the agent has within its constraints.

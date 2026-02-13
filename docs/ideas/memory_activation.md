@@ -71,6 +71,7 @@ Possible implementation: `base_activation = ln(1 + sessions_survived)`.
 - **Merge loop**: merged chunks inherit the combined retrieval history of their sources. A merge is itself a form of consolidation.
 - **Specificity**: low-activation memories could be excluded from the neighbor count, so they don't inflate specificity for active memories.
 - **Intrusive recall** (see `intrusive_recall.md`): activation naturally handles cooldown — a just-retrieved memory has high activation but can be penalized for the intrusive path specifically. Subsumes the retrieval cooldown idea.
+- **Pinned memories** (see `pinned_memories.md`): pinned chunks receive an activation boost proportional to their pin priority rank, preventing top-ranked ones from decaying below the retrieval threshold.
 - **Hybrid search**: activation becomes a third factor in scoring alongside embedding similarity and BM25.
 
 ## Implementation sketch
