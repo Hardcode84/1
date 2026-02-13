@@ -12,8 +12,8 @@ from mindloop.memory import MemoryStore
 from mindloop.summarizer import ChunkSummary
 
 
-def _mock_summarize_chunk(chunk: Chunk, model: str | None = None) -> ChunkSummary:
-    return ChunkSummary(chunk=chunk, abstract="abs", summary="sum")
+def _mock_summarize_chunks(chunks: list[Chunk], **_kw: object) -> list[ChunkSummary]:
+    return [ChunkSummary(chunk=c, abstract="abs", summary="sum") for c in chunks]
 
 
 def _mock_save_memory(
@@ -28,7 +28,7 @@ def _mock_save_memory(
 
 
 @patch("mindloop.cli.build.save_memory", side_effect=_mock_save_memory)
-@patch("mindloop.cli.build.summarize_chunk", side_effect=_mock_summarize_chunk)
+@patch("mindloop.cli.build.summarize_chunks", side_effect=_mock_summarize_chunks)
 def test_process_md_file(
     mock_summarize: MagicMock, mock_save: MagicMock, tmp_path: Path
 ) -> None:
@@ -40,13 +40,13 @@ def test_process_md_file(
     n = process_file(md, store, "openrouter/free")
 
     assert n > 0
-    assert mock_summarize.call_count == n
+    assert mock_summarize.call_count == 1
     assert mock_save.call_count == n
     store.close()
 
 
 @patch("mindloop.cli.build.save_memory", side_effect=_mock_save_memory)
-@patch("mindloop.cli.build.summarize_chunk", side_effect=_mock_summarize_chunk)
+@patch("mindloop.cli.build.summarize_chunks", side_effect=_mock_summarize_chunks)
 def test_process_jsonl_file(
     mock_summarize: MagicMock, mock_save: MagicMock, tmp_path: Path
 ) -> None:
@@ -68,13 +68,13 @@ def test_process_jsonl_file(
     n = process_file(jsonl, store, "openrouter/free")
 
     assert n > 0
-    assert mock_summarize.call_count == n
+    assert mock_summarize.call_count == 1
     assert mock_save.call_count == n
     store.close()
 
 
 @patch("mindloop.cli.build.save_memory", side_effect=_mock_save_memory)
-@patch("mindloop.cli.build.summarize_chunk", side_effect=_mock_summarize_chunk)
+@patch("mindloop.cli.build.summarize_chunks", side_effect=_mock_summarize_chunks)
 def test_files_processed_in_sorted_order(
     mock_summarize: MagicMock, mock_save: MagicMock, tmp_path: Path
 ) -> None:
@@ -115,7 +115,7 @@ def test_empty_glob_no_error(
 
 
 @patch("mindloop.cli.build.save_memory", side_effect=_mock_save_memory)
-@patch("mindloop.cli.build.summarize_chunk", side_effect=_mock_summarize_chunk)
+@patch("mindloop.cli.build.summarize_chunks", side_effect=_mock_summarize_chunks)
 def test_directories_are_skipped(
     mock_summarize: MagicMock, mock_save: MagicMock, tmp_path: Path
 ) -> None:
@@ -137,7 +137,7 @@ def test_directories_are_skipped(
 
 
 @patch("mindloop.cli.build.save_memory", side_effect=_mock_save_memory)
-@patch("mindloop.cli.build.summarize_chunk", side_effect=_mock_summarize_chunk)
+@patch("mindloop.cli.build.summarize_chunks", side_effect=_mock_summarize_chunks)
 def test_verbose_prints_stages(
     mock_summarize: MagicMock,
     mock_save: MagicMock,
