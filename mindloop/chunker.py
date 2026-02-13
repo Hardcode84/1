@@ -2,6 +2,7 @@
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +10,11 @@ from pathlib import Path
 import numpy as np
 
 from mindloop.client import Embedding, Embeddings
+
+
+def _noop(_msg: str) -> None:
+    pass
+
 
 # JSONL role -> display role.
 _ROLE_MAP = {"user": "You", "assistant": "Bot", "tool": "Tool"}
@@ -153,16 +159,18 @@ def merge_chunks(
     chunks: list[Chunk],
     embeddings: Embeddings,
     max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS,
+    log: Callable[[str], None] | None = None,
 ) -> list[Chunk]:
     """Merge adjacent chunks until no more merges are possible.
 
     Merges when similarity >= statistical threshold (mean - 0.5*std)
     or >= 0.8 (always merge). Repeats until fixed point.
     """
+    _log = log or _noop
     while len(chunks) >= 2:
         sims = cosine_similarities(embeddings)
         threshold = float(sims.mean() - 0.5 * sims.std())
-        print(
+        _log(
             f"Merge pass ({len(chunks)} chunks): threshold={threshold:.4f}"
             f" (mean={sims.mean():.4f}, std={sims.std():.4f})"
         )

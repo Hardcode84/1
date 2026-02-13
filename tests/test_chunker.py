@@ -290,6 +290,19 @@ def test_merge_above_08_always_merges() -> None:
     assert len(merged) == 1
 
 
+def test_merge_log_callback() -> None:
+    """The log callback receives merge-pass messages."""
+    chunks = [
+        Chunk(turns=[_turn(14, 0, 0, "You", "a")]),
+        Chunk(turns=[_turn(14, 0, 1, "Bot", "b")]),
+    ]
+    embeddings = np.array([[1.0, 0.0], [1.0, 0.0]])
+    messages: list[str] = []
+    merge_chunks(chunks, embeddings, log=messages.append)
+    assert len(messages) >= 1
+    assert "Merge pass" in messages[0]
+
+
 def test_merge_fixed_point() -> None:
     # 6 small chunks, similar in triples: {0,1,2} and {3,4,5}.
     # First pass merges adjacent pairs within each triple.

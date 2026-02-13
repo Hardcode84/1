@@ -292,7 +292,7 @@ def main() -> None:
             if prev_log and prev_log != jsonl_path:
                 prev_msgs = _load_messages(prev_log)
                 if prev_msgs:
-                    recap = generate_recap(prev_msgs, model=model)
+                    recap = generate_recap(prev_msgs, model=model, log=print)
         if recap:
             system_prompt += f"\n\n## Previous session recap\n{recap}"
 
@@ -326,7 +326,7 @@ def main() -> None:
             try:
                 msgs = _load_messages(jsonl_path)
                 if msgs:
-                    recap = generate_recap(msgs, model=model)
+                    recap = generate_recap(msgs, model=model, log=print)
                     save_recap(paths.workspace / "_recap.md", recap)
             except Exception:
                 pass  # Don't crash cleanup on recap failure.

@@ -147,7 +147,7 @@ def generate_recap(
     if len(chunks) >= 2:
         log("Embedding chunks...")
         embeddings = get_embeddings([c.text for c in chunks])
-        chunks = merge_chunks(chunks, embeddings)
+        chunks = merge_chunks(chunks, embeddings, log=log)
         log(f"Merged to {len(chunks)} chunks.")
 
     log(f"Summarizing {len(chunks)} chunks...")
