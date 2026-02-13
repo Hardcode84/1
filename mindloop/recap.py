@@ -8,7 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from mindloop.chunker import Turn, chunk_turns, compact_chunks
+from mindloop.chunker import Turn, chunk_turns, compact_chunks, merge_chunks
+from mindloop.client import get_embeddings
 from mindloop.summarizer import ChunkSummary, summarize_chunks
 
 
@@ -24,9 +25,6 @@ _SKIP_PREFIXES = ("[stop]", "[stats]", "Warning:")
 
 # Approximate characters per token for budget estimation.
 _CHARS_PER_TOKEN = 4
-
-# Collapsed turns are short; compact aggressively to keep chunk count manageable.
-_RECAP_MIN_CHUNK_CHARS = 500
 
 
 def _collapse_tool_call(name: str, args: dict[str, str], result: str) -> str | None:
@@ -141,10 +139,16 @@ def generate_recap(
         return ""
     log(f"  {len(turns)} turns.")
 
-    chunks = compact_chunks(chunk_turns(turns), min_chars=_RECAP_MIN_CHUNK_CHARS)
+    chunks = compact_chunks(chunk_turns(turns))
     if not chunks:
         return ""
     log(f"Chunked into {len(chunks)} chunks.")
+
+    if len(chunks) >= 2:
+        log("Embedding chunks...")
+        embeddings = get_embeddings([c.text for c in chunks])
+        chunks = merge_chunks(chunks, embeddings)
+        log(f"Merged to {len(chunks)} chunks.")
 
     log(f"Summarizing {len(chunks)} chunks...")
     summaries = summarize_chunks(chunks, model=model, log=log)

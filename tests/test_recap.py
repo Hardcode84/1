@@ -4,7 +4,10 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import numpy as np
+
 from mindloop.chunker import Chunk
+from mindloop.client import Embeddings
 from mindloop.recap import collapse_messages, generate_recap, load_recap, save_recap
 from mindloop.summarizer import ChunkSummary
 
@@ -149,8 +152,20 @@ def _fake_summaries(chunks: list[Chunk], **_kwargs: object) -> list[ChunkSummary
     ]
 
 
-@patch("mindloop.recap.summarize_chunks", side_effect=_fake_summaries)
-def test_generate_recap_recency(_mock: object) -> None:
+def _fake_embeddings(texts: list[str], **_kwargs: object) -> Embeddings:
+    """Return alternating-sign vectors so adjacent similarity is negative."""
+    n = len(texts)
+    signs = np.array([(-1.0) ** i for i in range(n)], dtype=np.float32)
+    return signs.reshape(n, 1) * np.ones((1, 2), dtype=np.float32)
+
+
+_PATCH_SUMMARIZE = patch("mindloop.recap.summarize_chunks", side_effect=_fake_summaries)
+_PATCH_EMBED = patch("mindloop.recap.get_embeddings", side_effect=_fake_embeddings)
+
+
+@_PATCH_EMBED
+@_PATCH_SUMMARIZE
+def test_generate_recap_recency(*_mocks: object) -> None:
     """Later chunks have higher scores — last summary always included."""
     msgs = [
         _msg("user", "first topic"),
@@ -164,10 +179,11 @@ def test_generate_recap_recency(_mock: object) -> None:
     assert "Summary" in recap
 
 
-@patch("mindloop.recap.summarize_chunks", side_effect=_fake_summaries)
-def test_generate_recap_budget(_mock: object) -> None:
+@_PATCH_EMBED
+@_PATCH_SUMMARIZE
+def test_generate_recap_budget(*_mocks: object) -> None:
     """Respects token budget, drops lowest-scored (earliest) chunks."""
-    # Each paragraph must exceed _RECAP_MIN_CHUNK_CHARS so compaction keeps them separate.
+    # Paragraph breaks force chunk_turns to split into separate chunks.
     msgs = []
     for i in range(10):
         msgs.append(_msg("user", f"topic {i}\n\n" + "x" * 600))
@@ -178,8 +194,9 @@ def test_generate_recap_budget(_mock: object) -> None:
     assert len(recap_small) < len(recap_large)
 
 
-@patch("mindloop.recap.summarize_chunks", side_effect=_fake_summaries)
-def test_generate_recap_chronological_order(_mock: object) -> None:
+@_PATCH_EMBED
+@_PATCH_SUMMARIZE
+def test_generate_recap_chronological_order(*_mocks: object) -> None:
     """Selected chunks re-sorted by original position."""
     msgs = [
         _msg("user", "alpha " + "a" * 200),
@@ -200,8 +217,9 @@ def test_generate_recap_chronological_order(_mock: object) -> None:
         assert indices == sorted(indices)
 
 
-@patch("mindloop.recap.summarize_chunks", side_effect=_fake_summaries)
-def test_generate_recap_empty(_mock: object) -> None:
+@_PATCH_EMBED
+@_PATCH_SUMMARIZE
+def test_generate_recap_empty(*_mocks: object) -> None:
     """Empty messages produce empty recap."""
     assert generate_recap([]) == ""
 
