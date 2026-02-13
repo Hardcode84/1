@@ -320,6 +320,9 @@ def main() -> None:
         )
 
     # Load or generate recap from previous instance.
+    # _recap.md is overwritten (not appended) at session end. If an instance
+    # crashes before generating a new recap, the next instance still sees
+    # the previous one as a fallback.
     if paths.workspace and initial_messages is None:
         recap_path = paths.workspace / "_recap.md"
         recap = load_recap(recap_path)
