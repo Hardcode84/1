@@ -332,7 +332,7 @@ def test_mv_write_blocked(tmp_path: Path) -> None:
     (tmp_path / "a.txt").write_text("hello")
     with patch("mindloop.tools._work_dir", tmp_path):
         reg = create_default_registry()
-        reg.write_blocked.append((tmp_path / "a.txt").resolve())
+        reg.write_blocked[(tmp_path / "a.txt").resolve()] = ""
         result = reg.execute("mv", '{"old_path": "a.txt", "new_path": "b.txt"}')
     assert "denied" in result
 

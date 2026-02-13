@@ -60,7 +60,7 @@ class ToolRegistry:
         self.stats: dict[Any, Any] = {}
         self.blocked_dirs: list[Path] = [d.resolve() for d in (blocked_dirs or [])]
         self.root_dir: Path = (root_dir or _work_dir).resolve()
-        self.write_blocked: list[Path] = []
+        self.write_blocked: dict[Path, str] = {}
 
     def add(
         self,
@@ -111,6 +111,16 @@ def _sanitize_path(
         if resolved == blocked or str(resolved).startswith(str(blocked) + "/"):
             raise ToolError(f"Access denied: {path}")
     return resolved
+
+
+def _check_write_blocked(reg: "ToolRegistry", p: Path, path: str) -> None:
+    """Raise ToolError if *p* is write-blocked, including hint if available."""
+    hint = reg.write_blocked.get(p)
+    if hint is not None:
+        msg = f"Write access denied: {path}"
+        if hint:
+            msg += f" — {hint}"
+        raise ToolError(msg)
 
 
 def _track_file(reg: "ToolRegistry", tool: str, path: str) -> None:
@@ -165,8 +175,7 @@ def _edit(
     """Replace exact string occurrences in a file."""
     _track_file(reg, "edit", path)
     p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs)
-    if p in reg.write_blocked:
-        raise ToolError(f"Write access denied: {path}")
+    _check_write_blocked(reg, p, path)
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
     if not p.is_file():
@@ -198,8 +207,7 @@ def _write(
     """Create or overwrite a file with the given content."""
     _track_file(reg, "write", path)
     p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs)
-    if p in reg.write_blocked:
-        raise ToolError(f"Write access denied: {path}")
+    _check_write_blocked(reg, p, path)
     if p.exists() and not p.is_file():
         raise ToolError(f"{path} is not a file.")
     if p.exists() and not overwrite:
@@ -220,10 +228,8 @@ def _mv(
     _track_file(reg, "mv", old_path)
     src = _sanitize_path(old_path, reg.root_dir, reg.blocked_dirs)
     dst = _sanitize_path(new_path, reg.root_dir, reg.blocked_dirs)
-    if src in reg.write_blocked:
-        raise ToolError(f"Write access denied: {old_path}")
-    if dst in reg.write_blocked:
-        raise ToolError(f"Write access denied: {new_path}")
+    _check_write_blocked(reg, src, old_path)
+    _check_write_blocked(reg, dst, new_path)
     if not src.exists():
         raise ToolError(f"{old_path} does not exist.")
     if not src.is_file():

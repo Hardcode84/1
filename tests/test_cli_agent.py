@@ -270,7 +270,7 @@ def _make_session_with_tool(tmp_path: Path) -> tuple[Path, "ToolRegistry"]:  # t
 
     registry = create_default_registry(root_dir=paths.workspace)
     # Block direct write/edit, same as main().
-    registry.write_blocked.append(notes_path.resolve())
+    registry.write_blocked[notes_path.resolve()] = "use note_to_self tool instead"
     # Replicate the closure from main().
     from mindloop.cli.agent import _NOTES_MAX_CHARS as max_chars
 
@@ -335,6 +335,7 @@ def test_notes_write_blocked_but_readable(tmp_path: Path) -> None:
         "write", json.dumps({"content": "bypass", "path": "_notes.md"})
     )
     assert "Write access denied" in result
+    assert "note_to_self" in result
     # Direct read is allowed.
     result = registry.execute("read", json.dumps({"path": "_notes.md"}))
     assert "ok" in result

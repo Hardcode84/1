@@ -292,7 +292,7 @@ def main() -> None:
     if paths.workspace:
         notes_path = paths.workspace / "_notes.md"
         # Block direct write/edit; reads are allowed.
-        registry.write_blocked.append(notes_path.resolve())
+        registry.write_blocked[notes_path.resolve()] = "use note_to_self tool instead"
 
         def _note_to_self(content: str) -> str:
             assert notes_path is not None
@@ -355,7 +355,7 @@ def main() -> None:
             since=since,
         )
         # Block direct writes to inbox.
-        registry.write_blocked.append(inbox_dir.resolve())
+        registry.write_blocked[inbox_dir.resolve()] = ""
 
     # Handle --resume: explicit path or auto-find latest in session.
     initial_messages: list[dict[str, Any]] | None = None
