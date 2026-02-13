@@ -167,11 +167,11 @@ def test_generate_recap_recency(_mock: object) -> None:
 @patch("mindloop.recap.summarize_chunks", side_effect=_fake_summaries)
 def test_generate_recap_budget(_mock: object) -> None:
     """Respects token budget, drops lowest-scored (earliest) chunks."""
-    # Paragraph breaks (\n\n) force chunk_turns to split into separate chunks.
+    # Each paragraph must exceed _RECAP_MIN_CHUNK_CHARS so compaction keeps them separate.
     msgs = []
     for i in range(10):
-        msgs.append(_msg("user", f"topic {i}\n\n" + "x" * 100))
-        msgs.append(_msg("assistant", f"response {i}\n\n" + "y" * 100))
+        msgs.append(_msg("user", f"topic {i}\n\n" + "x" * 600))
+        msgs.append(_msg("assistant", f"response {i}\n\n" + "y" * 600))
     # Very tight budget: should drop some summaries.
     recap_small = generate_recap(msgs, token_budget=50)
     recap_large = generate_recap(msgs, token_budget=10000)

@@ -25,6 +25,9 @@ _SKIP_PREFIXES = ("[stop]", "[stats]", "Warning:")
 # Approximate characters per token for budget estimation.
 _CHARS_PER_TOKEN = 4
 
+# Collapsed turns are short; compact aggressively to keep chunk count manageable.
+_RECAP_MIN_CHUNK_CHARS = 500
+
 
 def _collapse_tool_call(name: str, args: dict[str, str], result: str) -> str | None:
     """Format a tool-call + result pair as a concise natural-language string."""
@@ -138,7 +141,7 @@ def generate_recap(
         return ""
     log(f"  {len(turns)} turns.")
 
-    chunks = compact_chunks(chunk_turns(turns))
+    chunks = compact_chunks(chunk_turns(turns), min_chars=_RECAP_MIN_CHUNK_CHARS)
     if not chunks:
         return ""
     log(f"Chunked into {len(chunks)} chunks.")
