@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
-from mindloop.messages import list_messages, parse_message, write_message
+from mindloop.messages import parse_message, write_message
 
 _SESSIONS_DIR = Path("sessions")
 
@@ -18,7 +19,15 @@ def _send(args: argparse.Namespace) -> None:
     inbox.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = inbox / f"{ts}.txt"
-    write_message(path, sender=args.sender, title=args.title, body=args.body)
+    body: str = args.body
+    if body is None:
+        if sys.stdin.isatty():
+            print("Enter message body (Ctrl+D to finish):")
+        body = sys.stdin.read().strip()
+        if not body:
+            print("Empty body, aborting.")
+            return
+    write_message(path, sender=args.sender, title=args.title, body=body)
     print(f"Sent: {path}")
 
 
@@ -44,9 +53,16 @@ def main() -> None:
 
     send_p = sub.add_parser("send", help="Send a message to a session's inbox.")
     send_p.add_argument("--session", required=True, help="Session name.")
-    send_p.add_argument("--from", dest="sender", required=True, help="Sender name.")
+    send_p.add_argument(
+        "--from", dest="sender", default="Admin", help="Sender name (default: Admin)."
+    )
     send_p.add_argument("--title", required=True, help="Message subject.")
-    send_p.add_argument("body", help="Message body text.")
+    send_p.add_argument(
+        "body",
+        nargs="?",
+        default=None,
+        help="Message body text (reads from stdin if omitted).",
+    )
 
     list_p = sub.add_parser("list", help="List messages in a session.")
     list_p.add_argument("--session", required=True, help="Session name.")

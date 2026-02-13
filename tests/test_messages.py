@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-import pytest
 
 from mindloop.messages import (
     count_new,

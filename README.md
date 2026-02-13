@@ -116,6 +116,21 @@ mindloop-sessions --dir path/to/sessions
 
 Shows each session's name, instance count, date range, last exit status (clean/crashed/tokens/iterations), and whether notes exist.
 
+### Messaging
+
+```bash
+# Send a message to a session's inbox.
+mindloop-message send --session myagent --from "Alice" --title "Status?" "How is the task going?"
+
+# List inbox messages.
+mindloop-message list --session myagent
+
+# List outbox (agent replies).
+mindloop-message list --session myagent --outbox
+```
+
+The agent sees new messages on startup and can browse with `message_list`, read with `message_read`, and reply with `message_send`. Inbox is frozen at session start; outbox updates live.
+
 ### Tests
 
 ```bash

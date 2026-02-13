@@ -101,7 +101,9 @@ class MessageTools:
             return result
         messages = result
         if id < 1 or id > len(messages):
-            return f"Error: invalid {box} message id {id}. Valid range: 1-{len(messages)}."
+            return (
+                f"Error: invalid {box} message id {id}. Valid range: 1-{len(messages)}."
+            )
         msg = messages[id - 1]
         return (
             f"From: {msg.sender}\n"

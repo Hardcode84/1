@@ -61,9 +61,7 @@ def write_message(path: Path, sender: str, title: str, body: str) -> None:
     path.write_text(f"From: {sender}\nDate: {now}\nTitle: {title}\n\n{body}\n")
 
 
-def list_messages(
-    inbox_dir: Path, before: datetime | None = None
-) -> list[Message]:
+def list_messages(inbox_dir: Path, before: datetime | None = None) -> list[Message]:
     """List .txt files sorted by filename (oldest first), filtered by date.
 
     Only messages with filename-date strictly before *before* are included.
