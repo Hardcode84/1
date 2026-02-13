@@ -58,6 +58,7 @@ class ToolRegistry:
         self.stats: dict[Any, Any] = {}
         self.blocked_dirs: list[Path] = [d.resolve() for d in (blocked_dirs or [])]
         self.root_dir: Path = (root_dir or _work_dir).resolve()
+        self.write_blocked: list[Path] = []
 
     def add(
         self,
@@ -162,6 +163,8 @@ def _edit(
     """Replace exact string occurrences in a file."""
     _track_file(reg, "edit", path)
     p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs)
+    if p in reg.write_blocked:
+        raise ToolError(f"Write access denied: {path}")
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
     if not p.is_file():
@@ -193,6 +196,8 @@ def _write(
     """Create or overwrite a file with the given content."""
     _track_file(reg, "write", path)
     p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs)
+    if p in reg.write_blocked:
+        raise ToolError(f"Write access denied: {path}")
     if p.exists() and not p.is_file():
         raise ToolError(f"{path} is not a file.")
     if p.exists() and not overwrite:

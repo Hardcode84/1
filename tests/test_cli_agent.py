@@ -4,7 +4,12 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from mindloop.cli.agent import _latest_jsonl, _load_messages, _setup_session
+from mindloop.cli.agent import (
+    _NOTES_MAX_CHARS,
+    _latest_jsonl,
+    _load_messages,
+    _setup_session,
+)
 
 
 def test_load_messages_strips_metadata(tmp_path: Path) -> None:
@@ -200,3 +205,85 @@ def test_latest_jsonl(tmp_path: Path) -> None:
 def test_latest_jsonl_empty(tmp_path: Path) -> None:
     """Returns None when no JSONL files exist."""
     assert _latest_jsonl(tmp_path) is None
+
+
+# --- note_to_self tests ---
+
+
+def _make_session_with_tool(tmp_path: Path) -> tuple[Path, "ToolRegistry"]:  # type: ignore[name-defined]  # noqa: F821
+    """Set up a session and build a registry that includes note_to_self."""
+
+    from mindloop.tools import Param, create_default_registry
+
+    sessions = tmp_path / "sessions"
+    with patch("mindloop.cli.agent._SESSIONS_DIR", sessions):
+        paths = _setup_session(
+            "notes_test", isolated=False, timestamp="20260213_000000"
+        )
+
+    assert paths.workspace is not None
+    notes_path = paths.workspace / "_notes.md"
+
+    registry = create_default_registry(root_dir=paths.workspace)
+    # Block direct write/edit, same as main().
+    registry.write_blocked.append(notes_path.resolve())
+    # Replicate the closure from main().
+    from mindloop.cli.agent import _NOTES_MAX_CHARS as max_chars
+
+    def _note_to_self(content: str) -> str:
+        if len(content) > max_chars:
+            return (
+                f"Error: content is {len(content)} chars, "
+                f"max is {max_chars}. Trim and retry."
+            )
+        notes_path.write_text(content)
+        return f"Saved {len(content)} chars to notes."
+
+    registry.add(
+        name="note_to_self",
+        description="Write notes.",
+        params=[Param(name="content", description="Markdown content.")],
+        func=_note_to_self,
+    )
+    return notes_path, registry
+
+
+def test_note_to_self_writes_file(tmp_path: Path) -> None:
+    """note_to_self writes content to _notes.md."""
+    notes_path, registry = _make_session_with_tool(tmp_path)
+    result = registry.execute("note_to_self", json.dumps({"content": "remember this"}))
+    assert "Saved" in result
+    assert notes_path.read_text() == "remember this"
+
+
+def test_note_to_self_overwrites(tmp_path: Path) -> None:
+    """Successive calls overwrite, not append."""
+    notes_path, registry = _make_session_with_tool(tmp_path)
+    registry.execute("note_to_self", json.dumps({"content": "first"}))
+    registry.execute("note_to_self", json.dumps({"content": "second"}))
+    assert notes_path.read_text() == "second"
+
+
+def test_note_to_self_rejects_oversized(tmp_path: Path) -> None:
+    """Content exceeding the size cap returns an error."""
+    _, registry = _make_session_with_tool(tmp_path)
+    big = "x" * (_NOTES_MAX_CHARS + 1)
+    result = registry.execute("note_to_self", json.dumps({"content": big}))
+    assert "Error" in result
+    assert "Trim and retry" in result
+
+
+def test_notes_write_blocked_but_readable(tmp_path: Path) -> None:
+    """Direct write/edit of _notes.md is denied, but read is allowed."""
+    notes_path, registry = _make_session_with_tool(tmp_path)
+    # Write via note_to_self succeeds.
+    registry.execute("note_to_self", json.dumps({"content": "ok"}))
+    assert notes_path.read_text() == "ok"
+    # Direct write is blocked.
+    result = registry.execute(
+        "write", json.dumps({"content": "bypass", "path": "_notes.md"})
+    )
+    assert "Write access denied" in result
+    # Direct read is allowed.
+    result = registry.execute("read", json.dumps({"path": "_notes.md"}))
+    assert "ok" in result

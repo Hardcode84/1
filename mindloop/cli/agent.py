@@ -15,10 +15,11 @@ from typing import Any
 from mindloop.agent import run_agent
 from mindloop.client import API_KEY
 from mindloop.recap import generate_recap, load_recap, save_recap
-from mindloop.tools import add_memory_tools, create_default_registry
+from mindloop.tools import Param, add_memory_tools, create_default_registry
 from mindloop.util import SKIP_PREFIXES
 
 _PROMPT_PATH = Path(__file__).resolve().parent.parent / "system_prompt.md"
+_NOTES_MAX_CHARS = 2000
 
 
 def _print_step(text: str) -> None:
@@ -255,6 +256,39 @@ def main() -> None:
     )
     mt = add_memory_tools(registry, db_path=paths.db_path, model=model)
 
+    # Register note_to_self tool when a workspace exists.
+    notes_path: Path | None = None
+    if paths.workspace:
+        notes_path = paths.workspace / "_notes.md"
+        # Block direct write/edit; reads are allowed.
+        registry.write_blocked.append(notes_path.resolve())
+
+        def _note_to_self(content: str) -> str:
+            assert notes_path is not None
+            if len(content) > _NOTES_MAX_CHARS:
+                return (
+                    f"Error: content is {len(content)} chars, "
+                    f"max is {_NOTES_MAX_CHARS}. Trim and retry."
+                )
+            notes_path.write_text(content)
+            return f"Saved {len(content)} chars to notes."
+
+        registry.add(
+            name="note_to_self",
+            description=(
+                "Write notes for your next instance. Overwrites previous notes. "
+                "Use for directives, user preferences, and task status. "
+                f"Max {_NOTES_MAX_CHARS} chars — curate, don't append."
+            ),
+            params=[
+                Param(
+                    name="content",
+                    description=f"Markdown content (max {_NOTES_MAX_CHARS} chars).",
+                )
+            ],
+            func=_note_to_self,
+        )
+
     # Handle --resume: explicit path or auto-find latest in session.
     initial_messages: list[dict[str, Any]] | None = None
     if args.resume is not None:
@@ -293,6 +327,12 @@ def main() -> None:
                     recap = generate_recap(prev_msgs, model=model, log=print)
         if recap:
             system_prompt += f"\n\n## Previous session recap\n{recap}"
+
+    # Load notes from previous instance.
+    if notes_path and notes_path.is_file():
+        notes = load_recap(notes_path)
+        if notes:
+            system_prompt += f"\n\n## Notes from previous instance\n{notes}"
 
     # Log the final system prompt.
     logger = _make_logger(jsonl_path, log_path)
