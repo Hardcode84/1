@@ -11,7 +11,7 @@ from types import TracebackType
 import numpy as np
 
 from mindloop.chunker import Chunk, Turn
-from mindloop.client import Embedding, Embeddings, get_embeddings
+from mindloop.client import Embedding, get_embeddings
 from mindloop.summarizer import ChunkSummary
 
 DEFAULT_DB_PATH = Path("memory.db")
@@ -55,7 +55,6 @@ def _init_db(conn: sqlite3.Connection) -> None:
             abstract TEXT NOT NULL,
             summary TEXT NOT NULL,
             time_range TEXT NOT NULL,
-            embedding BLOB NOT NULL,
             active INTEGER NOT NULL DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             source_a INTEGER,
@@ -64,6 +63,39 @@ def _init_db(conn: sqlite3.Connection) -> None:
     """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_active ON chunks(active)")
+
+    # Migrate: drop the embedding column if it exists from an older schema.
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(chunks)").fetchall()]
+    if "embedding" in cols:
+        conn.execute("ALTER TABLE chunks RENAME TO chunks_old")
+        conn.execute(
+            """
+            CREATE TABLE chunks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT NOT NULL,
+                abstract TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                time_range TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                source_a INTEGER,
+                source_b INTEGER
+            )
+        """
+        )
+        conn.execute(
+            """
+            INSERT INTO chunks
+                (id, text, abstract, summary, time_range, active,
+                 created_at, source_a, source_b)
+            SELECT id, text, abstract, summary, time_range, active,
+                   created_at, source_a, source_b
+            FROM chunks_old
+        """
+        )
+        conn.execute("DROP TABLE chunks_old")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_active ON chunks(active)")
+
     # Migrate existing databases that lack the source columns.
     for col in ("source_a", "source_b"):
         try:
@@ -144,21 +176,19 @@ class MemoryStore:
     def save(
         self,
         chunk_summary: ChunkSummary,
-        embedding: Embedding,
         source_a: int | None = None,
         source_b: int | None = None,
     ) -> int:
-        """Save a chunk summary with its embedding. Returns the row id."""
+        """Save a chunk summary. Returns the row id."""
         cursor = self.conn.execute(
             "INSERT INTO chunks "
-            "(text, abstract, summary, time_range, embedding, source_a, source_b) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "(text, abstract, summary, time_range, source_a, source_b) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (
                 chunk_summary.chunk.text,
                 chunk_summary.abstract,
                 chunk_summary.summary,
                 chunk_summary.chunk.time_range,
-                embedding.astype(np.float32).tobytes(),
                 source_a,
                 source_b,
             ),
@@ -177,13 +207,9 @@ class MemoryStore:
         self._auto_commit()
         return row_id
 
-    def save_many(
-        self, summaries: list[ChunkSummary], embeddings: Embeddings
-    ) -> list[int]:
-        """Save multiple chunk summaries with embeddings."""
-        return [
-            self.save(summary, embeddings[i]) for i, summary in enumerate(summaries)
-        ]
+    def save_many(self, summaries: list[ChunkSummary]) -> list[int]:
+        """Save multiple chunk summaries."""
+        return [self.save(summary) for summary in summaries]
 
     def search(
         self, query: str, top_k: int = 5, original_only: bool = False
@@ -203,7 +229,7 @@ class MemoryStore:
             where = "WHERE active = 1"
 
         rows = self.conn.execute(
-            "SELECT id, text, abstract, summary, time_range, embedding, "
+            "SELECT id, text, abstract, summary, time_range, "
             f"source_a, source_b FROM chunks {where}"
         ).fetchall()
 
@@ -212,15 +238,16 @@ class MemoryStore:
 
         # Build lookup of chunk metadata keyed by id.
         meta_by_id: dict[int, tuple[str, str, str, str, int | None, int | None]] = {}
-        vecs_by_id: dict[int, np.ndarray] = {}
+        texts_by_id: dict[int, str] = {}
         for row in rows:
-            meta_by_id[row[0]] = row[1:5] + row[6:8]
-            vecs_by_id[row[0]] = np.frombuffer(row[5], dtype=np.float32)
+            meta_by_id[row[0]] = (row[1], row[2], row[3], row[4], row[5], row[6])
+            texts_by_id[row[0]] = row[1]
 
         ids = list(meta_by_id.keys())
 
         # --- Embedding ranks ---
-        matrix = np.stack([vecs_by_id[cid] for cid in ids])
+        chunk_embeddings = get_embeddings([texts_by_id[cid] for cid in ids])
+        matrix = np.stack([chunk_embeddings[i] for i in range(len(ids))])
         norms = np.linalg.norm(matrix, axis=1, keepdims=True)
         norms = np.maximum(norms, 1e-10)
         query_norm = max(float(np.linalg.norm(query_emb)), 1e-10)
@@ -283,20 +310,22 @@ class MemoryStore:
 
         return results
 
-    def specificity(self, embedding: Embedding, sim_threshold: float = 0.5) -> float:
+    def specificity(self, text: str, sim_threshold: float = 0.5) -> float:
         """Measure how specific a chunk is based on its neighbor count.
 
         Returns a value between 0.0 (generic, many neighbors) and
         1.0 (specific, no neighbors). A neighbor is any active chunk
         with cosine similarity >= *sim_threshold*.
         """
-        rows = self.conn.execute(
-            "SELECT embedding FROM chunks WHERE active = 1"
-        ).fetchall()
+        rows = self.conn.execute("SELECT text FROM chunks WHERE active = 1").fetchall()
         if not rows:
             return 1.0
 
-        matrix = np.stack([np.frombuffer(row[0], dtype=np.float32) for row in rows])
+        chunk_texts = [row[0] for row in rows]
+        all_texts = [text] + chunk_texts
+        all_embeddings = get_embeddings(all_texts)
+        embedding = all_embeddings[0]
+        matrix = np.stack(list(all_embeddings[1:]))
         norms = np.maximum(np.linalg.norm(matrix, axis=1), 1e-10)
         emb_norm = max(float(np.linalg.norm(embedding)), 1e-10)
         scores = (matrix @ embedding) / (norms * emb_norm)

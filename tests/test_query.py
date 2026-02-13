@@ -114,7 +114,7 @@ def test_main_returns_results(
         ]
     )
     cs = ChunkSummary(chunk=chunk, abstract="about cats", summary="cats summary")
-    store.save(cs, np.array([1.0, 0.0], dtype=np.float32))
+    store.save(cs)
     store.close()
 
     with (
@@ -151,7 +151,7 @@ def test_main_verbose_shows_text(
         ]
     )
     cs = ChunkSummary(chunk=chunk, abstract="abs", summary="sum")
-    store.save(cs, np.array([1.0, 0.0], dtype=np.float32))
+    store.save(cs)
     store.close()
 
     with (
@@ -180,7 +180,7 @@ def test_main_shows_sources(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
         ]
     )
     cs = ChunkSummary(chunk=chunk, abstract="abs", summary="sum")
-    store.save(cs, np.array([1.0, 0.0], dtype=np.float32), source_a=10, source_b=20)
+    store.save(cs, source_a=10, source_b=20)
     store.close()
 
     with (
@@ -267,12 +267,9 @@ def test_main_tree_flag(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> N
     """--tree prints the merge lineage tree."""
     db = tmp_path / "test.db"
     store = MemoryStore(db_path=db)
-    emb = np.array([1.0, 0.0], dtype=np.float32)
-    id_a = store.save(_result_cs("leaf a", "abs_a"), emb)
-    id_b = store.save(_result_cs("leaf b", "abs_b"), emb)
-    merged_id = store.save(
-        _result_cs("merged", "abs_m"), emb, source_a=id_a, source_b=id_b
-    )
+    id_a = store.save(_result_cs("leaf a", "abs_a"))
+    id_b = store.save(_result_cs("leaf b", "abs_b"))
+    merged_id = store.save(_result_cs("merged", "abs_m"), source_a=id_a, source_b=id_b)
     store.close()
 
     with patch(

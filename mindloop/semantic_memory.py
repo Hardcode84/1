@@ -4,7 +4,6 @@ from collections.abc import Callable
 from datetime import datetime
 
 from mindloop.chunker import Chunk, Turn
-from mindloop.client import get_embeddings
 from mindloop.memory import MemoryStore
 from mindloop.merge_llm import MergeResult, merge_texts, should_merge
 from mindloop.summarizer import ChunkSummary
@@ -40,11 +39,9 @@ def save_memory(
     if existing is not None:
         return existing
 
-    embedding = get_embeddings([text])[0]
-
     with store.transaction():
         cs = ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
-        last_id = store.save(cs, embedding)
+        last_id = store.save(cs)
         store.deactivate([last_id])
 
         for _ in range(max_rounds):
@@ -59,14 +56,13 @@ def save_memory(
                 mr: MergeResult = merge_texts(
                     text, existing_text, prefer=prefer, model=model
                 )
-                new_embedding = get_embeddings([mr.text])[0]
 
                 # Deactivate before specificity check so the absorbed chunk
                 # doesn't inflate the neighbor count against the merged result.
                 store.deactivate([result.id])
 
                 # Check if the merge would make the chunk too generic.
-                if store.specificity(new_embedding) < min_specificity:
+                if store.specificity(mr.text) < min_specificity:
                     store.activate([result.id])
                     break
 
@@ -75,15 +71,12 @@ def save_memory(
                     turns=[Turn(timestamp=datetime.now(), role="memory", text=mr.text)]
                 )
                 cs = ChunkSummary(chunk=chunk, abstract=mr.abstract, summary=mr.summary)
-                last_id = store.save(
-                    cs, new_embedding, source_a=last_id, source_b=result.id
-                )
+                last_id = store.save(cs, source_a=last_id, source_b=result.id)
                 store.deactivate([last_id])
 
                 text = mr.text
                 abstract = mr.abstract
                 summary = mr.summary
-                embedding = new_embedding
                 merged = True
                 if on_merge is not None:
                     on_merge(mr)

@@ -17,7 +17,6 @@ from mindloop.semantic_memory import save_memory
 from mindloop.summarizer import ChunkSummary
 
 _EMB_A = np.array([1.0, 0.0], dtype=np.float32)
-_EMB_B = np.array([0.0, 1.0], dtype=np.float32)
 
 
 def _chunk(text: str) -> Chunk:
@@ -46,12 +45,9 @@ def _mock_get_embeddings(
 
 @contextmanager
 def _patch_embeddings(emb: "np.ndarray[Any, Any]") -> Iterator[None]:
-    """Patch get_embeddings in both semantic_memory and memory modules."""
+    """Patch get_embeddings in the memory module (only consumer now)."""
     mock = _mock_get_embeddings(emb)
-    with (
-        patch("mindloop.semantic_memory.get_embeddings", side_effect=mock),
-        patch("mindloop.memory.get_embeddings", side_effect=mock),
-    ):
+    with patch("mindloop.memory.get_embeddings", side_effect=mock):
         yield
 
 
@@ -63,7 +59,7 @@ def test_save_no_existing_chunks(store: MemoryStore) -> None:
 
 
 def test_save_no_merge_when_dissimilar(store: MemoryStore) -> None:
-    store.save(_summary("old fact"), _EMB_B)
+    store.save(_summary("old fact"))
 
     with (
         _patch_embeddings(_EMB_A),
@@ -74,7 +70,7 @@ def test_save_no_merge_when_dissimilar(store: MemoryStore) -> None:
 
 
 def test_save_merges_similar_chunk(store: MemoryStore) -> None:
-    store.save(_summary("old fact", abstract="old_abs"), _EMB_A)
+    store.save(_summary("old fact", abstract="old_abs"))
 
     mr = MergeResult(text="merged fact", abstract="merged_abs", summary="merged_sum")
     with (
@@ -91,8 +87,8 @@ def test_save_merges_similar_chunk(store: MemoryStore) -> None:
 
 
 def test_save_cascading_merges(store: MemoryStore) -> None:
-    store.save(_summary("fact A"), _EMB_A)
-    store.save(_summary("fact B"), _EMB_A)
+    store.save(_summary("fact A"))
+    store.save(_summary("fact B"))
 
     merge_count = 0
 
@@ -119,7 +115,7 @@ def test_save_cascading_merges(store: MemoryStore) -> None:
 
 
 def test_save_stops_at_max_rounds(store: MemoryStore) -> None:
-    store.save(_summary("fact"), _EMB_A)
+    store.save(_summary("fact"))
 
     mr = MergeResult(text="merged", abstract="abs", summary="sum")
     merge_count = 0
@@ -142,7 +138,7 @@ def test_save_stops_at_max_rounds(store: MemoryStore) -> None:
 def test_save_aborts_merge_when_too_generic(store: MemoryStore) -> None:
     # Store many similar chunks so post-merge specificity is low.
     for _ in range(10):
-        store.save(_summary("similar"), _EMB_A)
+        store.save(_summary("similar"))
 
     mr = MergeResult(text="merged", abstract="abs", summary="sum")
     merge_count = 0
@@ -167,7 +163,7 @@ def test_save_aborts_merge_when_too_generic(store: MemoryStore) -> None:
 
 
 def test_save_records_sources_on_merge(store: MemoryStore) -> None:
-    old_id = store.save(_summary("old fact"), _EMB_A)
+    old_id = store.save(_summary("old fact"))
 
     mr = MergeResult(text="merged", abstract="abs", summary="sum")
     with (
@@ -196,8 +192,8 @@ def test_save_records_sources_on_merge(store: MemoryStore) -> None:
 
 
 def test_save_records_tree_on_cascade(store: MemoryStore) -> None:
-    id_a = store.save(_summary("fact A"), _EMB_A)
-    id_b = store.save(_summary("fact B"), _EMB_A)
+    id_a = store.save(_summary("fact A"))
+    id_b = store.save(_summary("fact B"))
 
     mr = MergeResult(text="merged", abstract="abs", summary="sum")
     with (
@@ -249,7 +245,7 @@ def test_save_no_sources_without_merge(store: MemoryStore) -> None:
 
 
 def test_save_is_atomic_on_error(store: MemoryStore) -> None:
-    store.save(_summary("existing"), _EMB_A)
+    store.save(_summary("existing"))
 
     def _exploding_merge(*_a: object, **_kw: object) -> MergeResult:
         raise RuntimeError("LLM failure")
@@ -283,18 +279,21 @@ def test_specificity_excludes_absorbed_chunk(store: MemoryStore) -> None:
     - Old (absorbed counted): 3/4 neighbors → specificity 0.25 → blocked.
     - New (absorbed excluded): 2/3 neighbors → specificity 0.33 → passes.
     """
+    # 3 similar + 1 dissimilar active chunks.
+    store.save(_summary("similar A"))
+    store.save(_summary("similar B"))
+    store.save(_summary("similar C"))
+    store.save(_summary("different"))
+
     _emb_sim = np.array([1.0, 0.0], dtype=np.float32)
     _emb_diff = np.array([0.0, 1.0], dtype=np.float32)
 
-    # 3 similar + 1 dissimilar active chunks.
-    store.save(_summary("similar A"), _emb_sim)
-    store.save(_summary("similar B"), _emb_sim)
-    store.save(_summary("similar C"), _emb_sim)
-    store.save(_summary("different"), _emb_diff)
+    def _smart_emb(texts: list[str], **_kw: object) -> np.ndarray:
+        return np.stack([_emb_diff if "different" in t else _emb_sim for t in texts])
 
     mr = MergeResult(text="merged similar", abstract="abs", summary="sum")
     with (
-        _patch_embeddings(_emb_sim),
+        patch("mindloop.memory.get_embeddings", side_effect=_smart_emb),
         patch("mindloop.semantic_memory.should_merge", return_value=True),
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):

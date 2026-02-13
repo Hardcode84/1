@@ -36,7 +36,6 @@ def test_remember_saves_chunk(mt: MemoryTools) -> None:
     cs = _summary("some fact", summary="auto summary")
     with (
         patch("mindloop.memory_tools.summarize_chunk", return_value=cs),
-        patch("mindloop.semantic_memory.get_embeddings", side_effect=_mock_embeddings),
         patch("mindloop.memory.get_embeddings", side_effect=_mock_embeddings),
     ):
         result = mt.remember("some fact", "about facts")
@@ -50,7 +49,6 @@ def test_remember_uses_agent_abstract(mt: MemoryTools) -> None:
     cs = _summary("text", abstract="llm abstract", summary="llm summary")
     with (
         patch("mindloop.memory_tools.summarize_chunk", return_value=cs),
-        patch("mindloop.semantic_memory.get_embeddings", side_effect=_mock_embeddings),
         patch("mindloop.memory.get_embeddings", side_effect=_mock_embeddings),
     ):
         result = mt.remember("text", "agent abstract")
@@ -74,7 +72,7 @@ def test_recall_empty(mt: MemoryTools) -> None:
 
 
 def test_recall_returns_results(mt: MemoryTools) -> None:
-    mt.store.save(_summary("cats are great", "about cats", "cats summary"), _EMB)
+    mt.store.save(_summary("cats are great", "about cats", "cats summary"))
     with patch("mindloop.memory.get_embeddings", side_effect=_mock_embeddings):
         result = mt.recall("cats")
 
@@ -86,7 +84,7 @@ def test_recall_returns_results(mt: MemoryTools) -> None:
 
 def test_recall_respects_top_k(mt: MemoryTools) -> None:
     for i in range(5):
-        mt.store.save(_summary(f"fact {i}"), _EMB)
+        mt.store.save(_summary(f"fact {i}"))
     with patch("mindloop.memory.get_embeddings", side_effect=_mock_embeddings):
         result = mt.recall("fact", top_k=2)
 
@@ -103,9 +101,7 @@ def test_recall_detail_not_found(mt: MemoryTools) -> None:
 
 
 def test_recall_detail_returns_text(mt: MemoryTools) -> None:
-    row_id = mt.store.save(
-        _summary("full text here", "the abstract", "the summary"), _EMB
-    )
+    row_id = mt.store.save(_summary("full text here", "the abstract", "the summary"))
     result = mt.recall_detail(row_id)
     assert "full text here" in result
     assert "the abstract" in result
@@ -114,11 +110,9 @@ def test_recall_detail_returns_text(mt: MemoryTools) -> None:
 
 
 def test_recall_detail_shows_lineage(mt: MemoryTools) -> None:
-    id_a = mt.store.save(_summary("leaf a", "abs_a"), _EMB)
-    id_b = mt.store.save(_summary("leaf b", "abs_b"), _EMB)
-    merged_id = mt.store.save(
-        _summary("merged", "abs_m"), _EMB, source_a=id_a, source_b=id_b
-    )
+    id_a = mt.store.save(_summary("leaf a", "abs_a"))
+    id_b = mt.store.save(_summary("leaf b", "abs_b"))
+    merged_id = mt.store.save(_summary("merged", "abs_m"), source_a=id_a, source_b=id_b)
     result = mt.recall_detail(merged_id)
     assert "Lineage:" in result
     assert "abs_a" in result
@@ -127,7 +121,7 @@ def test_recall_detail_shows_lineage(mt: MemoryTools) -> None:
 
 
 def test_recall_detail_no_lineage_for_leaf(mt: MemoryTools) -> None:
-    row_id = mt.store.save(_summary("leaf"), _EMB)
+    row_id = mt.store.save(_summary("leaf"))
     result = mt.recall_detail(row_id)
     assert "Lineage:" not in result
 
@@ -186,7 +180,7 @@ def test_add_memory_tools_execute_recall(tmp_path: Path) -> None:
 
 def test_stats_tracking(mt: MemoryTools) -> None:
     """Each tool call increments its counter in stats."""
-    mt.store.save(_summary("fact"), _EMB)
+    mt.store.save(_summary("fact"))
     with patch("mindloop.memory.get_embeddings", side_effect=_mock_embeddings):
         mt.recall("test")
         mt.recall("test")
