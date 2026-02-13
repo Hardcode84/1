@@ -10,11 +10,43 @@ Procedural context (what was I doing, my plan, unfinished work) is lost between 
 
 ## Proposed pipeline
 
-1. Chunk the previous session's JSONL log (existing chunker).
-2. Summarize each chunk (existing summarizer).
-3. Score each chunk for importance (see below).
-4. Build recap from top-scored chunks up to a token budget.
-5. Inject into system prompt; write full recap to `_handoff.md` in workspace.
+1. **Pre-process** the JSONL log: collapse tool calls + results into concise natural language.
+2. Chunk the processed log (existing chunker).
+3. Summarize each chunk (existing summarizer).
+4. Score each chunk for importance (see below).
+5. Build recap from top-scored chunks up to a token budget.
+6. Inject into system prompt; write full recap to `_handoff.md` in workspace.
+
+## Pre-processing: tool call collapsing
+
+Raw JSONL logs contain structured tool calls and verbose results (file contents, recall outputs). These are noisy for the summarizer and waste tokens. Before chunking, collapse each tool call + result pair into a concise natural language line.
+
+### Why pre-process rather than post-filter
+
+Alternative: chunk raw logs and down-weight tool-heavy chunks at scoring time. This is simpler but the summarizer still wastes effort compressing file contents that are irrelevant to the recap. Pre-processing gives the summarizer a clean narrative to work with.
+
+### Collapsing rules by tool type
+
+| Tool | Category | Collapsed form |
+|------|----------|----------------|
+| `read` | Observational | "Read foo.txt (15 lines)." |
+| `ls` | Observational | "Listed directory: foo/, bar.txt" |
+| `recall` | Observational | "Recalled 3 memories about X." (from query) |
+| `recall_detail` | Observational | "Retrieved full text of memory #N." |
+| `edit` | Consequential | "Edited foo.txt: replaced X with Y." |
+| `write` | Consequential | "Wrote bar.txt (20 lines)." |
+| `remember` | Consequential | "Remembered: 'one-sentence abstract'." (keep full abstract) |
+| `ask` | Consequential | "Asked user: 'question'. Response: 'answer'." |
+| `status` | Meta | Drop or "Checked status." |
+| `done` | Meta | "Finished: 'summary'." |
+
+### Principles
+
+- **Consequential tools** (write, edit, remember, ask) keep more detail — they changed state.
+- **Observational tools** (read, ls, recall) collapse to action + brief outcome.
+- **Meta tools** (status, done) are minimal or dropped.
+- **Tool results** are mostly discarded. The fact that the agent read a file matters; the file contents don't.
+- **Assistant reasoning** passes through unchanged — high signal, the summarizer handles it well.
 
 ## Scoring: novelty x centrality x recency
 
