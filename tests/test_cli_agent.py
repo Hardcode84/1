@@ -236,8 +236,12 @@ def _make_session_with_tool(tmp_path: Path) -> tuple[Path, "ToolRegistry"]:  # t
                 f"Error: content is {len(content)} chars, "
                 f"max is {max_chars}. Trim and retry."
             )
+        previous = notes_path.read_text() if notes_path.is_file() else None
         notes_path.write_text(content)
-        return f"Saved {len(content)} chars to notes."
+        result = f"Saved {len(content)} chars to notes."
+        if previous:
+            result += f"\n\n--- Previous notes (overwritten) ---\n{previous}"
+        return result
 
     registry.add(
         name="note_to_self",
@@ -253,15 +257,18 @@ def test_note_to_self_writes_file(tmp_path: Path) -> None:
     notes_path, registry = _make_session_with_tool(tmp_path)
     result = registry.execute("note_to_self", json.dumps({"content": "remember this"}))
     assert "Saved" in result
+    assert "Previous notes" not in result
     assert notes_path.read_text() == "remember this"
 
 
-def test_note_to_self_overwrites(tmp_path: Path) -> None:
-    """Successive calls overwrite, not append."""
+def test_note_to_self_overwrites_and_shows_previous(tmp_path: Path) -> None:
+    """Successive calls overwrite and return previous content."""
     notes_path, registry = _make_session_with_tool(tmp_path)
     registry.execute("note_to_self", json.dumps({"content": "first"}))
-    registry.execute("note_to_self", json.dumps({"content": "second"}))
+    result = registry.execute("note_to_self", json.dumps({"content": "second"}))
     assert notes_path.read_text() == "second"
+    assert "Previous notes (overwritten)" in result
+    assert "first" in result
 
 
 def test_note_to_self_rejects_oversized(tmp_path: Path) -> None:

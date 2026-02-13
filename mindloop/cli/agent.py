@@ -270,8 +270,12 @@ def main() -> None:
                     f"Error: content is {len(content)} chars, "
                     f"max is {_NOTES_MAX_CHARS}. Trim and retry."
                 )
+            previous = notes_path.read_text() if notes_path.is_file() else None
             notes_path.write_text(content)
-            return f"Saved {len(content)} chars to notes."
+            result = f"Saved {len(content)} chars to notes."
+            if previous:
+                result += f"\n\n--- Previous notes (overwritten) ---\n{previous}"
+            return result
 
         registry.add(
             name="note_to_self",
