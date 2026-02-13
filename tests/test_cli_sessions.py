@@ -57,6 +57,20 @@ def test_gather_basic(tmp_path: Path) -> None:
     assert row["notes"] == "yes"
 
 
+def test_gather_no_prefix(tmp_path: Path) -> None:
+    """Logs without NNN_ prefix are still picked up."""
+    _make_session(
+        tmp_path,
+        "old_style",
+        [("agent_20260212_110304.jsonl", "[stop] model finished (1k)")],
+    )
+    rows = _gather_sessions(tmp_path)
+    assert len(rows) == 1
+    assert rows[0]["session"] == "old_style"
+    assert rows[0]["started"] == "2026-02-12 11:03:04"
+    assert rows[0]["status"] == "clean"
+
+
 def test_gather_crashed(tmp_path: Path) -> None:
     """Crashed session (no [stop] line) shows crashed status."""
     _make_session(
@@ -101,6 +115,22 @@ def test_gather_unknown_reason(tmp_path: Path) -> None:
     rows = _gather_sessions(tmp_path)
     assert rows[0]["status"].startswith("unknown")
     assert "solar flare" in rows[0]["status"]
+
+
+def test_gather_sorted_by_last_run(tmp_path: Path) -> None:
+    """Sessions are sorted by last run timestamp."""
+    _make_session(
+        tmp_path,
+        "newer",
+        [("001_agent_20260213_120000.jsonl", "[stop] model finished (1k)")],
+    )
+    _make_session(
+        tmp_path,
+        "older",
+        [("001_agent_20260211_080000.jsonl", "[stop] model finished (1k)")],
+    )
+    rows = _gather_sessions(tmp_path)
+    assert [r["session"] for r in rows] == ["older", "newer"]
 
 
 def test_gather_skips_non_session(tmp_path: Path) -> None:

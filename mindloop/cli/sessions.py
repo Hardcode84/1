@@ -8,8 +8,8 @@ from mindloop.cli.agent import _session_exit_reason
 
 _SESSIONS_DIR = Path("sessions")
 
-# Pattern: NNN_agent_YYYYMMDD_HHMMSS.jsonl
-_TS_RE = re.compile(r"\d+_agent_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.jsonl$")
+# Matches both NNN_agent_YYYYMMDD_HHMMSS.jsonl and agent_YYYYMMDD_HHMMSS.jsonl.
+_TS_RE = re.compile(r"agent_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.jsonl$")
 
 
 def _parse_timestamp(name: str) -> str | None:
@@ -38,11 +38,11 @@ def _exit_label(jsonl_path: Path) -> str:
 def _gather_sessions(sessions_dir: Path) -> list[dict[str, str]]:
     """Collect metadata for each session directory."""
     rows: list[dict[str, str]] = []
-    for entry in sorted(sessions_dir.iterdir()):
+    for entry in sessions_dir.iterdir():
         log_dir = entry / "logs"
         if not log_dir.is_dir():
             continue
-        logs = sorted(log_dir.glob("*_agent_*.jsonl"))
+        logs = sorted(log_dir.glob("*agent_*.jsonl"))
         count = len(logs)
         if count == 0:
             continue
@@ -62,6 +62,7 @@ def _gather_sessions(sessions_dir: Path) -> list[dict[str, str]]:
                 "notes": has_notes,
             }
         )
+    rows.sort(key=lambda r: r["last_run"])
     return rows
 
 
