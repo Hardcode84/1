@@ -125,7 +125,7 @@ def _stream_request(
     full_reply: list[str] = []
     full_reasoning: list[str] = []
     tool_calls_by_index: dict[int, dict[str, Any]] = {}
-    usage: dict[str, int] | None = None
+    usage: dict[str, Any] | None = None
 
     for line in response.iter_lines():
         if not line or not line.startswith(b"data: "):

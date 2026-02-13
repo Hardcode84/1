@@ -85,6 +85,7 @@ def run_agent(
     messages: list[Message] = list(initial_messages) if initial_messages else []
     effective_model = model if model is not None else DEFAULT_MODEL
     total_tokens = 0
+    total_cost = 0.0
     warned_thresholds: set[float] = set()
     consecutive_tool_turns = 0
 
@@ -129,12 +130,13 @@ def run_agent(
 
     def _stop(reason: str) -> str:
         """Log termination reason and return the last model content."""
+        cost_str = f", ${total_cost:.4f}" if total_cost else ""
         stop_msg: Message = {
             "role": "system",
-            "content": f"[stop] {reason} ({total_tokens} tokens used)",
+            "content": f"[stop] {reason} ({total_tokens} tokens{cost_str})",
         }
         on_message(stop_msg)
-        on_step(f"\n[stop] {reason} ({total_tokens} tokens used)")
+        on_step(f"\n[stop] {reason} ({total_tokens} tokens{cost_str})")
         if registry.stats:
             stats_text = json.dumps(registry.stats)
             stats_msg: Message = {
@@ -160,6 +162,9 @@ def run_agent(
         usage = response.get("usage")
         if usage:
             total_tokens += int(usage.get("total_tokens", 0))
+            cost = usage.get("cost")
+            if cost is not None:
+                total_cost += float(cost)
         else:
             total_tokens += _estimate_tokens(messages, response)
         messages.append(response)
