@@ -39,6 +39,7 @@ pre-commit run --all-files    # black + ruff + mypy strict
 
 - `docs/design/` — current architecture.
 - `docs/ideas/` — future proposals, not yet implemented.
+- Move from `ideas/` to `design/` once implemented.
 
 ## Environment
 

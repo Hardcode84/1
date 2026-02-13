@@ -32,13 +32,14 @@ Each run in a session increments the instance counter (derived from JSONL file c
 
 ## Context transfer between instances
 
-Currently limited to:
-
 | Mechanism | What persists | Cost to next instance |
 |-----------|---------------|-----------------------|
+| Session recap | Procedural context (what was I doing, unfinished work) | Zero (injected into system prompt) |
 | Semantic memory | Declarative knowledge (facts, conclusions) | Recall queries |
 | Workspace files | Artifacts the agent created | ls + read |
 | JSONL resume | Full conversation replay | Expensive (full history) |
 | System prompt | Instance number | Zero |
 
-**Gap**: procedural context (what was I doing, unfinished work) is not reliably captured. See `docs/ideas/session_recap.md` for a proposed solution.
+### Session recap
+
+At shutdown, the agent generates a recap from the current JSONL log and writes it to `workspace/_recap.md`. The next instance loads this file and appends it to the system prompt. See `docs/design/session_recap.md` for design details.

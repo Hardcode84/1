@@ -1,6 +1,6 @@
-# Idea: Session Recap
+# Session Recap
 
-**Status: not implemented.**
+Implementation: `mindloop/recap.py`, `mindloop/cli/recap.py`.
 
 Automatically generate a ranked summary of the previous session to inject into the next instance's context.
 
@@ -8,14 +8,24 @@ Automatically generate a ranked summary of the previous session to inject into t
 
 Procedural context (what was I doing, my plan, unfinished work) is lost between instances. Semantic memory captures declarative knowledge but not in-progress state.
 
-## Proposed pipeline
+## Implemented pipeline
 
-1. **Pre-process** the JSONL log: collapse tool calls + results into concise natural language.
-2. Chunk the processed log (existing chunker).
-3. Summarize each chunk (existing summarizer).
-4. Score each chunk for importance (see below).
-5. Build recap from top-scored chunks up to a token budget.
-6. Inject into system prompt; write full recap to `_handoff.md` in workspace.
+1. **Pre-process** the JSONL log: collapse tool calls + results into concise natural language (`collapse_messages`).
+2. **Chunk** the processed log (`chunk_turns` + `compact_chunks`).
+3. **Embed + merge** semantically similar adjacent chunks (`get_embeddings` + `merge_chunks`). Typically reduces ~100+ raw chunks to ~5–15.
+4. **Summarize** each merged chunk (`summarize_chunks`).
+5. **Score** by recency: linear positional bias toward end of session.
+6. **Select** top-scored summaries up to a token budget (default 1000 tokens).
+7. **Inject** into system prompt and write to `_recap.md` in workspace.
+
+### Timing
+
+- **Shutdown**: generated in the `finally` block after the agent loop ends (including Ctrl+C). Written to `sessions/<name>/workspace/_recap.md`.
+- **Startup**: loaded from `_recap.md` if it exists. If not (first instance or crash), generated on the fly from the latest JSONL log.
+
+### CLI
+
+`mindloop-recap <logfile>` generates a recap on demand. Supports `--budget`, `--model`, `-o` flags.
 
 ## Pre-processing: tool call collapsing
 
@@ -33,11 +43,11 @@ Alternative: chunk raw logs and down-weight tool-heavy chunks at scoring time. T
 | `ls` | Observational | "Listed directory: foo/, bar.txt" |
 | `recall` | Observational | "Recalled 3 memories about X." (from query) |
 | `recall_detail` | Observational | "Retrieved full text of memory #N." |
-| `edit` | Consequential | "Edited foo.txt: replaced X with Y." |
+| `edit` | Consequential | "Edited foo.txt." |
 | `write` | Consequential | "Wrote bar.txt (20 lines)." |
 | `remember` | Consequential | "Remembered: 'one-sentence abstract'." (keep full abstract) |
 | `ask` | Consequential | "Asked user: 'question'. Response: 'answer'." |
-| `status` | Meta | Drop or "Checked status." |
+| `status` | Meta | Dropped. |
 | `done` | Meta | "Finished: 'summary'." |
 
 ### Principles
@@ -48,7 +58,13 @@ Alternative: chunk raw logs and down-weight tool-heavy chunks at scoring time. T
 - **Tool results** are mostly discarded. The fact that the agent read a file matters; the file contents don't.
 - **Assistant reasoning** passes through unchanged — high signal, the summarizer handles it well.
 
-## Scoring: novelty x centrality x recency
+## Scoring: v1 vs future
+
+### Current (v1): recency only
+
+Linear positional bias: `score = (i + 1) / len(summaries)`. Simple, reliable, biases toward unfinished work at end of session.
+
+### Future: novelty x centrality x recency
 
 ```
 score = novelty(chunk, memories) * centrality(chunk, session_chunks) * recency(position)
@@ -58,16 +74,16 @@ score = novelty(chunk, memories) * centrality(chunk, session_chunks) * recency(p
 - **Centrality**: TextRank-style connectedness within session chunks. Filters out noise.
 - **Recency**: positional weight biasing toward end of session (unfinished work).
 
-### Action-based signal
+### Future: action-based signal
 
 Tool calls as importance multiplier:
 - `write`, `edit`, `remember` = consequential (changed state).
 - `read`, `ls`, `recall` = observational.
 - `action_weight = 1 + alpha * consequential_tool_count`.
 
-## Open questions
+## Resolved questions
 
-- Token budget for system prompt recap? (500? 1000?)
-- Agent-written handoff (richer) vs system-generated (reliable)?
-- Store recap as a tagged memory entry or just a workspace file?
-- Handle Ctrl+C interruptions (no time for summarization)?
+- **Token budget**: 1000 tokens default, configurable via `--budget`.
+- **Generation method**: system-generated (reliable, automatic).
+- **Storage**: workspace file (`_recap.md`), not a memory entry.
+- **Ctrl+C**: handled via `finally` block in agent CLI.
