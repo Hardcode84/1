@@ -11,7 +11,7 @@ from typing import Any
 from mindloop.chunker import Turn, chunk_turns, compact_chunks, merge_chunks
 from mindloop.client import get_embeddings
 from mindloop.summarizer import ChunkSummary, summarize_chunks
-from mindloop.util import CHARS_PER_TOKEN, SKIP_PREFIXES, noop
+from mindloop.util import CHARS_PER_TOKEN, noop
 
 
 # Tool call results that should be skipped entirely.
@@ -76,10 +76,6 @@ def collapse_messages(messages: list[dict[str, Any]]) -> list[Turn]:
         tool_calls = msg.get("tool_calls")
 
         if role == "system":
-            if any(content.startswith(p) for p in SKIP_PREFIXES):
-                continue
-            if content.strip():
-                turns.append(Turn(timestamp=now, role="System", text=content))
             continue
 
         if role == "assistant":

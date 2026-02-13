@@ -103,18 +103,17 @@ def test_collapse_skips_status() -> None:
     assert turns == []
 
 
-def test_collapse_skips_system_noise() -> None:
-    """[stop]/[stats]/Warning filtered, reflect nudges kept."""
+def test_collapse_skips_system_messages() -> None:
+    """All system messages are excluded from recap."""
     msgs = [
         _msg("system", "[stop] agent finished"),
         _msg("system", "[stats] tokens: 1000"),
         _msg("system", "Warning: something bad"),
         _msg("system", "Reflect on your progress."),
+        _msg("system", "You are a helpful assistant."),
     ]
     turns = collapse_messages(msgs)
-    assert len(turns) == 1
-    assert turns[0].role == "System"
-    assert "Reflect" in turns[0].text
+    assert len(turns) == 0
 
 
 def test_collapse_unknown_tool() -> None:
