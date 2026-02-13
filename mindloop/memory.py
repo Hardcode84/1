@@ -285,11 +285,14 @@ class MemoryStore:
         # --- Reciprocal Rank Fusion ---
         all_ids = set(emb_rank) | set(bm25_rank)
         fallback = len(all_ids)  # Penalty rank for missing entries.
+        # Theoretical max is 2/_RRF_K (rank 0 in both). Normalize to [0, 1].
+        rrf_max = 2.0 / _RRF_K
         rrf_scores: dict[int, float] = {}
         for cid in all_ids:
             e_rank = emb_rank.get(cid, fallback)
             b_rank = bm25_rank.get(cid, fallback)
-            rrf_scores[cid] = 1.0 / (_RRF_K + e_rank) + 1.0 / (_RRF_K + b_rank)
+            raw = 1.0 / (_RRF_K + e_rank) + 1.0 / (_RRF_K + b_rank)
+            rrf_scores[cid] = raw / rrf_max
 
         top_ids = sorted(rrf_scores, key=rrf_scores.__getitem__, reverse=True)[:top_k]
 
