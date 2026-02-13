@@ -104,6 +104,18 @@ mindloop-recap logs/001_agent_20260210_120000.jsonl --budget 500 --model deepsee
 
 Collapses tool calls into concise natural-language descriptions, chunks and summarizes the session, then selects the most relevant summaries with recency bias within a token budget. Recaps are also generated automatically at session shutdown and injected into the next instance's system prompt.
 
+### List sessions
+
+```bash
+# List all sessions with metadata.
+mindloop-sessions
+
+# Custom sessions directory.
+mindloop-sessions --dir path/to/sessions
+```
+
+Shows each session's name, instance count, date range, last exit status (clean/crashed/tokens/iterations), and whether notes exist.
+
 ### Tests
 
 ```bash

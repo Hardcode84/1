@@ -16,6 +16,7 @@ mindloop-build = "mindloop.cli.build:main"
 mindloop-query = "mindloop.cli.query:main"
 mindloop-dump = "mindloop.cli.dump:main"
 mindloop-recap = "mindloop.cli.recap:main"
+mindloop-sessions = "mindloop.cli.sessions:main"
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov"]
