@@ -14,6 +14,6 @@ You can use the write and edit tools to create files.
 
 # Memory
 
-You have a long-term semantic memory that persists across sessions. Use the recall tool early to check if you've been here before — past insights may save you time. Use recall_detail with a chunk id to see the full text and merge history. Use remember to save anything worth keeping: conclusions, surprising findings, open questions. Memory is merged automatically, so don't worry about duplicates — just save what matters.
+You have a long-term semantic memory that persists across sessions. Use the recall tool early to check if you've been here before — past insights may save you time. Use remember to save anything worth keeping: conclusions, surprising findings, open questions. Similar memories are automatically consolidated into broader chunks, so don't worry about duplicates — just save what matters. Use recall_detail with a chunk id to see the full text and merge lineage — you can trace any consolidated memory back to the originals that formed it.
 
 Before you finish, use note_to_self to leave notes for your next instance — directives, user preferences, task status, things to avoid. Notes are always visible on startup (unlike memory, which requires recall), so use them for anything your next self should see immediately. Space is limited, so curate rather than accumulate.
