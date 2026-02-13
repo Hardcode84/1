@@ -11,20 +11,11 @@ from typing import Any
 from mindloop.chunker import Turn, chunk_turns, compact_chunks, merge_chunks
 from mindloop.client import get_embeddings
 from mindloop.summarizer import ChunkSummary, summarize_chunks
-
-
-def _noop(_msg: str) -> None:
-    pass
+from mindloop.util import CHARS_PER_TOKEN, SKIP_PREFIXES, noop
 
 
 # Tool call results that should be skipped entirely.
 _SKIP_TOOLS = {"status"}
-
-# System message prefixes to filter (mirrors _SKIP_PREFIXES in cli/agent.py).
-_SKIP_PREFIXES = ("[stop]", "[stats]", "Warning:")
-
-# Approximate characters per token for budget estimation.
-_CHARS_PER_TOKEN = 4
 
 
 def _collapse_tool_call(name: str, args: dict[str, str], result: str) -> str | None:
@@ -85,7 +76,7 @@ def collapse_messages(messages: list[dict[str, Any]]) -> list[Turn]:
         tool_calls = msg.get("tool_calls")
 
         if role == "system":
-            if any(content.startswith(p) for p in _SKIP_PREFIXES):
+            if any(content.startswith(p) for p in SKIP_PREFIXES):
                 continue
             if content.strip():
                 turns.append(Turn(timestamp=now, role="System", text=content))
@@ -130,7 +121,7 @@ def generate_recap(
     messages: list[dict[str, Any]],
     model: str | None = None,
     token_budget: int = 1000,
-    log: Callable[[str], None] = _noop,
+    log: Callable[[str], None] = noop,
 ) -> str:
     """Full recap pipeline: collapse, chunk, summarize, score, select."""
     log(f"Collapsing {len(messages)} messages...")
@@ -165,7 +156,7 @@ def generate_recap(
     scored.sort(key=lambda x: x[0], reverse=True)
 
     # Select top summaries within budget.
-    budget_chars = token_budget * _CHARS_PER_TOKEN
+    budget_chars = token_budget * CHARS_PER_TOKEN
     selected: list[tuple[int, str]] = []
     used = 0
     for score, idx, s in scored:
@@ -180,7 +171,7 @@ def generate_recap(
 
     log(
         f"Selected {len(selected)}/{len(summaries)} summaries"
-        f" (~{used // _CHARS_PER_TOKEN} tokens)."
+        f" (~{used // CHARS_PER_TOKEN} tokens)."
     )
     return "\n".join(text for _, text in selected)
 

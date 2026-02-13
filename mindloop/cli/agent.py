@@ -16,6 +16,7 @@ from mindloop.agent import run_agent
 from mindloop.client import API_KEY
 from mindloop.recap import generate_recap, load_recap, save_recap
 from mindloop.tools import add_memory_tools, create_default_registry
+from mindloop.util import SKIP_PREFIXES
 
 _PROMPT_PATH = Path(__file__).resolve().parent.parent / "system_prompt.md"
 
@@ -100,9 +101,6 @@ def _make_logger(jsonl_path: Path, log_path: Path) -> Callable[[dict[str, Any]],
 
 _DEFAULT_MODEL = "deepseek/deepseek-v3.2"
 
-# System messages injected by the agent loop that shouldn't be replayed.
-_SKIP_PREFIXES = ("[stop]", "[stats]", "Warning:")
-
 
 def _load_messages(path: Path) -> list[dict[str, Any]]:
     """Load messages from a JSONL log, stripping metadata and agent-loop noise."""
@@ -117,7 +115,7 @@ def _load_messages(path: Path) -> list[dict[str, Any]]:
         # Skip system messages injected by the agent loop.
         if entry.get("role") == "system":
             content = entry.get("content", "")
-            if any(content.startswith(p) for p in _SKIP_PREFIXES):
+            if any(content.startswith(p) for p in SKIP_PREFIXES):
                 continue
         messages.append(entry)
     return messages

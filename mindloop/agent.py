@@ -6,21 +6,15 @@ from datetime import datetime
 
 from mindloop.client import Message, chat
 from mindloop.tools import Param, ToolRegistry, create_default_registry
+from mindloop.util import CHARS_PER_TOKEN, noop
 
 DEFAULT_MAX_ITERATIONS = 1000
 _USER_UNAVAILABLE = "Continue autonomously. Use the ask tool if you need user input."
 
 
-def _noop(_msg: str) -> None:
-    pass
-
-
 def _noop_message(_msg: Message) -> None:
     pass
 
-
-# Rough chars-per-token ratio for estimation.
-_CHARS_PER_TOKEN = 4
 
 DEFAULT_MAX_TOKENS = 200_000 * 5
 _BUDGET_WARNING_THRESHOLDS = (0.5, 0.8)
@@ -53,7 +47,7 @@ def _estimate_tokens(messages: list[Message], response: Message) -> int:
     prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
     response_chars = len(str(response.get("content", "")))
     response_chars += len(str(response.get("reasoning", "")))
-    return (prompt_chars + response_chars) // _CHARS_PER_TOKEN
+    return (prompt_chars + response_chars) // CHARS_PER_TOKEN
 
 
 def _auto_confirm(_name: str, _arguments: str) -> bool:
@@ -70,7 +64,7 @@ def run_agent(
     model: str | None = None,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    on_step: Callable[[str], None] = _noop,
+    on_step: Callable[[str], None] = noop,
     on_thinking: Callable[[str], None] | None = None,
     on_message: Callable[[Message], None] = _noop_message,
     on_confirm: Callable[[str, str], bool] | None = None,

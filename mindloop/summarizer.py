@@ -5,16 +5,13 @@ from dataclasses import dataclass
 
 from mindloop.chunker import Chunk
 from mindloop.client import chat
+from mindloop.util import noop
 
 
-def _noop(_msg: str) -> None:
-    pass
+# _SUMMARIZATION_MODEL = "tngtech/deepseek-r1t2-chimera:free"
+_SUMMARIZATION_MODEL = "deepseek/deepseek-v3.2"
 
-
-# SUMMARIZATION_MODEL = "tngtech/deepseek-r1t2-chimera:free"
-SUMMARIZATION_MODEL = "deepseek/deepseek-v3.2"
-
-SYSTEM_PROMPT = """\
+_SYSTEM_PROMPT = """\
 You summarize conversation excerpts from a chat log.
 Respond in exactly this format (two lines, keep the prefixes):
 ABSTRACT: <one sentence TL;DR>
@@ -34,8 +31,8 @@ def summarize_chunk(chunk: Chunk, model: str | None = None) -> ChunkSummary:
     messages = [{"role": "user", "content": chunk.text}]
     msg = chat(
         messages,
-        model=model or SUMMARIZATION_MODEL,
-        system_prompt=SYSTEM_PROMPT,
+        model=model or _SUMMARIZATION_MODEL,
+        system_prompt=_SYSTEM_PROMPT,
         stream=False,
         temperature=0,
         seed=42,
@@ -59,7 +56,7 @@ def summarize_chunk(chunk: Chunk, model: str | None = None) -> ChunkSummary:
 def summarize_chunks(
     chunks: list[Chunk],
     model: str | None = None,
-    log: Callable[[str], None] = _noop,
+    log: Callable[[str], None] = noop,
 ) -> list[ChunkSummary]:
     """Summarize a list of chunks sequentially."""
     results: list[ChunkSummary] = []
