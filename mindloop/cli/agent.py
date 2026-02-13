@@ -248,7 +248,7 @@ def main() -> None:
 
     system_prompt = _PROMPT_PATH.read_text().strip()
     if paths.instance:
-        system_prompt += f"\n\nYou are instance {paths.instance}."
+        system_prompt += f"\n\nYou are instance {paths.instance} (1-based)."
     registry = create_default_registry(
         blocked_dirs=paths.blocked_dirs or None,
         root_dir=paths.workspace,
