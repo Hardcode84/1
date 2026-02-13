@@ -7,10 +7,13 @@ from mindloop.chunker import Chunk, Turn
 from mindloop.memory import MemoryStore
 from mindloop.merge_llm import MergeResult, merge_texts, should_merge
 from mindloop.summarizer import ChunkSummary
+from mindloop.util import noop
 
 _DEFAULT_TOP_K = 5
 _DEFAULT_MAX_ROUNDS = 10
 _DEFAULT_MIN_SPECIFICITY = 0.3
+_DEFAULT_SIM_HIGH = 0.9
+_DEFAULT_SIM_LOW = 0.2
 
 
 def save_memory(
@@ -23,7 +26,9 @@ def save_memory(
     max_rounds: int = _DEFAULT_MAX_ROUNDS,
     min_specificity: float = _DEFAULT_MIN_SPECIFICITY,
     prefer: str = "equal",
-    on_merge: Callable[[MergeResult], None] | None = None,
+    log: Callable[[str], None] = noop,
+    sim_high: float = _DEFAULT_SIM_HIGH,
+    sim_low: float = _DEFAULT_SIM_LOW,
 ) -> int:
     """Save a memory, merging with similar existing memories until fixed point.
 
@@ -37,6 +42,7 @@ def save_memory(
 
     existing = store.find_exact(stored_text)
     if existing is not None:
+        log("[memory] Exact duplicate found, skipping.")
         return existing
 
     with store.transaction():
@@ -44,13 +50,37 @@ def save_memory(
         last_id = store.save(cs)
         store.deactivate([last_id])
 
-        for _ in range(max_rounds):
+        for round_idx in range(max_rounds):
             results = store.search(text, top_k=top_k)
+            log(f"[memory] Round {round_idx + 1}: {len(results)} candidates.")
 
             merged = False
             for result in results:
                 existing_text = result.chunk_summary.chunk.text
-                if not should_merge(text, existing_text, result.score, model=model):
+                sim = result.score
+
+                # Auto-merge / auto-skip by cosine similarity thresholds.
+                if sim >= sim_high:
+                    log(
+                        f"[memory]   #{result.id} sim={sim:.3f}"
+                        f" >= high={sim_high} → auto-merge."
+                    )
+                    do_merge = True
+                elif sim < sim_low:
+                    log(
+                        f"[memory]   #{result.id} sim={sim:.3f}"
+                        f" < low={sim_low} → skip."
+                    )
+                    continue
+                else:
+                    log(
+                        f"[memory]   #{result.id} sim={sim:.3f}"
+                        f" (low={sim_low}..high={sim_high}) → asking LLM..."
+                    )
+                    do_merge = should_merge(text, existing_text, model=model)
+                    log(f"[memory]   LLM says {'merge' if do_merge else 'no merge'}.")
+
+                if not do_merge:
                     continue
 
                 mr: MergeResult = merge_texts(
@@ -62,7 +92,12 @@ def save_memory(
                 store.deactivate([result.id])
 
                 # Check if the merge would make the chunk too generic.
-                if store.specificity(mr.text) < min_specificity:
+                spec = store.specificity(mr.text)
+                if spec < min_specificity:
+                    log(
+                        f"[memory]   Specificity {spec:.3f}"
+                        f" < {min_specificity} → aborting merge."
+                    )
                     store.activate([result.id])
                     break
 
@@ -78,12 +113,12 @@ def save_memory(
                 abstract = mr.abstract
                 summary = mr.summary
                 merged = True
-                if on_merge is not None:
-                    on_merge(mr)
+                log(f"[memory]   Merged → #{last_id}: {mr.abstract}")
                 break  # Restart search with merged text.
 
             if not merged:
-                break  # Fixed point.
+                log("[memory] Fixed point reached.")
+                break
 
         # Activate whichever node ended up final (leaf or last merge).
         store.activate([last_id])

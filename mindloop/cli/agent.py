@@ -396,6 +396,7 @@ def main() -> None:
         print("\n\nInterrupted.")
     finally:
         mt.close()
+        print("\n")
         # Generate recap for the next instance.
         if paths.workspace and jsonl_path.exists():
             try:

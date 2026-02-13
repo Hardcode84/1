@@ -61,11 +61,9 @@ def test_save_no_existing_chunks(store: MemoryStore) -> None:
 def test_save_no_merge_when_dissimilar(store: MemoryStore) -> None:
     store.save(_summary("old fact"))
 
-    with (
-        _patch_embeddings(_EMB_A),
-        patch("mindloop.semantic_memory.should_merge", return_value=False),
-    ):
-        save_memory(store, "new fact", "abs", "sum")
+    # Both thresholds above max cosine (1.0) ensures everything is auto-skipped.
+    with _patch_embeddings(_EMB_A):
+        save_memory(store, "new fact", "abs", "sum", sim_high=2.0, sim_low=2.0)
     assert store.count() == 2
 
 
@@ -73,9 +71,9 @@ def test_save_merges_similar_chunk(store: MemoryStore) -> None:
     store.save(_summary("old fact", abstract="old_abs"))
 
     mr = MergeResult(text="merged fact", abstract="merged_abs", summary="merged_sum")
+    # Uniform embeddings → cosine_sim=1.0 → auto-merge (above sim_high).
     with (
         _patch_embeddings(_EMB_A),
-        patch("mindloop.semantic_memory.should_merge", return_value=True),
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
         row_id = save_memory(store, "new fact", "abs", "sum", min_specificity=0.0)
@@ -92,19 +90,14 @@ def test_save_cascading_merges(store: MemoryStore) -> None:
 
     merge_count = 0
 
-    def _counting_should_merge(*_a: object, **_kw: object) -> bool:
+    def _counting_merge(*_a: object, **_kw: object) -> MergeResult:
         nonlocal merge_count
         merge_count += 1
-        return True
+        return MergeResult(text="merged", abstract="abs", summary="sum")
 
-    mr = MergeResult(text="merged", abstract="abs", summary="sum")
     with (
         _patch_embeddings(_EMB_A),
-        patch(
-            "mindloop.semantic_memory.should_merge",
-            side_effect=_counting_should_merge,
-        ),
-        patch("mindloop.semantic_memory.merge_texts", return_value=mr),
+        patch("mindloop.semantic_memory.merge_texts", side_effect=_counting_merge),
     ):
         save_memory(store, "new fact", "abs", "sum", min_specificity=0.0)
 
@@ -127,7 +120,6 @@ def test_save_stops_at_max_rounds(store: MemoryStore) -> None:
 
     with (
         _patch_embeddings(_EMB_A),
-        patch("mindloop.semantic_memory.should_merge", return_value=True),
         patch("mindloop.semantic_memory.merge_texts", side_effect=_counting_merge),
     ):
         save_memory(store, "new", "abs", "sum", max_rounds=3)
@@ -150,7 +142,6 @@ def test_save_aborts_merge_when_too_generic(store: MemoryStore) -> None:
 
     with (
         _patch_embeddings(_EMB_A),
-        patch("mindloop.semantic_memory.should_merge", return_value=True),
         patch("mindloop.semantic_memory.merge_texts", side_effect=_counting_merge),
     ):
         save_memory(store, "new", "abs", "sum", min_specificity=0.95)
@@ -168,7 +159,6 @@ def test_save_records_sources_on_merge(store: MemoryStore) -> None:
     mr = MergeResult(text="merged", abstract="abs", summary="sum")
     with (
         _patch_embeddings(_EMB_A),
-        patch("mindloop.semantic_memory.should_merge", return_value=True),
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
         new_id = save_memory(store, "new", "abs", "sum", min_specificity=0.0)
@@ -198,7 +188,6 @@ def test_save_records_tree_on_cascade(store: MemoryStore) -> None:
     mr = MergeResult(text="merged", abstract="abs", summary="sum")
     with (
         _patch_embeddings(_EMB_A),
-        patch("mindloop.semantic_memory.should_merge", return_value=True),
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
         final_id = save_memory(store, "new", "abs", "sum", min_specificity=0.0)
@@ -252,7 +241,6 @@ def test_save_is_atomic_on_error(store: MemoryStore) -> None:
 
     with (
         _patch_embeddings(_EMB_A),
-        patch("mindloop.semantic_memory.should_merge", return_value=True),
         patch("mindloop.semantic_memory.merge_texts", side_effect=_exploding_merge),
     ):
         with pytest.raises(RuntimeError, match="LLM failure"):
@@ -294,10 +282,60 @@ def test_specificity_excludes_absorbed_chunk(store: MemoryStore) -> None:
     mr = MergeResult(text="merged similar", abstract="abs", summary="sum")
     with (
         patch("mindloop.memory.get_embeddings", side_effect=_smart_emb),
-        patch("mindloop.semantic_memory.should_merge", return_value=True),
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
         save_memory(store, "new similar", "abs", "sum", min_specificity=0.3)
 
     # Merge should have happened (not blocked by specificity).
     assert store.count() < 5
+
+
+def test_save_borderline_calls_should_merge(store: MemoryStore) -> None:
+    """Cosine sim between low and high triggers LLM-based should_merge."""
+    store.save(_summary("old fact"))
+
+    mr = MergeResult(text="merged", abstract="abs", summary="sum")
+    with (
+        _patch_embeddings(_EMB_A),
+        patch("mindloop.semantic_memory.should_merge", return_value=True) as mock_sm,
+        patch("mindloop.semantic_memory.merge_texts", return_value=mr),
+    ):
+        # sim=1.0, set sim_high above 1 to force borderline path.
+        save_memory(
+            store, "new", "abs", "sum", min_specificity=0.0, sim_high=2.0, sim_low=0.5
+        )
+
+    mock_sm.assert_called_once()
+
+
+def test_save_auto_skip_below_sim_low(store: MemoryStore) -> None:
+    """Cosine sim below sim_low skips without calling should_merge."""
+    store.save(_summary("old fact"))
+
+    with (
+        _patch_embeddings(_EMB_A),
+        patch("mindloop.semantic_memory.should_merge") as mock_sm,
+    ):
+        # Both thresholds above max cosine (1.0) → auto-skip.
+        save_memory(store, "new", "abs", "sum", sim_high=2.0, sim_low=2.0)
+
+    mock_sm.assert_not_called()
+    assert store.count() == 2
+
+
+def test_save_logs_progress(store: MemoryStore) -> None:
+    """Log callback receives round and merge messages."""
+    store.save(_summary("old fact"))
+    logged: list[str] = []
+
+    mr = MergeResult(text="merged", abstract="abs", summary="sum")
+    with (
+        _patch_embeddings(_EMB_A),
+        patch("mindloop.semantic_memory.merge_texts", return_value=mr),
+    ):
+        save_memory(store, "new", "abs", "sum", min_specificity=0.0, log=logged.append)
+
+    round_msgs = [m for m in logged if "Round" in m]
+    merge_msgs = [m for m in logged if "Merged" in m]
+    assert len(round_msgs) >= 1
+    assert len(merge_msgs) >= 1

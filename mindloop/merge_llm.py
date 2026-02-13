@@ -31,21 +31,9 @@ _USER_TEMPLATE = """\
 def should_merge(
     text_a: str,
     text_b: str,
-    cosine_sim: float,
     model: str = "openrouter/free",
-    high: float = 0.9,
-    low: float = 0.2,
 ) -> bool:
-    """Decide whether two chunks should be merged.
-
-    Uses cosine similarity for clear-cut cases, falls back to LLM
-    for the borderline zone between *low* and *high*.
-    """
-    if cosine_sim >= high:
-        return True
-    if cosine_sim < low:
-        return False
-
+    """Ask the LLM whether two chunks belong together and should merge."""
     messages: list[Message] = [
         {
             "role": "user",

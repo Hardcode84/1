@@ -6,7 +6,6 @@ from pathlib import Path
 
 from mindloop.chunker import chunk_turns, compact_chunks, parse_turns, parse_turns_md
 from mindloop.memory import MemoryStore
-from mindloop.merge_llm import MergeResult
 from mindloop.semantic_memory import save_memory
 from mindloop.summarizer import summarize_chunks
 from mindloop.util import DEFAULT_WORKERS
@@ -49,12 +48,10 @@ def process_file(
     )
 
     # Save sequentially (SQLite writes can't be parallelized safely).
+    _log = print if verbose else lambda _s: None
     for i, cs in enumerate(summaries, 1):
         if verbose:
             print(f"  Summarized [{i}]: {cs.abstract}")
-
-        def _on_merge(mr: MergeResult, idx: int = i) -> None:
-            print(f"  Merged [{idx}]: {_truncate(mr.text)}")
 
         save_memory(
             store,
@@ -62,7 +59,7 @@ def process_file(
             cs.abstract,
             cs.summary,
             model=model,
-            on_merge=_on_merge if verbose else None,
+            log=_log,
         )
 
         if verbose:

@@ -9,7 +9,6 @@ from typing import Any
 
 from mindloop.chunker import Chunk, Turn
 from mindloop.memory import DEFAULT_DB_PATH, LineageNode, MemoryStore
-from mindloop.merge_llm import MergeResult
 from mindloop.semantic_memory import save_memory
 from mindloop.summarizer import summarize_chunk
 from mindloop.util import noop
@@ -67,11 +66,6 @@ class MemoryTools:
         chunk = Chunk(turns=[Turn(timestamp=datetime.now(), role="memory", text=text)])
         self._log("[memory] Summarizing...")
         cs = summarize_chunk(chunk, model=self._model)
-
-        def _on_merge(mr: MergeResult) -> None:
-            short = mr.abstract[:120] + "..." if len(mr.abstract) > 120 else mr.abstract
-            self._log(f"[memory] Merged: {short}")
-
         # Use the LLM-generated summary but keep the agent-provided abstract.
         row_id = save_memory(
             self._store,
@@ -79,7 +73,7 @@ class MemoryTools:
             abstract,
             cs.summary,
             model=self._model,
-            on_merge=_on_merge,
+            log=self._log,
         )
         return f"Saved as #{row_id}."
 
