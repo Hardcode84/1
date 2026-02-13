@@ -26,14 +26,17 @@ Embeddings = np.ndarray
 _TRANSIENT_ERRORS = (
     requests.exceptions.ChunkedEncodingError,
     requests.exceptions.ConnectionError,
+    requests.exceptions.ReadTimeout,
+    requests.exceptions.ConnectTimeout,
 )
 _MAX_RETRIES = 3
 _RETRY_BACKOFF = 2.0
+_REQUEST_TIMEOUT = 60
 
 
 def _with_retry(
     func: Callable[..., Any],
-    on_token: Callable[[str], None],
+    on_error: Callable[[str], None],
     *args: Any,
     **kwargs: Any,
 ) -> Any:
@@ -45,7 +48,7 @@ def _with_retry(
             if attempt == _MAX_RETRIES - 1:
                 raise
             wait = _RETRY_BACKOFF * (attempt + 1)
-            on_token(f"\n[connection error, retrying in {wait:.0f}s...]")
+            on_error(f"\n[connection error, retrying in {wait:.0f}s...]")
             time.sleep(wait)
     return None  # Unreachable, satisfies type checker.
 
@@ -111,6 +114,7 @@ def _stream_request(
         headers={"Authorization": f"Bearer {API_KEY}"},
         json=payload,
         stream=True,
+        timeout=_REQUEST_TIMEOUT,
     )
     response.raise_for_status()
 
@@ -210,16 +214,22 @@ def chat(
         _apply_cache_control(payload, cache_messages=cache_messages)
 
     if not stream:
-        response = requests.post(
-            f"{BASE_URL}/chat/completions",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-            json=payload,
-        )
-        response.raise_for_status()
-        body = response.json()
-        msg: Message = body["choices"][0]["message"]
-        if "usage" in body:
-            msg["usage"] = body["usage"]
+
+        def _non_streaming_request() -> Message:
+            response = requests.post(
+                f"{BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {API_KEY}"},
+                json=payload,
+                timeout=_REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            body = response.json()
+            msg: Message = body["choices"][0]["message"]
+            if "usage" in body:
+                msg["usage"] = body["usage"]
+            return msg
+
+        msg: Message = _with_retry(_non_streaming_request, on_token)
         return msg
 
     payload["stream"] = True
@@ -249,13 +259,18 @@ def get_embeddings(
             uncached.append((i, text))
 
     if uncached:
-        response = requests.post(
-            f"{BASE_URL}/embeddings",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-            json={"model": model, "input": [text for _, text in uncached]},
-        )
-        response.raise_for_status()
-        data = response.json()["data"]
+
+        def _fetch_embeddings() -> list[dict[str, Any]]:
+            response = requests.post(
+                f"{BASE_URL}/embeddings",
+                headers={"Authorization": f"Bearer {API_KEY}"},
+                json={"model": model, "input": [text for _, text in uncached]},
+                timeout=_REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            return response.json()["data"]  # type: ignore[no-any-return]
+
+        data: list[dict[str, Any]] = _with_retry(_fetch_embeddings, _default_on_token)
         # Sort by index to match input order within the batch.
         sorted_data = sorted(data, key=lambda x: x["index"])
         for (orig_idx, text), item in zip(uncached, sorted_data):

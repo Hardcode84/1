@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import requests
 
 from mindloop.client import _embedding_cache, chat, get_embeddings
 
@@ -245,3 +246,80 @@ def test_get_embeddings_partial_cache(mock_post: MagicMock) -> None:
     # Second call sent only 1 text.
     sent_input = mock_post.call_args.kwargs["json"]["input"]
     assert sent_input == ["world"]
+
+
+# --- timeout retries ---
+
+
+@patch("mindloop.client.time.sleep")
+@patch("mindloop.client.requests.post")
+def test_chat_streaming_retries_on_timeout(
+    mock_post: MagicMock, mock_sleep: MagicMock
+) -> None:
+    """Streaming chat retries after ReadTimeout and succeeds."""
+    mock_post.side_effect = [
+        requests.exceptions.ReadTimeout("timed out"),
+        _mock_streaming(["hello"]),
+    ]
+    result = chat(
+        [{"role": "user", "content": "hi"}],
+        stream=True,
+        on_token=lambda t: None,
+    )
+    assert result["content"] == "hello"
+    assert mock_post.call_count == 2
+    mock_sleep.assert_called_once()
+
+
+@patch("mindloop.client.time.sleep")
+@patch("mindloop.client.requests.post")
+def test_chat_non_streaming_retries_on_timeout(
+    mock_post: MagicMock, mock_sleep: MagicMock
+) -> None:
+    """Non-streaming chat retries after ConnectTimeout and succeeds."""
+    mock_post.side_effect = [
+        requests.exceptions.ConnectTimeout("timed out"),
+        _mock_non_streaming({"role": "assistant", "content": "ok"}),
+    ]
+    result = chat(
+        [{"role": "user", "content": "hi"}],
+        stream=False,
+        on_token=lambda t: None,
+    )
+    assert result["content"] == "ok"
+    assert mock_post.call_count == 2
+    mock_sleep.assert_called_once()
+
+
+@patch("mindloop.client.time.sleep")
+@patch("mindloop.client.requests.post")
+def test_get_embeddings_retries_on_timeout(
+    mock_post: MagicMock, mock_sleep: MagicMock
+) -> None:
+    """get_embeddings retries after ReadTimeout and succeeds."""
+    _embedding_cache.clear()
+    mock_post.side_effect = [
+        requests.exceptions.ReadTimeout("timed out"),
+        _mock_embeddings([[0.1, 0.2]]),
+    ]
+    result = get_embeddings(["hello"])
+    np.testing.assert_allclose(result[0], [0.1, 0.2], atol=1e-6)
+    assert mock_post.call_count == 2
+    mock_sleep.assert_called_once()
+
+
+@patch("mindloop.client.time.sleep")
+@patch("mindloop.client.requests.post")
+def test_retry_exhausted_raises(mock_post: MagicMock, mock_sleep: MagicMock) -> None:
+    """All retries exhausted — exception propagates."""
+    mock_post.side_effect = requests.exceptions.ReadTimeout("timed out")
+    try:
+        chat(
+            [{"role": "user", "content": "hi"}],
+            stream=True,
+            on_token=lambda t: None,
+        )
+        assert False, "Expected ReadTimeout"
+    except requests.exceptions.ReadTimeout:
+        pass
+    assert mock_post.call_count == 3
