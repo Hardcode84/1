@@ -333,13 +333,13 @@ def main() -> None:
                 if prev_msgs:
                     recap = generate_recap(prev_msgs, model=model, log=print)
         if recap:
-            system_prompt += f"\n\n## Previous session recap\n{recap}"
+            system_prompt += f"\n\n# Previous session recap\n{recap}"
 
     # Load notes from previous instance.
     if notes_path and notes_path.is_file():
         notes = load_recap(notes_path)
         if notes:
-            system_prompt += f"\n\n## Notes from previous instance\n{notes}"
+            system_prompt += f"\n\n# Notes from previous instance\n{notes}"
 
     # Log the final system prompt.
     logger = _make_logger(jsonl_path, log_path)
