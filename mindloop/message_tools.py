@@ -41,6 +41,15 @@ class MessageTools:
         """Number of new messages since previous instance."""
         return count_new(self._messages, self._since)
 
+    @property
+    def new_message_note(self) -> str:
+        """Human-readable note about new messages."""
+        n = self.new_count
+        return (
+            f"You have {n} new message{'s' if n != 1 else ''} since last instance. "
+            f"Use message_list to see them."
+        )
+
     def _track(self, tool: str) -> None:
         """Increment call count for a message tool."""
         counts = self._stats.setdefault("messages", {})

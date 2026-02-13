@@ -411,13 +411,10 @@ def main() -> None:
             system_prompt += f"\n\n# Notes from previous instance\n{notes}"
 
     # Append message count to system prompt.
+    nudge_extra = ""
     if msg_tools is not None:
-        n = msg_tools.new_count
-        system_prompt += (
-            f"\n\n# Messages\n"
-            f"You have {n} new message{'s' if n != 1 else ''} since last instance. "
-            f"Use message_list to see them."
-        )
+        nudge_extra = msg_tools.new_message_note
+        system_prompt += f"\n\n# Messages\n{nudge_extra}"
 
     # Log the final system prompt.
     logger = _make_logger(jsonl_path, log_path)
@@ -439,6 +436,7 @@ def main() -> None:
             on_ask=_ask_user,
             initial_messages=initial_messages,
             instance=paths.instance,
+            nudge_extra=nudge_extra,
         )
     except KeyboardInterrupt:
         print("\n\nInterrupted.")

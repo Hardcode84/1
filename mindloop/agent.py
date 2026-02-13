@@ -72,6 +72,7 @@ def run_agent(
     reasoning_effort: str = "high",
     initial_messages: list[Message] | None = None,
     instance: int = 0,
+    nudge_extra: str = "",
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
     from mindloop.client import DEFAULT_MODEL
@@ -220,10 +221,15 @@ def run_agent(
 
         # Nudge reflection after consecutive tool-only turns.
         if consecutive_tool_turns % _REFLECT_INTERVAL == 0:
+            reflect_text = (
+                "You've been using tools for a while. "
+                "Pause and reflect on what you've learned so far."
+            )
+            if nudge_extra:
+                reflect_text += "\n\n" + nudge_extra
             reflect: Message = {
                 "role": "system",
-                "content": "You've been using tools for a while. "
-                "Pause and reflect on what you've learned so far.",
+                "content": reflect_text,
             }
             messages.append(reflect)
             on_message(reflect)
