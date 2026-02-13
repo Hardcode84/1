@@ -8,6 +8,7 @@ from mindloop.cli.agent import (
     _NOTES_MAX_CHARS,
     _latest_jsonl,
     _load_messages,
+    _session_exit_reason,
     _setup_session,
 )
 
@@ -205,6 +206,49 @@ def test_latest_jsonl(tmp_path: Path) -> None:
 def test_latest_jsonl_empty(tmp_path: Path) -> None:
     """Returns None when no JSONL files exist."""
     assert _latest_jsonl(tmp_path) is None
+
+
+# --- Session exit reason tests ---
+
+
+def _make_log(tmp_path: Path, stop_content: str | None) -> Path:
+    """Create a minimal JSONL log with an optional [stop] line."""
+    log = tmp_path / "001_agent_20260213_000000.jsonl"
+    lines = [json.dumps({"role": "assistant", "content": "hello"})]
+    if stop_content is not None:
+        lines.append(json.dumps({"role": "system", "content": stop_content}))
+    log.write_text("\n".join(lines) + "\n")
+    return log
+
+
+def test_exit_reason_clean(tmp_path: Path) -> None:
+    """Clean exit via done returns None."""
+    log = _make_log(tmp_path, "[stop] model finished (1000 tokens used)")
+    assert _session_exit_reason(log) is None
+
+
+def test_exit_reason_token_budget(tmp_path: Path) -> None:
+    """Token budget exceeded is detected."""
+    log = _make_log(tmp_path, "[stop] token budget exceeded (limit 50000)")
+    reason = _session_exit_reason(log)
+    assert reason is not None
+    assert "ran out of tokens" in reason
+
+
+def test_exit_reason_max_iterations(tmp_path: Path) -> None:
+    """Max iterations reached is detected."""
+    log = _make_log(tmp_path, "[stop] max iterations reached (200)")
+    reason = _session_exit_reason(log)
+    assert reason is not None
+    assert "iteration limit" in reason
+
+
+def test_exit_reason_crash(tmp_path: Path) -> None:
+    """Missing [stop] line indicates a crash."""
+    log = _make_log(tmp_path, None)
+    reason = _session_exit_reason(log)
+    assert reason is not None
+    assert "abruptly" in reason
 
 
 # --- note_to_self tests ---

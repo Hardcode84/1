@@ -122,6 +122,31 @@ def _load_messages(path: Path) -> list[dict[str, Any]]:
     return messages
 
 
+def _session_exit_reason(jsonl_path: Path) -> str | None:
+    """Extract how a session ended from its JSONL log.
+
+    Returns a human-readable reason string, or None for a clean ``done`` exit.
+    """
+    stop_line: str | None = None
+    for line in reversed(jsonl_path.read_text().splitlines()):
+        if not line.strip():
+            continue
+        entry = json.loads(line)
+        content = entry.get("content", "")
+        if entry.get("role") == "system" and content.startswith("[stop]"):
+            stop_line = content
+            break
+    if stop_line is None:
+        return "Previous session terminated abruptly (crash or interrupt)."
+    if "model finished" in stop_line:
+        return None  # Clean exit.
+    if "token budget exceeded" in stop_line:
+        return "Previous session ran out of tokens before finishing."
+    if "max iterations reached" in stop_line:
+        return "Previous session hit the iteration limit before finishing."
+    return f"Previous session ended unexpectedly: {stop_line}"
+
+
 def _latest_jsonl(log_dir: Path) -> Path | None:
     """Find the most recent JSONL file in a directory."""
     files = sorted(log_dir.glob("*_agent_*.jsonl"))
@@ -324,10 +349,15 @@ def main() -> None:
     # crashes before generating a new recap, the next instance still sees
     # the previous one as a fallback.
     if paths.workspace and initial_messages is None:
+        prev_log = _latest_jsonl(paths.log_dir)
+        if prev_log and prev_log != jsonl_path:
+            exit_reason = _session_exit_reason(prev_log)
+            if exit_reason:
+                system_prompt += f"\n\n# Warning\n{exit_reason}"
+
         recap_path = paths.workspace / "_recap.md"
         recap = load_recap(recap_path)
         if recap is None:
-            prev_log = _latest_jsonl(paths.log_dir)
             if prev_log and prev_log != jsonl_path:
                 prev_msgs = _load_messages(prev_log)
                 if prev_msgs:
