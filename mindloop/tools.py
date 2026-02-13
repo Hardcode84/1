@@ -210,6 +210,31 @@ def _write(
     return f"Wrote {lines} lines to {path}."
 
 
+def _mv(
+    reg: "ToolRegistry",
+    old_path: str,
+    new_path: str,
+    overwrite: bool = False,
+) -> str:
+    """Move or rename a file."""
+    _track_file(reg, "mv", old_path)
+    src = _sanitize_path(old_path, reg.root_dir, reg.blocked_dirs)
+    dst = _sanitize_path(new_path, reg.root_dir, reg.blocked_dirs)
+    if src in reg.write_blocked:
+        raise ToolError(f"Write access denied: {old_path}")
+    if dst in reg.write_blocked:
+        raise ToolError(f"Write access denied: {new_path}")
+    if not src.exists():
+        raise ToolError(f"{old_path} does not exist.")
+    if not src.is_file():
+        raise ToolError(f"{old_path} is not a file.")
+    if dst.exists() and not overwrite:
+        raise ToolError(f"{new_path} already exists. Set overwrite=true to replace it.")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src.rename(dst)
+    return f"Moved {old_path} -> {new_path}."
+
+
 def _read(
     reg: "ToolRegistry",
     path: str,
@@ -302,6 +327,30 @@ def create_default_registry(
             ),
         ],
         func=partial(_write, reg),
+    )
+    reg.add(
+        name="mv",
+        description=(
+            "Move or rename a file. Creates parent directories if needed. "
+            "Paths are relative to the working directory."
+        ),
+        params=[
+            Param(
+                name="old_path",
+                description="Current relative path of the file.",
+            ),
+            Param(
+                name="new_path",
+                description="New relative path for the file.",
+            ),
+            Param(
+                name="overwrite",
+                description="Set to true to overwrite an existing file. Default: false.",
+                type="boolean",
+                required=False,
+            ),
+        ],
+        func=partial(_mv, reg),
     )
     reg.add(
         name="read",

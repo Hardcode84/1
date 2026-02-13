@@ -10,7 +10,7 @@ Don't just gather information — pause regularly to think about what you've lea
 
 # Tools
 
-You can use the write and edit tools to create files.
+You can use the write and edit tools to create files. If your workspace gets cluttered, use mv to organize files into subdirectories.
 
 # Memory
 

@@ -273,6 +273,70 @@ def test_write_path_traversal_blocked(tmp_path: Path) -> None:
     assert "outside the working directory" in result
 
 
+# --- built-in mv ---
+
+
+def test_mv_basic(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("hello")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = create_default_registry().execute(
+            "mv", '{"old_path": "a.txt", "new_path": "b.txt"}'
+        )
+    assert "Moved" in result
+    assert not (tmp_path / "a.txt").exists()
+    assert (tmp_path / "b.txt").read_text() == "hello"
+
+
+def test_mv_creates_parent_dirs(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("deep")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = create_default_registry().execute(
+            "mv", '{"old_path": "a.txt", "new_path": "sub/dir/b.txt"}'
+        )
+    assert "Moved" in result
+    assert (tmp_path / "sub" / "dir" / "b.txt").read_text() == "deep"
+
+
+def test_mv_no_overwrite(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("src")
+    (tmp_path / "b.txt").write_text("dst")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = create_default_registry().execute(
+            "mv", '{"old_path": "a.txt", "new_path": "b.txt"}'
+        )
+    assert "already exists" in result
+    assert (tmp_path / "a.txt").read_text() == "src"
+
+
+def test_mv_with_overwrite(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("src")
+    (tmp_path / "b.txt").write_text("dst")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = create_default_registry().execute(
+            "mv", '{"old_path": "a.txt", "new_path": "b.txt", "overwrite": true}'
+        )
+    assert "Moved" in result
+    assert not (tmp_path / "a.txt").exists()
+    assert (tmp_path / "b.txt").read_text() == "src"
+
+
+def test_mv_nonexistent(tmp_path: Path) -> None:
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = create_default_registry().execute(
+            "mv", '{"old_path": "nope.txt", "new_path": "b.txt"}'
+        )
+    assert "does not exist" in result
+
+
+def test_mv_write_blocked(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("hello")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        reg = create_default_registry()
+        reg.write_blocked.append((tmp_path / "a.txt").resolve())
+        result = reg.execute("mv", '{"old_path": "a.txt", "new_path": "b.txt"}')
+    assert "denied" in result
+
+
 # --- built-in edit ---
 
 
