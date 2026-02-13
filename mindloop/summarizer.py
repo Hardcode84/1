@@ -13,7 +13,8 @@ from mindloop.util import DEFAULT_WORKERS, noop
 _SUMMARIZATION_MODEL = "deepseek/deepseek-v3.2"
 
 _SYSTEM_PROMPT = """\
-You summarize conversation excerpts from a chat log.
+You summarize conversation excerpts from a chat log between "You" (user) and "Bot" (assistant).
+Write from the assistant's perspective using first person ("I").
 Respond in exactly this format (two lines, keep the prefixes):
 ABSTRACT: <one sentence TL;DR>
 SUMMARY: <2-4 sentence expanded overview>\
