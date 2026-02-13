@@ -279,7 +279,7 @@ def main() -> None:
         blocked_dirs=paths.blocked_dirs or None,
         root_dir=paths.workspace,
     )
-    mt = add_memory_tools(registry, db_path=paths.db_path, model=model)
+    mt = add_memory_tools(registry, db_path=paths.db_path, model=model, log=_print_step)
 
     # Register note_to_self tool when a workspace exists.
     notes_path: Path | None = None

@@ -336,15 +336,20 @@ def add_memory_tools(
     registry: ToolRegistry,
     db_path: Path | None = None,
     model: str = "openrouter/free",
+    log: Callable[[str], None] | None = None,
 ) -> MemoryTools:
     """Add remember / recall / recall_detail tools to *registry*.
 
     Returns the :class:`MemoryTools` instance so the caller can close it.
     """
     from mindloop.memory_tools import MemoryTools
+    from mindloop.util import noop
 
     mt = MemoryTools(
-        db_path=db_path or Path("memory.db"), model=model, stats=registry.stats
+        db_path=db_path or Path("memory.db"),
+        model=model,
+        stats=registry.stats,
+        log=log or noop,
     )
 
     registry.add(
