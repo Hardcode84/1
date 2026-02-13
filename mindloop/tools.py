@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from mindloop.memory_tools import MemoryTools
+    from mindloop.message_tools import MessageTools
 
 
 @dataclass
@@ -398,5 +400,82 @@ def add_memory_tools(
             ),
         ],
         func=mt.recall_detail,
+    )
+    return mt
+
+
+def add_message_tools(
+    registry: ToolRegistry,
+    inbox_dir: Path,
+    outbox_dir: Path,
+    instance: int,
+    before: datetime | None = None,
+    since: datetime | None = None,
+) -> "MessageTools":
+    """Add message_list / message_read / message_send tools to *registry*.
+
+    Returns the :class:`MessageTools` instance.
+    """
+    from mindloop.message_tools import MessageTools
+
+    mt = MessageTools(
+        inbox_dir=inbox_dir,
+        outbox_dir=outbox_dir,
+        instance=instance,
+        before=before,
+        since=since,
+        stats=registry.stats,
+    )
+
+    _box_param = Param(
+        name="box",
+        description="Which mailbox: 'inbox' (default) or 'outbox'.",
+        required=False,
+    )
+    registry.add(
+        name="message_list",
+        description=(
+            "List messages, newest first. "
+            "Shows id, date, sender, title. Inbox new messages are marked."
+        ),
+        params=[
+            _box_param,
+            Param(
+                name="count",
+                description="Number of messages to show. Default: 10.",
+                type="integer",
+                required=False,
+            ),
+            Param(
+                name="starting",
+                description="Offset into the newest-first list. Default: 0.",
+                type="integer",
+                required=False,
+            ),
+        ],
+        func=mt.message_list,
+    )
+    registry.add(
+        name="message_read",
+        description="Read the full content of a message by its id number.",
+        params=[
+            Param(
+                name="id",
+                description="Message id (1-based, from message_list).",
+                type="integer",
+            ),
+            _box_param,
+        ],
+        func=mt.message_read,
+    )
+    registry.add(
+        name="message_send",
+        description="Send a message to the outbox for an external recipient.",
+        params=[
+            Param(name="to", description="Recipient name."),
+            Param(name="title", description="Message subject."),
+            Param(name="text", description="Message body."),
+        ],
+        func=mt.message_send,
     )
     return mt

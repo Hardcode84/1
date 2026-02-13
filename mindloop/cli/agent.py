@@ -15,7 +15,13 @@ from typing import Any
 from mindloop.agent import run_agent
 from mindloop.client import API_KEY
 from mindloop.recap import generate_recap, load_recap, save_recap
-from mindloop.tools import Param, add_memory_tools, create_default_registry
+from mindloop.messages import parse_filename_date
+from mindloop.tools import (
+    Param,
+    add_memory_tools,
+    add_message_tools,
+    create_default_registry,
+)
 from mindloop.util import SKIP_PREFIXES
 
 _PROMPT_PATH = Path(__file__).resolve().parent.parent / "system_prompt.md"
@@ -318,6 +324,39 @@ def main() -> None:
             func=_note_to_self,
         )
 
+    # Set up inbox/outbox messaging when a workspace (session) exists.
+    msg_tools = None
+    if paths.workspace:
+        session_root = paths.workspace.parent
+        inbox_dir = session_root / "_inbox"
+        outbox_dir = session_root / "_outbox"
+        inbox_dir.mkdir(exist_ok=True)
+        outbox_dir.mkdir(exist_ok=True)
+
+        # Current session start — messages at or after this are invisible.
+        before = datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
+
+        # Previous session start — messages after this are "new".
+        since: datetime | None = None
+        prev_logs = sorted(paths.log_dir.glob("*_agent_*.jsonl"))
+        if len(prev_logs) >= 1:
+            # The current log hasn't been created yet, so the last entry
+            # in prev_logs is the previous instance's log.
+            prev_ts = parse_filename_date(prev_logs[-1].name)
+            if prev_ts is not None:
+                since = prev_ts
+
+        msg_tools = add_message_tools(
+            registry,
+            inbox_dir,
+            outbox_dir,
+            paths.instance,
+            before=before,
+            since=since,
+        )
+        # Block direct writes to inbox.
+        registry.write_blocked.append(inbox_dir.resolve())
+
     # Handle --resume: explicit path or auto-find latest in session.
     initial_messages: list[dict[str, Any]] | None = None
     if args.resume is not None:
@@ -370,6 +409,15 @@ def main() -> None:
         notes = load_recap(notes_path)
         if notes:
             system_prompt += f"\n\n# Notes from previous instance\n{notes}"
+
+    # Append message count to system prompt.
+    if msg_tools is not None:
+        n = msg_tools.new_count
+        system_prompt += (
+            f"\n\n# Messages\n"
+            f"You have {n} new message{'s' if n != 1 else ''} since last instance. "
+            f"Use message_list to see them."
+        )
 
     # Log the final system prompt.
     logger = _make_logger(jsonl_path, log_path)

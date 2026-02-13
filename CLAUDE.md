@@ -12,12 +12,14 @@ tools.py           Tool registry (OpenAI function-calling format) + built-in fs 
 memory.py          SQLite + numpy storage. Hybrid search (cosine + FTS5 BM25, RRF).
 semantic_memory.py Save with iterative merge loop. Specificity threshold prevents over-merging.
 memory_tools.py    Agent-facing: remember, recall, recall_detail.
+messages.py        Message dataclass, parse/write/list/count for inbox/outbox.
+message_tools.py   Agent-facing: message_list, message_read, message_send.
 merge_llm.py       LLM-based merge decisions (three-tier: auto/LLM/never by similarity).
 chunker.py         Parse JSONL/markdown into chunks, compact, merge by similarity.
 summarizer.py      LLM-generated abstract + summary per chunk.
 client.py          OpenRouter API wrapper (chat, embeddings, streaming, retry).
 recap.py           Session recap: collapse tool calls, summarize, persist between instances.
-cli/               Seven entry points: agent, chat, chunk, build, query, dump, recap.
+cli/               Nine entry points: agent, chat, chunk, build, query, dump, recap, sessions, message.
 ```
 
 ## Commands
