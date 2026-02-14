@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from mindloop.chunker import Chunk, Turn
-from mindloop.memory import MemoryStore
+from mindloop.memory import MemoryStore, faithfulness
 from mindloop.summarizer import ChunkSummary
 
 
@@ -151,70 +151,76 @@ def test_deactivate_excludes_from_search(store: MemoryStore) -> None:
     assert results[0].chunk_summary.abstract == "dogs"
 
 
-def test_specificity_no_chunks(store: MemoryStore) -> None:
-    with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
-        assert store.specificity("anything") == 1.0
+def test_faithfulness_passes_similar() -> None:
+    """Identical embeddings → (True, 1.0, 1.0)."""
+    with patch(
+        "mindloop.memory.get_embeddings",
+        side_effect=_emb_for(_E1),
+    ):
+        passed, sim_a, sim_b = faithfulness("merged", "source a", "source b")
+    assert passed
+    assert sim_a == pytest.approx(1.0)
+    assert sim_b == pytest.approx(1.0)
 
 
-def test_specificity_no_neighbors(store: MemoryStore) -> None:
-    # Store a chunk whose text will embed orthogonally to the query.
-    store.save(_summary("a"))
+def test_faithfulness_fails_drift() -> None:
+    """Merged text diverges from one source → fails."""
+    _merged = np.array([1.0, 0.0], dtype=np.float32)
+    _src_a = np.array([0.9, 0.44], dtype=np.float32)  # Moderate similarity.
+    _src_b = np.array([0.0, 1.0], dtype=np.float32)  # Orthogonal.
 
     def _get_emb(texts: list[str], **_kw: object) -> np.ndarray:
-        # First text is the candidate, rest are stored chunks.
-        result = [np.array([1.0, 0.0], dtype=np.float32)]
-        for _ in texts[1:]:
-            result.append(np.array([0.0, 1.0], dtype=np.float32))
-        return np.stack(result)
+        return np.stack([_merged, _src_a, _src_b])
 
     with patch("mindloop.memory.get_embeddings", side_effect=_get_emb):
-        assert store.specificity("query") == 1.0
+        passed, sim_a, sim_b = faithfulness("m", "a", "b")
+    assert not passed
+    assert sim_a > sim_b
 
 
-def test_specificity_all_neighbors(store: MemoryStore) -> None:
-    # Store chunks that will all embed identically to the query.
-    for _ in range(5):
-        store.save(_summary("a"))
+def test_faithfulness_custom_threshold() -> None:
+    """Boundary: exactly at threshold passes."""
+    # cos(merged, src) = 0.6 for both — passes at 0.6, fails at 0.61.
+    _merged = np.array([1.0, 0.0], dtype=np.float32)
+    _src = np.array([0.6, 0.8], dtype=np.float32)
 
+    def _get_emb(texts: list[str], **_kw: object) -> np.ndarray:
+        return np.stack([_merged, _src, _src])
+
+    with patch("mindloop.memory.get_embeddings", side_effect=_get_emb):
+        passed_low, _, _ = faithfulness("m", "a", "b", threshold=0.6)
+        passed_high, _, _ = faithfulness("m", "a", "b", threshold=0.61)
+    assert passed_low
+    assert not passed_high
+
+
+def test_neighbor_score_empty(store: MemoryStore) -> None:
+    """No active chunks → 0.0."""
     with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
-        assert store.specificity("query") == 0.0
+        assert store.neighbor_score("anything") == 0.0
 
 
-def test_specificity_partial_neighbors(store: MemoryStore) -> None:
-    # 4 stored chunks: 2 similar, 2 orthogonal to the query.
+def test_neighbor_score_returns_mean(store: MemoryStore) -> None:
+    """Mean of top-k search scores."""
     store.save(_summary("a"))
     store.save(_summary("b"))
-    store.save(_summary("c"))
-    store.save(_summary("d"))
 
-    def _get_emb(texts: list[str], **_kw: object) -> np.ndarray:
-        # texts[0] is the candidate, texts[1:] are the 4 stored chunks.
-        result = [np.array([1.0, 0.0], dtype=np.float32)]  # candidate
-        result.append(np.array([1.0, 0.0], dtype=np.float32))  # similar
-        result.append(np.array([0.95, 0.31], dtype=np.float32))  # similar
-        result.append(np.array([0.0, 1.0], dtype=np.float32))  # orthogonal
-        result.append(np.array([-1.0, 0.0], dtype=np.float32))  # orthogonal
-        return np.stack(result)
-
-    with patch("mindloop.memory.get_embeddings", side_effect=_get_emb):
-        # 2 out of 4 are above 0.5 threshold.
-        assert store.specificity("query") == 0.5
+    with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
+        score = store.neighbor_score("query", top_k=2)
+    # Uniform embeddings → all RRF scores identical and positive.
+    assert score > 0.0
 
 
-def test_specificity_ignores_inactive(store: MemoryStore) -> None:
+def test_neighbor_score_ignores_inactive(store: MemoryStore) -> None:
+    """Deactivated chunks don't contribute."""
     id1 = store.save(_summary("a"))
     store.save(_summary("b"))
     store.deactivate([id1])
 
-    def _get_emb(texts: list[str], **_kw: object) -> np.ndarray:
-        # texts[0] is candidate, texts[1] is the one remaining active chunk.
-        result = [np.array([1.0, 0.0], dtype=np.float32)]  # candidate
-        result.append(np.array([0.0, 1.0], dtype=np.float32))  # orthogonal
-        return np.stack(result)
-
-    with patch("mindloop.memory.get_embeddings", side_effect=_get_emb):
-        # Only the orthogonal chunk is active.
-        assert store.specificity("query") == 1.0
+    with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
+        score = store.neighbor_score("query", top_k=5)
+    # Only one active chunk — result is its single score.
+    assert score > 0.0
 
 
 def test_activate_restores_to_search(store: MemoryStore) -> None:

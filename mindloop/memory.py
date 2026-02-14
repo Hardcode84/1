@@ -46,6 +46,28 @@ class LineageNode:
 _RRF_K = 60
 
 
+def faithfulness(
+    merged_text: str,
+    source_a_text: str,
+    source_b_text: str,
+    threshold: float = 0.7,
+) -> tuple[bool, float, float]:
+    """Check whether merged text faithfully represents both sources.
+
+    Embeds all three texts and checks that cosine similarity between the
+    merged text and each source meets *threshold*.  Returns
+    ``(passed, sim_a, sim_b)``.
+    """
+    embs = get_embeddings([merged_text, source_a_text, source_b_text])
+    m, a, b = embs[0], embs[1], embs[2]
+    norm_m = max(float(np.linalg.norm(m)), 1e-10)
+    norm_a = max(float(np.linalg.norm(a)), 1e-10)
+    norm_b = max(float(np.linalg.norm(b)), 1e-10)
+    sim_a = float(np.dot(m, a) / (norm_m * norm_a))
+    sim_b = float(np.dot(m, b) / (norm_m * norm_b))
+    return (sim_a >= threshold and sim_b >= threshold, sim_a, sim_b)
+
+
 def _init_db(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -313,27 +335,16 @@ class MemoryStore:
 
         return results
 
-    def specificity(self, text: str, sim_threshold: float = 0.5) -> float:
-        """Measure how specific a chunk is based on its neighbor count.
+    def neighbor_score(self, text: str, top_k: int = 3) -> float:
+        """Mean search score of the top-k neighbors for *text*.
 
-        Returns a value between 0.0 (generic, many neighbors) and
-        1.0 (specific, no neighbors). A neighbor is any active chunk
-        with cosine similarity >= *sim_threshold*.
+        Returns 0.0 when no active chunks exist.  Reuses the hybrid
+        cosine + BM25 search infrastructure.
         """
-        rows = self.conn.execute("SELECT text FROM chunks WHERE active = 1").fetchall()
-        if not rows:
-            return 1.0
-
-        chunk_texts = [row[0] for row in rows]
-        all_texts = [text] + chunk_texts
-        all_embeddings = get_embeddings(all_texts)
-        embedding = all_embeddings[0]
-        matrix = np.stack(list(all_embeddings[1:]))
-        norms = np.maximum(np.linalg.norm(matrix, axis=1), 1e-10)
-        emb_norm = max(float(np.linalg.norm(embedding)), 1e-10)
-        scores = (matrix @ embedding) / (norms * emb_norm)
-        neighbor_count = int((scores >= sim_threshold).sum())
-        return 1.0 - neighbor_count / len(rows)
+        results = self.search(text, top_k=top_k)
+        if not results:
+            return 0.0
+        return sum(r.score for r in results) / len(results)
 
     def deactivate(self, chunk_ids: list[int]) -> None:
         """Mark chunks as inactive. They remain in the DB but are excluded from search."""

@@ -4,14 +4,16 @@ from collections.abc import Callable
 from datetime import datetime
 
 from mindloop.chunker import Chunk, Turn
-from mindloop.memory import MemoryStore
+from mindloop.memory import MemoryStore, faithfulness
 from mindloop.merge_llm import MergeResult, merge_texts, should_merge
 from mindloop.summarizer import ChunkSummary
 from mindloop.util import noop
 
 _DEFAULT_TOP_K = 5
 _DEFAULT_MAX_ROUNDS = 10
-_DEFAULT_MIN_SPECIFICITY = 0.3
+_DEFAULT_MIN_FAITHFULNESS = 0.7
+_DEFAULT_MAX_NEIGHBOR_SCORE = 0.6
+_DEFAULT_NEIGHBOR_K = 3
 _DEFAULT_SIM_HIGH = 0.9
 _DEFAULT_SIM_LOW = 0.2
 
@@ -24,7 +26,9 @@ def save_memory(
     model: str = "openrouter/free",
     top_k: int = _DEFAULT_TOP_K,
     max_rounds: int = _DEFAULT_MAX_ROUNDS,
-    min_specificity: float = _DEFAULT_MIN_SPECIFICITY,
+    min_faithfulness: float = _DEFAULT_MIN_FAITHFULNESS,
+    max_neighbor_score: float = _DEFAULT_MAX_NEIGHBOR_SCORE,
+    neighbor_k: int = _DEFAULT_NEIGHBOR_K,
     prefer: str = "equal",
     log: Callable[[str], None] = noop,
     sim_high: float = _DEFAULT_SIM_HIGH,
@@ -87,16 +91,24 @@ def save_memory(
                     text, existing_text, prefer=prefer, model=model
                 )
 
-                # Deactivate before specificity check so the absorbed chunk
-                # doesn't inflate the neighbor count against the merged result.
-                store.deactivate([result.id])
-
-                # Check if the merge would make the chunk too generic.
-                spec = store.specificity(mr.text)
-                if spec < min_specificity:
+                # Check 1: faithfulness (before deactivate — no store interaction).
+                passed, sim_a, sim_b = faithfulness(
+                    mr.text, text, existing_text, threshold=min_faithfulness
+                )
+                if not passed:
                     log(
-                        f"[memory]   Specificity {spec:.3f}"
-                        f" < {min_specificity} → aborting merge."
+                        f"[memory]   Faithfulness {sim_a:.3f}/{sim_b:.3f}"
+                        f" < {min_faithfulness} → aborting merge."
+                    )
+                    break
+
+                # Check 2: neighbor score (deactivate absorbed chunk first).
+                store.deactivate([result.id])
+                ns = store.neighbor_score(mr.text, top_k=neighbor_k)
+                if ns > max_neighbor_score:
+                    log(
+                        f"[memory]   Neighbor score {ns:.3f}"
+                        f" > {max_neighbor_score} → aborting merge."
                     )
                     store.activate([result.id])
                     break

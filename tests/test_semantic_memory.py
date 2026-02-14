@@ -76,7 +76,7 @@ def test_save_merges_similar_chunk(store: MemoryStore) -> None:
         _patch_embeddings(_EMB_A),
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
-        row_id = save_memory(store, "new fact", "abs", "sum", min_specificity=0.0)
+        row_id = save_memory(store, "new fact", "abs", "sum", max_neighbor_score=1.0)
 
     # Old chunk deactivated, incoming leaf preserved, merged chunk active.
     assert store.count() == 1
@@ -99,7 +99,7 @@ def test_save_cascading_merges(store: MemoryStore) -> None:
         _patch_embeddings(_EMB_A),
         patch("mindloop.semantic_memory.merge_texts", side_effect=_counting_merge),
     ):
-        save_memory(store, "new fact", "abs", "sum", min_specificity=0.0)
+        save_memory(store, "new fact", "abs", "sum", max_neighbor_score=1.0)
 
     # Both old chunks deactivated, incoming leaf + intermediate + final.
     assert store.count() == 1
@@ -128,8 +128,9 @@ def test_save_stops_at_max_rounds(store: MemoryStore) -> None:
 
 
 def test_save_aborts_merge_when_too_generic(store: MemoryStore) -> None:
-    # Store many similar chunks so post-merge specificity is low.
-    for _ in range(10):
+    """Neighbor score exceeds threshold → merge aborted."""
+    # Multiple chunks so neighbors remain after absorbing one.
+    for _ in range(3):
         store.save(_summary("similar"))
 
     mr = MergeResult(text="merged", abstract="abs", summary="sum")
@@ -140,17 +141,18 @@ def test_save_aborts_merge_when_too_generic(store: MemoryStore) -> None:
         merge_count += 1
         return mr
 
+    # Uniform embeddings → faithfulness passes (sim=1.0).
+    # max_neighbor_score=0.0 → any positive neighbor score rejects.
     with (
         _patch_embeddings(_EMB_A),
         patch("mindloop.semantic_memory.merge_texts", side_effect=_counting_merge),
     ):
-        save_memory(store, "new", "abs", "sum", min_specificity=0.95)
+        save_memory(store, "new", "abs", "sum", max_neighbor_score=0.0)
 
-    # First merge attempt triggers specificity check — too low, no merge.
+    # Merge attempted, but neighbor score too high → aborted.
     assert merge_count == 1
     # All original chunks still active + incoming leaf activated.
-    assert store.count() == 11
-    assert store.count(active_only=False) == 11
+    assert store.count() == 4
 
 
 def test_save_records_sources_on_merge(store: MemoryStore) -> None:
@@ -161,7 +163,7 @@ def test_save_records_sources_on_merge(store: MemoryStore) -> None:
         _patch_embeddings(_EMB_A),
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
-        new_id = save_memory(store, "new", "abs", "sum", min_specificity=0.0)
+        new_id = save_memory(store, "new", "abs", "sum", max_neighbor_score=1.0)
 
     # source_a=incoming leaf, source_b=absorbed chunk.
     row = store.conn.execute(
@@ -190,7 +192,7 @@ def test_save_records_tree_on_cascade(store: MemoryStore) -> None:
         _patch_embeddings(_EMB_A),
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
-        final_id = save_memory(store, "new", "abs", "sum", min_specificity=0.0)
+        final_id = save_memory(store, "new", "abs", "sum", max_neighbor_score=1.0)
 
     # Final node points to first merge + one absorbed chunk.
     final = store.conn.execute(
@@ -260,34 +262,27 @@ def test_save_deduplicates_exact_text(store: MemoryStore) -> None:
     assert store.count() == 1
 
 
-def test_specificity_excludes_absorbed_chunk(store: MemoryStore) -> None:
-    """Specificity check does not count the absorbed chunk as a neighbor.
+def test_neighbor_score_excludes_absorbed_chunk(store: MemoryStore) -> None:
+    """Absorbed chunk is deactivated before neighbor score check.
 
-    With 4 chunks (3 similar, 1 dissimilar) and min_specificity=0.3:
-    - Old (absorbed counted): 3/4 neighbors → specificity 0.25 → blocked.
-    - New (absorbed excluded): 2/3 neighbors → specificity 0.33 → passes.
+    The absorbed chunk should not inflate the neighbor score that would
+    otherwise block the merge.
     """
-    # 3 similar + 1 dissimilar active chunks.
+    # Two similar chunks — one will be absorbed during merge.
     store.save(_summary("similar A"))
     store.save(_summary("similar B"))
-    store.save(_summary("similar C"))
-    store.save(_summary("different"))
-
-    _emb_sim = np.array([1.0, 0.0], dtype=np.float32)
-    _emb_diff = np.array([0.0, 1.0], dtype=np.float32)
-
-    def _smart_emb(texts: list[str], **_kw: object) -> np.ndarray:
-        return np.stack([_emb_diff if "different" in t else _emb_sim for t in texts])
 
     mr = MergeResult(text="merged similar", abstract="abs", summary="sum")
+    # Uniform embeddings → faithfulness passes.
+    # After absorbing one chunk, only one neighbor remains.
     with (
-        patch("mindloop.memory.get_embeddings", side_effect=_smart_emb),
+        _patch_embeddings(_EMB_A),
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
-        save_memory(store, "new similar", "abs", "sum", min_specificity=0.3)
+        save_memory(store, "new similar", "abs", "sum", max_neighbor_score=1.0)
 
-    # Merge should have happened (not blocked by specificity).
-    assert store.count() < 5
+    # Merge should have happened.
+    assert store.count() < 3
 
 
 def test_save_borderline_calls_should_merge(store: MemoryStore) -> None:
@@ -302,7 +297,13 @@ def test_save_borderline_calls_should_merge(store: MemoryStore) -> None:
     ):
         # sim=1.0, set sim_high above 1 to force borderline path.
         save_memory(
-            store, "new", "abs", "sum", min_specificity=0.0, sim_high=2.0, sim_low=0.5
+            store,
+            "new",
+            "abs",
+            "sum",
+            max_neighbor_score=1.0,
+            sim_high=2.0,
+            sim_low=0.5,
         )
 
     mock_sm.assert_called_once()
@@ -333,9 +334,42 @@ def test_save_logs_progress(store: MemoryStore) -> None:
         _patch_embeddings(_EMB_A),
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
-        save_memory(store, "new", "abs", "sum", min_specificity=0.0, log=logged.append)
+        save_memory(
+            store, "new", "abs", "sum", max_neighbor_score=1.0, log=logged.append
+        )
 
     round_msgs = [m for m in logged if "Round" in m]
     merge_msgs = [m for m in logged if "Merged" in m]
     assert len(round_msgs) >= 1
     assert len(merge_msgs) >= 1
+
+
+def test_save_aborts_on_faithfulness_failure(store: MemoryStore) -> None:
+    """Faithfulness failure aborts merge without deactivating any chunks."""
+    store.save(_summary("old fact"))
+
+    mr = MergeResult(text="drifted", abstract="abs", summary="sum")
+
+    # Merged text is orthogonal to source_b (old fact).
+    _merged_emb = np.array([1.0, 0.0], dtype=np.float32)
+    _old_emb = np.array([0.0, 1.0], dtype=np.float32)
+
+    call_count = 0
+
+    def _faith_emb(texts: list[str], **_kw: object) -> np.ndarray:
+        nonlocal call_count
+        call_count += 1
+        # faithfulness() passes 3 texts: [merged, new, old].
+        if len(texts) == 3:
+            return np.stack([_merged_emb, _merged_emb, _old_emb])
+        # search / other calls: uniform embeddings.
+        return np.tile(_EMB_A, (len(texts), 1))
+
+    with (
+        patch("mindloop.memory.get_embeddings", side_effect=_faith_emb),
+        patch("mindloop.semantic_memory.merge_texts", return_value=mr),
+    ):
+        save_memory(store, "new fact", "abs", "sum")
+
+    # Merge aborted — old chunk still active, incoming leaf also active.
+    assert store.count() == 2
