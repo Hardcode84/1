@@ -26,8 +26,15 @@ def load_quotes() -> list[dict[str, str]]:
 
 
 def _format(entry: dict[str, str]) -> str:
-    """Format a quote entry as a readable string."""
+    """Format a quote entry as a readable string.
+
+    Quotes get quotation marks and em-dash attribution.
+    Distilled prompts are bare text with parenthetical source.
+    """
     text = entry["text"]
+    if entry.get("type") == "distilled":
+        source = entry.get("source", "")
+        return f"{text} ({source})" if source else text
     author = entry.get("author", "")
     source = entry.get("source", "")
     attribution = ", ".join(p for p in [author, source] if p)

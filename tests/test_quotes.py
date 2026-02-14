@@ -76,8 +76,26 @@ def test_nudge_pool_format_enchiridion() -> None:
     assert "Enchiridion VIII" in result
 
 
-def test_nudge_pool_format_no_author() -> None:
-    """Entry with no author still formats correctly."""
+def test_format_distilled() -> None:
+    """Distilled prompts render as bare text with parenthetical source."""
+    entry = {
+        "type": "distilled",
+        "text": "What truly lies within your control?",
+        "source": "Enchiridion I",
+    }
+    result = _format(entry)
+    assert result == "What truly lies within your control? (Enchiridion I)"
+    assert '"' not in result
+
+
+def test_format_distilled_no_source() -> None:
+    """Distilled prompt without source renders as bare text."""
+    entry = {"type": "distilled", "text": "Reflect on your nature."}
+    assert _format(entry) == "Reflect on your nature."
+
+
+def test_format_no_author() -> None:
+    """Entry with no author or type still formats correctly."""
     entry = {"text": "Anonymous wisdom."}
     result = _format(entry)
     assert "Anonymous wisdom." in result
