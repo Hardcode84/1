@@ -17,8 +17,10 @@ from mindloop.client import API_KEY
 from mindloop.quotes import NudgePool, quote_of_the_day
 from mindloop.recap import generate_recap, load_recap, save_recap
 from mindloop.messages import parse_filename_date
+from mindloop.message_tools import MessageTools
 from mindloop.tools import (
     Param,
+    ToolRegistry,
     add_memory_tools,
     add_message_tools,
     create_default_registry,
@@ -206,7 +208,8 @@ def _setup_session(session: str | None, timestamp: str) -> SessionPaths:
     return SessionPaths(log_dir=log_dir, db_path=mem_dir / "memory.db")
 
 
-def main() -> None:
+def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments and validate flag combinations."""
     parser = argparse.ArgumentParser(description="Run the autonomous agent.")
     parser.add_argument(
         "--model",
@@ -237,137 +240,115 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not API_KEY:
-        print("Set OPENROUTER_API_KEY environment variable first.")
-        print("Get a free key at https://openrouter.ai/keys")
-        return
-
     # Validate flag combinations.
     if args.session and args.new_session:
         parser.error("--session and --new-session are mutually exclusive.")
     if args.new_session and args.resume is not None:
         parser.error("--new-session and --resume are mutually exclusive.")
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    model: str = args.model
-    summarizer_model: str = args.summarizer_model
-    session_name: str | None = args.session
-    if args.new_session:
-        session_name = uuid.uuid4().hex[:8]
-        while (_SESSIONS_DIR / session_name).exists():
-            session_name = uuid.uuid4().hex[:8]
-    paths = _setup_session(session_name, timestamp)
+    return args
 
-    if paths.instance:
-        log_prefix = f"{paths.instance:03d}_agent_{timestamp}"
-    else:
-        log_prefix = f"agent_{timestamp}"
-    jsonl_path = paths.log_dir / f"{log_prefix}.jsonl"
-    log_path = paths.log_dir / f"{log_prefix}.log"
 
+def _register_note_tool(registry: ToolRegistry, workspace: Path) -> Path:
+    """Register the ``note_to_self`` tool and block direct writes to the notes file.
+
+    Returns the notes path.
+    """
+    notes_path = workspace / "_notes.md"
+    # Block direct write/edit; reads are allowed.
+    registry.write_blocked[notes_path.resolve()] = "use note_to_self tool instead"
+
+    def _note_to_self(content: str) -> str:
+        if len(content) > _NOTES_MAX_CHARS:
+            return (
+                f"Error: content is {len(content)} chars, "
+                f"max is {_NOTES_MAX_CHARS}. Trim and retry."
+            )
+        previous = notes_path.read_text() if notes_path.is_file() else None
+        notes_path.write_text(content)
+        result = f"Saved {len(content)} chars to notes."
+        if previous:
+            result += f"\n\n--- Previous notes (overwritten) ---\n{previous}"
+        return result
+
+    registry.add(
+        name="note_to_self",
+        description=(
+            "Write notes for your next instance. Overwrites previous notes. "
+            "Use for directives, user preferences, and task status. "
+            f"Max {_NOTES_MAX_CHARS} chars — curate, don't append."
+        ),
+        params=[
+            Param(
+                name="content",
+                description=f"Markdown content (max {_NOTES_MAX_CHARS} chars).",
+            )
+        ],
+        func=_note_to_self,
+    )
+    return notes_path
+
+
+def _register_message_tools(
+    registry: ToolRegistry,
+    paths: SessionPaths,
+    timestamp: str,
+) -> MessageTools | None:
+    """Set up inbox/outbox messaging for a session workspace.
+
+    Returns the :class:`MessageTools` handle, or ``None`` if no workspace.
+    """
+    if paths.workspace is None:
+        return None
+
+    session_root = paths.workspace.parent
+    inbox_dir = session_root / "_inbox"
+    outbox_dir = session_root / "_outbox"
+    inbox_dir.mkdir(exist_ok=True)
+    outbox_dir.mkdir(exist_ok=True)
+
+    # Current session start — messages at or after this are invisible.
+    before = datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
+
+    # Previous session start — messages after this are "new".
+    since: datetime | None = None
+    prev_logs = sorted(paths.log_dir.glob("*_agent_*.jsonl"))
+    if len(prev_logs) >= 1:
+        # The current log hasn't been created yet, so the last entry
+        # in prev_logs is the previous instance's log.
+        prev_ts = parse_filename_date(prev_logs[-1].name)
+        if prev_ts is not None:
+            since = prev_ts
+
+    msg_tools = add_message_tools(
+        registry,
+        inbox_dir,
+        outbox_dir,
+        paths.instance,
+        before=before,
+        since=since,
+    )
+    # Block direct writes to inbox.
+    registry.write_blocked[inbox_dir.resolve()] = ""
+    return msg_tools
+
+
+def _build_system_prompt(
+    paths: SessionPaths,
+    summarizer_model: str,
+    notes_path: Path | None,
+    msg_tools: MessageTools | None,
+    initial_messages: list[dict[str, Any]] | None,
+    jsonl_path: Path,
+    registry: ToolRegistry,
+) -> tuple[str, str]:
+    """Assemble the full system prompt and nudge extra string.
+
+    Returns ``(system_prompt, nudge_extra)``.
+    """
     system_prompt = _PROMPT_PATH.read_text().strip()
     if paths.instance:
         system_prompt += f"\n\nYou are instance {paths.instance} (1-based)."
-    registry = create_default_registry(root_dir=paths.workspace)
-    mt = add_memory_tools(
-        registry, db_path=paths.db_path, model=summarizer_model, log=_print_step
-    )
-
-    # Register note_to_self tool when a workspace exists.
-    notes_path: Path | None = None
-    if paths.workspace:
-        notes_path = paths.workspace / "_notes.md"
-        # Block direct write/edit; reads are allowed.
-        registry.write_blocked[notes_path.resolve()] = "use note_to_self tool instead"
-
-        def _note_to_self(content: str) -> str:
-            assert notes_path is not None
-            if len(content) > _NOTES_MAX_CHARS:
-                return (
-                    f"Error: content is {len(content)} chars, "
-                    f"max is {_NOTES_MAX_CHARS}. Trim and retry."
-                )
-            previous = notes_path.read_text() if notes_path.is_file() else None
-            notes_path.write_text(content)
-            result = f"Saved {len(content)} chars to notes."
-            if previous:
-                result += f"\n\n--- Previous notes (overwritten) ---\n{previous}"
-            return result
-
-        registry.add(
-            name="note_to_self",
-            description=(
-                "Write notes for your next instance. Overwrites previous notes. "
-                "Use for directives, user preferences, and task status. "
-                f"Max {_NOTES_MAX_CHARS} chars — curate, don't append."
-            ),
-            params=[
-                Param(
-                    name="content",
-                    description=f"Markdown content (max {_NOTES_MAX_CHARS} chars).",
-                )
-            ],
-            func=_note_to_self,
-        )
-
-    # Set up inbox/outbox messaging when a workspace (session) exists.
-    msg_tools = None
-    if paths.workspace:
-        session_root = paths.workspace.parent
-        inbox_dir = session_root / "_inbox"
-        outbox_dir = session_root / "_outbox"
-        inbox_dir.mkdir(exist_ok=True)
-        outbox_dir.mkdir(exist_ok=True)
-
-        # Current session start — messages at or after this are invisible.
-        before = datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
-
-        # Previous session start — messages after this are "new".
-        since: datetime | None = None
-        prev_logs = sorted(paths.log_dir.glob("*_agent_*.jsonl"))
-        if len(prev_logs) >= 1:
-            # The current log hasn't been created yet, so the last entry
-            # in prev_logs is the previous instance's log.
-            prev_ts = parse_filename_date(prev_logs[-1].name)
-            if prev_ts is not None:
-                since = prev_ts
-
-        msg_tools = add_message_tools(
-            registry,
-            inbox_dir,
-            outbox_dir,
-            paths.instance,
-            before=before,
-            since=since,
-        )
-        # Block direct writes to inbox.
-        registry.write_blocked[inbox_dir.resolve()] = ""
-
-    # Handle --resume: explicit path or auto-find latest in session.
-    initial_messages: list[dict[str, Any]] | None = None
-    if args.resume is not None:
-        if args.resume is True:
-            # Auto-find latest JSONL in session log dir.
-            resume_path = _latest_jsonl(paths.log_dir)
-            if resume_path is None:
-                print(f"No JSONL logs found in {paths.log_dir}")
-                return
-        else:
-            resume_path = Path(args.resume)
-        if not resume_path.exists():
-            print(f"Resume file not found: {resume_path}")
-            return
-        initial_messages = _load_messages(resume_path)
-        print(
-            f"Resuming from {resume_path} ({len(initial_messages)} messages)\n"
-            f"  logging to {log_path}, memory: {paths.db_path}\n"
-        )
-    else:
-        label = f"session: {paths.name}, " if paths.name else ""
-        print(
-            f"Starting agent... ({label}logging to {log_path},"
-            f" memory: {paths.db_path})\n"
-        )
 
     # Load or generate recap from previous instance.
     # _recap.md is overwritten (not appended) at session end. If an instance
@@ -406,6 +387,97 @@ def main() -> None:
         nudge_extra = msg_tools.new_message_note
         system_prompt += f"\n\n# Messages\n{nudge_extra}"
 
+    return system_prompt, nudge_extra
+
+
+def _generate_session_recap(
+    paths: SessionPaths, jsonl_path: Path, summarizer_model: str
+) -> None:
+    """Generate and save a recap for the next instance."""
+    if not (paths.workspace and jsonl_path.exists()):
+        return
+    try:
+        msgs = _load_messages(jsonl_path)
+        if msgs:
+            recap = generate_recap(msgs, model=summarizer_model, log=print)
+            save_recap(paths.workspace / "_recap.md", recap)
+    except Exception as exc:
+        print(f"Warning: recap generation failed: {exc}")
+
+
+def main() -> None:
+    args = _parse_args()
+
+    if not API_KEY:
+        print("Set OPENROUTER_API_KEY environment variable first.")
+        print("Get a free key at https://openrouter.ai/keys")
+        return
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    model: str = args.model
+    summarizer_model: str = args.summarizer_model
+    session_name: str | None = args.session
+    if args.new_session:
+        session_name = uuid.uuid4().hex[:8]
+        while (_SESSIONS_DIR / session_name).exists():
+            session_name = uuid.uuid4().hex[:8]
+    paths = _setup_session(session_name, timestamp)
+
+    if paths.instance:
+        log_prefix = f"{paths.instance:03d}_agent_{timestamp}"
+    else:
+        log_prefix = f"agent_{timestamp}"
+    jsonl_path = paths.log_dir / f"{log_prefix}.jsonl"
+    log_path = paths.log_dir / f"{log_prefix}.log"
+
+    registry = create_default_registry(root_dir=paths.workspace)
+    mt = add_memory_tools(
+        registry, db_path=paths.db_path, model=summarizer_model, log=_print_step
+    )
+
+    # Register note_to_self tool when a workspace exists.
+    notes_path: Path | None = None
+    if paths.workspace:
+        notes_path = _register_note_tool(registry, paths.workspace)
+
+    msg_tools = _register_message_tools(registry, paths, timestamp)
+
+    # Handle --resume: explicit path or auto-find latest in session.
+    initial_messages: list[dict[str, Any]] | None = None
+    if args.resume is not None:
+        if args.resume is True:
+            # Auto-find latest JSONL in session log dir.
+            resume_path = _latest_jsonl(paths.log_dir)
+            if resume_path is None:
+                print(f"No JSONL logs found in {paths.log_dir}")
+                return
+        else:
+            resume_path = Path(args.resume)
+        if not resume_path.exists():
+            print(f"Resume file not found: {resume_path}")
+            return
+        initial_messages = _load_messages(resume_path)
+        print(
+            f"Resuming from {resume_path} ({len(initial_messages)} messages)\n"
+            f"  logging to {log_path}, memory: {paths.db_path}\n"
+        )
+    else:
+        label = f"session: {paths.name}, " if paths.name else ""
+        print(
+            f"Starting agent... ({label}logging to {log_path},"
+            f" memory: {paths.db_path})\n"
+        )
+
+    system_prompt, nudge_extra = _build_system_prompt(
+        paths,
+        summarizer_model,
+        notes_path,
+        msg_tools,
+        initial_messages,
+        jsonl_path,
+        registry,
+    )
+
     # Log the final system prompt.
     logger = _make_logger(jsonl_path, log_path)
     logger({"role": "system", "content": system_prompt})
@@ -436,15 +508,7 @@ def main() -> None:
     finally:
         mt.close()
         print("\n")
-        # Generate recap for the next instance.
-        if paths.workspace and jsonl_path.exists():
-            try:
-                msgs = _load_messages(jsonl_path)
-                if msgs:
-                    recap = generate_recap(msgs, model=summarizer_model, log=print)
-                    save_recap(paths.workspace / "_recap.md", recap)
-            except Exception:
-                pass  # Don't crash cleanup on recap failure.
+        _generate_session_recap(paths, jsonl_path, summarizer_model)
 
     if paths.name:
         model_flag = f" --model {model}" if model != _DEFAULT_MODEL else ""
