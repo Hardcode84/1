@@ -104,6 +104,21 @@ mindloop-recap logs/001_agent_20260210_120000.jsonl --budget 500 --model deepsee
 
 Collapses tool calls into concise natural-language descriptions, chunks and summarizes the session, then selects the most relevant summaries with recency bias within a token budget. Recaps are also generated automatically at session shutdown and injected into the next instance's system prompt.
 
+### Extract memories from logs
+
+```bash
+# Dry run: extract and print facts without saving.
+mindloop-extract logs/001_agent_20260210_120000.jsonl --dry-run -v
+
+# Save extracted facts into the memory database.
+mindloop-extract logs/001_agent_20260210_120000.jsonl --db memory.db
+
+# Custom model and parallelism.
+mindloop-extract logs/001_agent_20260210_120000.jsonl --model deepseek/deepseek-v3.2 --workers 8
+```
+
+Extracts factual memories from a session log as a post-session safety net. Collapses tool calls, chunks the conversation, then uses an LLM to identify reusable facts from each chunk. Each fact is summarized and saved into the semantic database with automatic dedup and merge.
+
 ### List sessions
 
 ```bash

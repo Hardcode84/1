@@ -4,6 +4,11 @@
 
 mindloop — autonomous AI agent framework with persistent semantic memory. Python 3.10+, OpenRouter API.
 
+## Documentation
+
+- `CLAUDE.md` — agent-facing project summary (this file).
+- `README.md` — user-facing docs with CLI usage examples. Update it when adding or changing CLI entry points.
+
 ## Structure
 
 ```
@@ -19,7 +24,8 @@ chunker.py         Parse JSONL/markdown into chunks, compact, merge by similarit
 summarizer.py      LLM-generated abstract + summary per chunk.
 client.py          OpenRouter API wrapper (chat, embeddings, streaming, retry).
 recap.py           Session recap: collapse tool calls, summarize, persist between instances.
-cli/               Nine entry points: agent, chat, chunk, build, query, dump, recap, sessions, message.
+extractor.py       Post-session memory extraction: LLM-based fact extraction from logs.
+cli/               Ten entry points: agent, chat, chunk, build, query, dump, recap, sessions, message, extract.
 ```
 
 ## Commands
