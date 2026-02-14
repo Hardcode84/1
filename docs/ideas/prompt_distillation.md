@@ -2,70 +2,89 @@
 
 ## Goal
 
-Convert a corpus of texts (session logs, books, articles, any written material) into a pool of diverse reflective prompts for the synthetic diversity injection mechanism (see `synthetic_diversity.md`).
-
-## Pipeline
-
-### 1. Extractive pass (free, no LLM calls)
-
-Pull content directly from the corpus:
-
-- **Questions**: sentences ending in `?` that are open-ended (filter out yes/no).
-- **Strong claims**: sentences with opinion markers ("I believe", "the key insight", "surprisingly", "the problem is").
-- **Diverse excerpts**: embed all sentences, cluster via k-means, pick the centroid sentence from each cluster.
-
-Reuses existing infrastructure: `chunk_turns`, `compact_chunks`, `get_embeddings`.
-
-### 2. LLM distillation pass (one-time batch cost)
-
-For chunks not covered by extraction:
-
-1. Chunk the corpus using existing chunker.
-2. One-shot LLM call per chunk with a prompt like: "Generate 3 open-ended reflective prompts inspired by this text. Prompts should provoke thought, not summarize. Write as questions or challenges directed at a thinking agent."
-3. Reuses the `summarize_chunks` pattern with a different system prompt.
-
-### 3. Deduplication and diversity selection
-
-1. Embed all candidate prompts.
-2. Greedy selection: pick the prompt furthest from already-selected set, repeat until pool is full.
-3. This maximizes minimum pairwise distance — the pool covers the broadest possible range.
-
-### 4. Output
-
-Static JSON file shipped with the agent:
-
-```json
-[
-  "What assumptions are you making right now?",
-  "What would change if you approached this from the opposite direction?",
-  "What have you learned that surprised you?",
-  ...
-]
-```
+Convert a corpus of texts into a pool of diverse reflective prompts for the synthetic diversity injection mechanism (see `synthetic_diversity.md`).
 
 ## Source Material
 
-The corpus does not need to be topically related to the agent's tasks. Less related material produces better diversity injection. Good sources:
+### Ready-made: storopoli/stoic-quotes (CC0)
 
-- Agent session logs (captures the agent's own patterns, helps break out of them).
-- Philosophy, science writing, fiction (maximally diverse from typical agent tasks).
-- Collections of aphorisms, koans, or thought experiments.
+[github.com/storopoli/stoic-quotes](https://github.com/storopoli/stoic-quotes) — 246 stoic quotes, CC0 1.0 (public domain), clean JSON with `text` + `author` fields. 8 authors (Marcus Aurelius, Epictetus, Seneca, Zeno, Musonius Rufus, Diogenes, etc.). Ready to use as-is — no processing pipeline needed for the direct quotes portion. Eliminates the need for Gutenberg download + extraction for quotes.
 
-## CLI Tool (future)
+### Optional: Project Gutenberg texts for distilled prompts
+
+If we want rephrased reflective prompts on top of direct quotes, source from public domain texts (~80k words total):
+
+- Marcus Aurelius, *Meditations* (~45k words) — self-directed notes, almost every passage is a prompt.
+- Epictetus, *Enchiridion* (~10k words) — 53 short chapters of direct imperatives. Densest source.
+- La Rochefoucauld, *Maxims* (~20k words) — ~500 one-line aphorisms. Nearly zero processing needed.
+- Lao Tzu, *Tao Te Ching* (~5k words) — 81 short poems. Maximally different worldview.
+
+All Apache 2.0 compatible (public domain, strip PG headers).
+
+## Pipeline
+
+This is a one-off process, tailored per book. No need for a reusable CLI tool.
+
+### 1. Prep (bash, per book)
+
+Strip PG headers/footers, split into passages. Each book has its own natural structure — numbered passages, chapters, aphorisms, verses. Use `sed`/`awk` to extract, one passage per line or per file. Tailored per book, not a generic tool.
 
 ```bash
-mindloop-distill corpus.txt --output prompts.json --pool-size 100
-mindloop-distill session_logs/ --format jsonl --output prompts.json
+# Example: strip PG header/footer.
+sed -n '/\*\*\* START/,/\*\*\* END/p' meditations.txt | tail -n +2 | head -n -1 > clean.txt
+# Split on paragraph breaks, filter short lines, etc.
 ```
 
-Options:
-- `--extract-only` — skip LLM pass, extractive only.
-- `--pool-size N` — target number of prompts after diversity selection.
-- `--format` — input format (txt, md, jsonl).
-- `--model` — model for LLM distillation pass.
+### 2. Extractive pass (grep/awk)
+
+Pull high-value passages directly:
+
+- Questions: `grep '?$'`
+- Imperatives: lines starting with a verb.
+- Strong claims: lines with universals ("always", "never", "the nature of").
+
+Stoic texts are dense with these — high yield expected.
+
+### 3. LLM distillation (one-time, ~$1-2)
+
+For remaining passages, one-shot LLM call per chunk:
+
+> "Rephrase as a reflective prompt for an autonomous agent. Write as a question or challenge. One line only."
+
+~300-400 cheap model calls using existing `chat()`. Can run in parallel with `ThreadPoolExecutor`.
+
+### 4. Diversity selection (Python script)
+
+1. Embed all candidates via `get_embeddings()`.
+2. Greedy max-min distance: pick prompt furthest from already-selected set, repeat.
+3. Select ~200 prompts. Use no-repeat sampling at runtime (reset across sessions) so 200 = 200 guaranteed unique turns.
+4. If pool needs to grow later: parameterized templates or runtime composition of two prompts (~20k combos from 200).
+
+### 5. Output
+
+Static JSON shipped with mindloop. Two types of entries:
+
+**Direct quotes** — preserve original voice and author attribution. Triggers associations with the author's tradition, gives the diversity injection more semantic depth. Cheaper to produce (pure extractive).
+
+**Distilled prompts** — rephrased as questions/challenges. More directly actionable, less anchored in a specific voice.
+
+Mix both in the pool, roughly 50/50.
+
+```json
+[
+  "Quote of the day: 'Waste no more time arguing about what a good man should be. Be one.' — Marcus Aurelius",
+  "Quote of the day: 'The tao that can be told is not the eternal Tao.' — Lao Tzu",
+  "What assumptions are you making right now?",
+  "What would change if you approached this from the opposite direction?"
+]
+```
 
 ## Open Questions
 
-- Optimal pool size? Too small = repetitive, too large = diluted quality. Likely 50-200.
-- Should the pool be static or grow over time as the agent encounters new material?
+- Should the pool grow over time as the agent encounters new material?
 - Weight prompts by effectiveness? Track which prompts actually break loops vs get ignored.
+- Optimal ratio of direct quotes to distilled prompts? Start 50/50, tune based on observed effect.
+
+## Quote of the Day
+
+In addition to using the pool for nudge diversity, inject a daily quote into the system prompt at startup. Select deterministically using the current date as seed (`random.seed(date.today())`), so all instances on the same day see the same quote. Changes daily. Append to system prompt as `# Quote of the day\n"..." — Author`.
