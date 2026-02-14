@@ -109,7 +109,7 @@ def test_load_messages_preserves_tool_calls(tmp_path: Path) -> None:
 def test_setup_session_creates_dirs(tmp_path: Path) -> None:
     """Named session creates logs/ and workspace/ subdirs."""
     with patch("mindloop.cli.agent._SESSIONS_DIR", tmp_path / "sessions"):
-        paths = _setup_session("test_run", isolated=False, timestamp="20260212_000000")
+        paths = _setup_session("test_run", timestamp="20260212_000000")
 
     assert paths.log_dir.exists()
     assert paths.log_dir.name == "logs"
@@ -117,26 +117,15 @@ def test_setup_session_creates_dirs(tmp_path: Path) -> None:
     assert paths.workspace.exists()
     assert paths.workspace.name == "workspace"
     assert paths.db_path.parent == paths.log_dir.parent
-    assert not paths.blocked_dirs
-
-
-def test_setup_session_isolated(tmp_path: Path) -> None:
-    """Isolated mode creates a timestamped session with blocked dirs."""
-    with patch("mindloop.cli.agent._SESSIONS_DIR", tmp_path / "sessions"):
-        paths = _setup_session(None, isolated=True, timestamp="20260212_000000")
-
-    assert "isolated_20260212_000000" in str(paths.log_dir)
-    assert paths.blocked_dirs
 
 
 def test_setup_default_paths(tmp_path: Path) -> None:
     """Default mode uses shared logs/ and memory/."""
     with (patch("mindloop.cli.agent.Path", side_effect=lambda p: tmp_path / p),):
         # Can't easily patch Path() calls, test the logic directly.
-        paths = _setup_session(None, isolated=False, timestamp="20260212_000000")
+        paths = _setup_session(None, timestamp="20260212_000000")
 
     assert paths.workspace is None
-    assert not paths.blocked_dirs
 
 
 def test_setup_session_copies_template(tmp_path: Path) -> None:
@@ -151,7 +140,7 @@ def test_setup_session_copies_template(tmp_path: Path) -> None:
         patch("mindloop.cli.agent._SESSIONS_DIR", tmp_path / "sessions"),
         patch("mindloop.cli.agent._TEMPLATE_DIR", tpl),
     ):
-        paths = _setup_session("tpl_run", isolated=False, timestamp="20260212_000000")
+        paths = _setup_session("tpl_run", timestamp="20260212_000000")
 
     assert paths.workspace is not None
     assert (paths.workspace / "hello.txt").read_text() == "hi"
@@ -172,7 +161,7 @@ def test_setup_session_skips_template_on_existing(tmp_path: Path) -> None:
         patch("mindloop.cli.agent._SESSIONS_DIR", sessions),
         patch("mindloop.cli.agent._TEMPLATE_DIR", tpl),
     ):
-        paths = _setup_session("existing", isolated=False, timestamp="20260212_000000")
+        paths = _setup_session("existing", timestamp="20260212_000000")
 
     assert paths.workspace is not None
     assert not (paths.workspace / "hello.txt").exists()
@@ -182,14 +171,14 @@ def test_setup_session_instance_counter(tmp_path: Path) -> None:
     """Instance number increments with each run in a session."""
     sessions = tmp_path / "sessions"
     with patch("mindloop.cli.agent._SESSIONS_DIR", sessions):
-        p1 = _setup_session("run", isolated=False, timestamp="20260212_100000")
+        p1 = _setup_session("run", timestamp="20260212_100000")
     assert p1.instance == 1
 
     # Simulate a log file from the first run.
     (p1.log_dir / "001_agent_20260212_100000.jsonl").write_text("{}\n")
 
     with patch("mindloop.cli.agent._SESSIONS_DIR", sessions):
-        p2 = _setup_session("run", isolated=False, timestamp="20260212_110000")
+        p2 = _setup_session("run", timestamp="20260212_110000")
     assert p2.instance == 2
 
 
@@ -261,9 +250,7 @@ def _make_session_with_tool(tmp_path: Path) -> tuple[Path, "ToolRegistry"]:  # t
 
     sessions = tmp_path / "sessions"
     with patch("mindloop.cli.agent._SESSIONS_DIR", sessions):
-        paths = _setup_session(
-            "notes_test", isolated=False, timestamp="20260213_000000"
-        )
+        paths = _setup_session("notes_test", timestamp="20260213_000000")
 
     assert paths.workspace is not None
     notes_path = paths.workspace / "_notes.md"

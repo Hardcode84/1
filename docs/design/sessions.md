@@ -14,9 +14,8 @@ sessions/<name>/
 ## Modes
 
 - **Default** (no flags): shared `logs/` + `memory/memory.db`, no workspace.
-- **Named** (`--session NAME`): isolated workspace, own memory, own logs.
+- **Named** (`--session NAME`): own workspace, own memory, own logs.
 - **New** (`--new-session`): like named, with auto-generated UUID name.
-- **Isolated** (`--isolated`): named session + blocked access to shared dirs.
 - **Resume** (`--session NAME --resume`): replay previous log, continue in same workspace.
 
 ## Instance tracking

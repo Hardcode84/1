@@ -6,7 +6,7 @@ import select
 import shutil
 import sys
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from collections.abc import Callable
@@ -165,12 +165,6 @@ def _latest_jsonl(log_dir: Path) -> Path | None:
 
 _SESSIONS_DIR = Path("sessions")
 _TEMPLATE_DIR = Path("workspace_template")
-_ISOLATED_BLOCKED = [
-    Path("logs"),
-    Path("artifacts"),
-    Path("memory"),
-    _SESSIONS_DIR,
-]
 
 
 @dataclass
@@ -182,14 +176,10 @@ class SessionPaths:
     name: str | None = None
     instance: int = 0
     workspace: Path | None = None
-    blocked_dirs: list[Path] = field(default_factory=list)
 
 
-def _setup_session(session: str | None, isolated: bool, timestamp: str) -> SessionPaths:
+def _setup_session(session: str | None, timestamp: str) -> SessionPaths:
     """Resolve log, memory, and workspace paths."""
-    if isolated and not session:
-        session = f"isolated_{timestamp}"
-
     if session:
         root = _SESSIONS_DIR / session
         log_dir = root / "logs"
@@ -200,14 +190,12 @@ def _setup_session(session: str | None, isolated: bool, timestamp: str) -> Sessi
         if fresh and _TEMPLATE_DIR.is_dir():
             shutil.copytree(_TEMPLATE_DIR, workspace, dirs_exist_ok=True)
         instance = len(list(log_dir.glob("*_agent_*.jsonl"))) + 1
-        blocked = list(_ISOLATED_BLOCKED) if isolated else []
         return SessionPaths(
             log_dir=log_dir,
             db_path=root / "memory.db",
             name=session,
             instance=instance,
             workspace=workspace,
-            blocked_dirs=blocked,
         )
 
     # Default: shared logs + memory.
@@ -241,11 +229,6 @@ def main() -> None:
         help="Create a new session with an auto-generated name.",
     )
     parser.add_argument(
-        "--isolated",
-        action="store_true",
-        help="Run with fresh memory and no access to logs/artifacts/memory/sessions.",
-    )
-    parser.add_argument(
         "--resume",
         nargs="?",
         const=True,
@@ -264,10 +247,6 @@ def main() -> None:
         parser.error("--session and --new-session are mutually exclusive.")
     if args.new_session and args.resume is not None:
         parser.error("--new-session and --resume are mutually exclusive.")
-    if args.isolated and args.resume is not None and not args.session:
-        parser.error(
-            "--isolated --resume requires --session to identify which session to resume."
-        )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     model: str = args.model
@@ -277,7 +256,7 @@ def main() -> None:
         session_name = uuid.uuid4().hex[:8]
         while (_SESSIONS_DIR / session_name).exists():
             session_name = uuid.uuid4().hex[:8]
-    paths = _setup_session(session_name, args.isolated, timestamp)
+    paths = _setup_session(session_name, timestamp)
 
     if paths.instance:
         log_prefix = f"{paths.instance:03d}_agent_{timestamp}"
@@ -289,10 +268,7 @@ def main() -> None:
     system_prompt = _PROMPT_PATH.read_text().strip()
     if paths.instance:
         system_prompt += f"\n\nYou are instance {paths.instance} (1-based)."
-    registry = create_default_registry(
-        blocked_dirs=paths.blocked_dirs or None,
-        root_dir=paths.workspace,
-    )
+    registry = create_default_registry(root_dir=paths.workspace)
     mt = add_memory_tools(
         registry, db_path=paths.db_path, model=summarizer_model, log=_print_step
     )
