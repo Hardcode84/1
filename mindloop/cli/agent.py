@@ -108,6 +108,7 @@ def _make_logger(jsonl_path: Path, log_path: Path) -> Callable[[dict[str, Any]],
 
 
 _DEFAULT_MODEL = "deepseek/deepseek-v3.2"
+_DEFAULT_SUMMARIZER_MODEL = "deepseek/deepseek-v3.2"
 
 
 def _load_messages(path: Path) -> list[dict[str, Any]]:
@@ -222,7 +223,12 @@ def main() -> None:
     parser.add_argument(
         "--model",
         default=_DEFAULT_MODEL,
-        help=f"Model to use (default: {_DEFAULT_MODEL}).",
+        help=f"Model to use for the agent (default: {_DEFAULT_MODEL}).",
+    )
+    parser.add_argument(
+        "--summarizer-model",
+        default=_DEFAULT_SUMMARIZER_MODEL,
+        help=f"Model for summaries, merges, and recaps (default: {_DEFAULT_SUMMARIZER_MODEL}).",
     )
     parser.add_argument(
         "--session",
@@ -265,6 +271,7 @@ def main() -> None:
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     model: str = args.model
+    summarizer_model: str = args.summarizer_model
     session_name: str | None = args.session
     if args.new_session:
         session_name = uuid.uuid4().hex[:8]
@@ -286,7 +293,9 @@ def main() -> None:
         blocked_dirs=paths.blocked_dirs or None,
         root_dir=paths.workspace,
     )
-    mt = add_memory_tools(registry, db_path=paths.db_path, model=model, log=_print_step)
+    mt = add_memory_tools(
+        registry, db_path=paths.db_path, model=summarizer_model, log=_print_step
+    )
 
     # Register note_to_self tool when a workspace exists.
     notes_path: Path | None = None
@@ -402,7 +411,7 @@ def main() -> None:
             if prev_log and prev_log != jsonl_path:
                 prev_msgs = _load_messages(prev_log)
                 if prev_msgs:
-                    recap = generate_recap(prev_msgs, model=model, log=print)
+                    recap = generate_recap(prev_msgs, model=summarizer_model, log=print)
         if recap:
             system_prompt += f"\n\n# Previous session recap\n{recap}"
 
@@ -456,17 +465,21 @@ def main() -> None:
             try:
                 msgs = _load_messages(jsonl_path)
                 if msgs:
-                    recap = generate_recap(msgs, model=model, log=print)
+                    recap = generate_recap(msgs, model=summarizer_model, log=print)
                     save_recap(paths.workspace / "_recap.md", recap)
             except Exception:
                 pass  # Don't crash cleanup on recap failure.
 
     if paths.name:
         model_flag = f" --model {model}" if model != _DEFAULT_MODEL else ""
-        print(
-            f"\nTo resume:    mindloop-agent --session {paths.name} --resume{model_flag}"
+        summ_flag = (
+            f" --summarizer-model {summarizer_model}"
+            if summarizer_model != _DEFAULT_SUMMARIZER_MODEL
+            else ""
         )
-        print(f"New instance: mindloop-agent --session {paths.name}{model_flag}")
+        flags = model_flag + summ_flag
+        print(f"\nTo resume:    mindloop-agent --session {paths.name} --resume{flags}")
+        print(f"New instance: mindloop-agent --session {paths.name}{flags}")
 
 
 if __name__ == "__main__":
