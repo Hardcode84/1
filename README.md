@@ -139,6 +139,13 @@ pytest
 pytest --cov=mindloop
 ```
 
+### Quote sources
+
+Reflective prompts and quotes used for diversity injection during autonomous agent loops.
+
+- `data/stoic-quotes.json` — 177 quotes from Seneca, Epictetus, Marcus Aurelius, Zeno, Musonius Rufus, Diogenes, and Plato. From [storopoli/stoic-quotes](https://github.com/storopoli/stoic-quotes) (CC0 public domain).
+- `data/enchiridion_prompts.json` — 69 entries (14 direct quotes + 55 LLM-distilled reflective prompts) extracted from Epictetus' *Enchiridion* (Project Gutenberg, public domain). Distillation script: `scripts/extract_enchiridion.py`.
+
 ### As a library
 
 ```python
