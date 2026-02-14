@@ -5,6 +5,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from mindloop.client import Message, chat
+from mindloop.quotes import NudgePool
 from mindloop.tools import Param, ToolRegistry, create_default_registry
 from mindloop.util import CHARS_PER_TOKEN, noop
 
@@ -73,6 +74,7 @@ def run_agent(
     initial_messages: list[Message] | None = None,
     instance: int = 0,
     nudge_extra: str = "",
+    nudge_pool: NudgePool | None = None,
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
     from mindloop.client import DEFAULT_MODEL
@@ -177,7 +179,10 @@ def run_agent(
         if not tool_calls:
             consecutive_tool_turns = 0
             # Nudge the model to keep going.
-            nudge: Message = {"role": "user", "content": _USER_UNAVAILABLE}
+            nudge_text = _USER_UNAVAILABLE
+            if nudge_pool:
+                nudge_text += "\n\n" + nudge_pool.next()
+            nudge: Message = {"role": "user", "content": nudge_text}
             messages.append(nudge)
             on_message(nudge)
             _inject_budget_warnings(
@@ -232,6 +237,8 @@ def run_agent(
             )
             if nudge_extra:
                 reflect_text += "\n\n" + nudge_extra
+            if nudge_pool:
+                reflect_text += "\n\n" + nudge_pool.next()
             reflect: Message = {
                 "role": "system",
                 "content": reflect_text,

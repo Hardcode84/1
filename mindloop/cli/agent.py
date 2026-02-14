@@ -14,6 +14,7 @@ from typing import Any
 
 from mindloop.agent import run_agent
 from mindloop.client import API_KEY
+from mindloop.quotes import NudgePool, quote_of_the_day
 from mindloop.recap import generate_recap, load_recap, save_recap
 from mindloop.messages import parse_filename_date
 from mindloop.tools import (
@@ -411,6 +412,9 @@ def main() -> None:
         if notes:
             system_prompt += f"\n\n# Notes from previous instance\n{notes}"
 
+    # Append quote of the day to system prompt.
+    system_prompt += f"\n\n# Quote of the day\n{quote_of_the_day()}"
+
     # Append message count to system prompt.
     nudge_extra = ""
     if msg_tools is not None:
@@ -425,6 +429,8 @@ def main() -> None:
     # Session workspace is isolated; skip confirmation for file operations.
     confirm = _confirm_tool if paths.workspace is None else None
 
+    nudge_pool = NudgePool()
+
     try:
         run_agent(
             system_prompt,
@@ -438,6 +444,7 @@ def main() -> None:
             initial_messages=initial_messages,
             instance=paths.instance,
             nudge_extra=nudge_extra,
+            nudge_pool=nudge_pool,
         )
     except KeyboardInterrupt:
         print("\n\nInterrupted.")
