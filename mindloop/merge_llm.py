@@ -66,7 +66,7 @@ _RELEVANCE_HINTS = {
 }
 
 _MERGE_SYSTEM_PROMPT = """\
-You merge two text chunks into a single coherent piece.
+You merge two text chunks into a single coherent piece and summarize the result.
 
 {relevance_hint}
 
@@ -76,8 +76,7 @@ Rules:
 - Do not silently discard content from the secondary chunk — \
 fold in its unique details.
 - Keep the tone and style consistent with the originals.
-- Do not add commentary or meta-text like "merged from two chunks".
-- Output only the merged text."""
+- Do not add commentary or meta-text like "merged from two chunks"."""
 
 _MERGE_USER_TEMPLATE = """\
 --- Chunk A ---
@@ -86,13 +85,34 @@ _MERGE_USER_TEMPLATE = """\
 --- Chunk B ---
 {chunk_b}
 
-Merge these into a single coherent text."""
-
-_SUMMARIZE_PROMPT = """\
-Now summarize the merged text you just produced.
-Respond in exactly this format (two lines, keep the prefixes):
+Merge these into a single coherent text, then summarize it.
+Respond in exactly this format (keep the prefixes, no blank lines between them):
+MERGED: <the merged text>
 ABSTRACT: <one sentence TL;DR>
 SUMMARY: <2-4 sentence expanded overview>"""
+
+
+_MERGE_RETRIES = 3
+
+_RETRY_PROMPT = "Wrong format. Respond with exactly three lines: MERGED: ..., ABSTRACT: ..., SUMMARY: ..."
+
+
+def _parse_merge_response(raw: str) -> MergeResult | None:
+    """Parse a MERGED/ABSTRACT/SUMMARY response. Returns None if malformed."""
+    merged_text = ""
+    abstract = ""
+    summary = ""
+    for line in raw.splitlines():
+        upper = line.upper()
+        if upper.startswith("MERGED:"):
+            merged_text = line.split(":", 1)[1].strip()
+        elif upper.startswith("ABSTRACT:"):
+            abstract = line.split(":", 1)[1].strip()
+        elif upper.startswith("SUMMARY:"):
+            summary = line.split(":", 1)[1].strip()
+    if merged_text and abstract and summary:
+        return MergeResult(text=merged_text, abstract=abstract, summary=summary)
+    return None
 
 
 def merge_texts(
@@ -104,47 +124,35 @@ def merge_texts(
     """Merge two chunk texts and generate abstract + summary.
 
     *prefer* controls relevance: "a", "b", or "equal".
+    Retries up to ``_MERGE_RETRIES`` times on malformed responses.
     Returns merged text, abstract, and summary.
     """
     hint = _RELEVANCE_HINTS.get(prefer, _RELEVANCE_HINTS["equal"])
     system = _MERGE_SYSTEM_PROMPT.format(relevance_hint=hint)
 
-    # Turn 1: merge.
     messages: list[Message] = [
         {
             "role": "user",
             "content": _MERGE_USER_TEMPLATE.format(chunk_a=text_a, chunk_b=text_b),
         },
     ]
-    merge_resp = chat(
-        messages,
-        model=model,
-        system_prompt=system,
-        stream=False,
-        **DETERMINISTIC_PARAMS,
-        cache_messages=False,
-    )
-    merged_text = (merge_resp.get("content") or "").strip()
 
-    # Turn 2: summarize in same conversation context.
-    messages.append({"role": "assistant", "content": merged_text})
-    messages.append({"role": "user", "content": _SUMMARIZE_PROMPT})
-    summary_resp = chat(
-        messages,
-        model=model,
-        system_prompt=system,
-        stream=False,
-        **DETERMINISTIC_PARAMS,
-        cache_messages=False,
-    )
-    raw = (summary_resp.get("content") or "").strip()
+    for _ in range(_MERGE_RETRIES):
+        resp = chat(
+            messages,
+            model=model,
+            system_prompt=system,
+            stream=False,
+            **DETERMINISTIC_PARAMS,
+            cache_messages=False,
+        )
+        raw = (resp.get("content") or "").strip()
+        result = _parse_merge_response(raw)
+        if result is not None:
+            return result
+        # Feed the bad output back so the model can correct itself.
+        messages.append({"role": "assistant", "content": raw})
+        messages.append({"role": "user", "content": _RETRY_PROMPT})
 
-    abstract = ""
-    summary = ""
-    for line in raw.splitlines():
-        if line.upper().startswith("ABSTRACT:"):
-            abstract = line.split(":", 1)[1].strip()
-        elif line.upper().startswith("SUMMARY:"):
-            summary = line.split(":", 1)[1].strip()
-
-    return MergeResult(text=merged_text, abstract=abstract, summary=summary)
+    # All retries exhausted — return best-effort.
+    return MergeResult(text=raw, abstract="", summary="")
