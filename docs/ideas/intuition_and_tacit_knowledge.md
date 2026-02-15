@@ -106,6 +106,44 @@ Rough parameter estimates: 10-50M for basis mixing, 100-300M for a codebook mode
 3. **Contrastive pairs.** Compare successful vs failed agent runs on the same task. The divergence points define where steering was needed.
 4. **Self-play.** Run the primary model with random steering perturbations, score outcomes, learn which perturbations helped. Requires a reliable outcome metric.
 
+**Continual training from zero.** Initialize the meta-model to neutral (output zeros = no steering) — analogous to ControlNet's zero convolution init. The primary model runs unperturbed at start; the meta-model can only gradually help, never suddenly break things. Safe by construction.
+
+Training signal granularity, from coarse to fine:
+
+- **Outcome-level:** "session succeeded/failed." Cheapest to label (automated: did tests pass? did the agent loop? did it call `done`?), but sparse — the model must figure out *where* things went wrong.
+- **Turn-level:** "the agent went wrong at turn 14." Each session gives ~5-50 labeled points. Most are "neutral."
+- **Token-level:** every generated token gets a steering label. Each session gives ~5k-20k points, but 95%+ are zeros.
+
+Convergence estimates by encoding approach:
+
+| Approach | Params | Sessions to meaningful signal |
+|---|---|---|
+| Basis mixing | 10-50M | ~200-500 |
+| Low-rank | 50-100M | ~500-2k |
+| Steering codebook | 100-300M | ~1k-5k |
+
+Basis mixing converges fastest because the task reduces to "when does failure pattern X happen" — essentially a handful of binary classifiers with soft outputs. Agent failure modes are few and repetitive (sycophantic agreement, circular tool calls, overconfident generation, losing the thread, premature completion). ~50-100 positive examples per mode suffices.
+
+**Why it might converge slower than estimated:** the signal is subtle. "About to be sycophantic" looks almost identical to "genuinely agreeing" in the token stream. If the meta-model only sees token embeddings (not hidden states), it might lack the signal to distinguish them.
+
+**Annotation pipeline, from cheap to expensive:**
+
+1. **Automated outcomes** — loop detection, test results, completion status. Free. Thousands of sessions per day. Coarse.
+2. **Self-critique distillation** — strong model reviews transcript, labels problem points. ~$0.01-0.10 per session. Medium quality.
+3. **Human "bad vibes" flags** — highest quality. ~1-3 flags per problematic session, ~30% of sessions have issues. ~500 labeled points requires ~800 sessions with a human in the loop.
+
+**Practical timeline** (assuming ~20 automated sessions/day + weekly self-critique distillation):
+
+- *Week 1-2 (~200 sessions):* basis mixing starts showing non-random steering for the most obvious mode (loops).
+- *Month 1-2 (~1000 sessions):* basis mixing produces meaningful signal for 2-3 failure modes.
+- *Month 3-6 (~3000 sessions):* codebook model starts working. Basis mixing is genuinely useful.
+
+**Continual training risks:**
+
+- **Catastrophic forgetting.** Model learns today's failure patterns, forgets last month's. With 10-50M params, full replay buffer + periodic retraining from scratch is affordable.
+- **Distribution shift.** Primary model gets updated (new API version), meta-model's features become stale. Mitigated if inputs are token embeddings (more stable across versions) rather than raw logits.
+- **Reward hacking.** With automated outcomes, meta-model may steer toward "looks successful" rather than "is successful." Human flags are the antidote.
+
 ### The critic model fills a different gap
 
 The [cross-context critic](tactical_strategic_gap.md) (separate model reviewing changes) addresses the *local-coherence trap* — the generator can't see its own blind spots. But it doesn't address the *tacit knowledge gap* — the critic also has no intuition, it just has fresh eyes. Both mitigations are needed: explicit invariants give the critic something to check against; the fresh context lets it actually see violations the generator's reasoning chain obscured.
