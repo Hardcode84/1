@@ -91,6 +91,20 @@ This extracts more information from a call we are already making. Even before im
 
 Steps 1-3 are retrieval-only changes, no risk to the save path. Step 4 is additive (new table, inserts at rejection points). Steps 5-7 modify the merge loop.
 
+## Exposing connections to the agent
+
+Four options, not mutually exclusive:
+
+**A. Invisible search expansion.** After top-k retrieval, follow edges 1-hop, re-rank the expanded set, return the best results. The agent sees better results without knowing why. Zero tool changes, zero extra tokens in output. Handles the common case where the agent just needs relevant facts.
+
+**B. Hint in `recall`.** Add a connection count per result: `[1] #42 (score=0.87, +3 related) "Python style"`. The agent knows there is more to explore but has to drill down. Cheap — one number per result.
+
+**C. Show in `recall_detail`.** When the agent requests detail on a chunk, list its connections alongside the merge tree / leaf abstracts. Natural extension — `recall_detail` is already the "tell me more" tool. No new tools to learn.
+
+**D. New `recall_related` tool.** Explicit graph traversal. Most flexible, but adds cognitive load — the agent has to decide when to use it, and each tool call costs tokens and a decision.
+
+**Recommendation: A + C.** Search expansion handles the common case silently; `recall_detail` shows connections when the agent explicitly investigates. Agents don't think in graphs — they think "I need to know X." Option A gives that for free. Option D is overkill unless the agent needs to explore connections independently of a search query.
+
 ## Interaction with graph_memory.md
 
 This proposal is a pragmatic subset of the graph memory idea. It reuses the `chunk_edges` table from that design but starts with a single edge type (`related_to`) emitted from existing rejection events, rather than the full classify-and-link paradigm. The graph_memory.md proposal remains the long-term direction; this is the incremental path to get there.
