@@ -127,7 +127,9 @@ def save_memory(
                     turns=[Turn(timestamp=datetime.now(), role="memory", text=mr.text)]
                 )
                 cs = ChunkSummary(chunk=chunk, abstract=mr.abstract, summary=mr.summary)
-                last_id = store.save(cs, source_a=last_id, source_b=result.id)
+                old_last_id = last_id
+                last_id = store.save(cs, source_a=old_last_id, source_b=result.id)
+                store.inherit_edges(last_id, [old_last_id, result.id])
                 store.deactivate([last_id])
 
                 text = mr.text

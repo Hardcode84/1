@@ -287,6 +287,54 @@ class MemoryStore:
         ).fetchall()
         return [(r[0], r[1], r[2]) for r in rows]
 
+    def inherit_edges(self, new_id: int, absorbed_ids: list[int]) -> None:
+        """Repoint edges from absorbed chunks onto *new_id* with re-scored cosine.
+
+        Collects all edges from *absorbed_ids* that point outside the merge
+        (i.e. not to *new_id* or any of the *absorbed_ids*), computes cosine
+        similarity between *new_id*'s text and each target, and creates new
+        edges.  One ``get_embeddings`` call for the whole batch.
+        """
+        exclude = set(absorbed_ids) | {new_id}
+
+        # Collect unique external targets.
+        targets: set[int] = set()
+        for aid in absorbed_ids:
+            for other_id, _etype, _score in self.edges(aid):
+                if other_id not in exclude:
+                    targets.add(other_id)
+
+        if not targets:
+            return
+
+        # Fetch texts for new chunk + all targets.
+        target_ids = sorted(targets)
+        new_text_row = self.conn.execute(
+            "SELECT text FROM chunks WHERE id = ?", (new_id,)
+        ).fetchone()
+        if new_text_row is None:
+            return
+        ph = ",".join("?" for _ in target_ids)
+        rows = self.conn.execute(
+            f"SELECT id, text FROM chunks WHERE id IN ({ph})", target_ids
+        ).fetchall()
+        text_by_id = {r[0]: r[1] for r in rows}
+
+        # Order target texts for a single batch embedding call.
+        ordered_ids = [tid for tid in target_ids if tid in text_by_id]
+        if not ordered_ids:
+            return
+        texts = [new_text_row[0]] + [text_by_id[tid] for tid in ordered_ids]
+        embs = get_embeddings(texts, model=DEFAULT_EMBEDDING_MODEL)
+
+        new_emb = embs[0]
+        norm_new = max(float(np.linalg.norm(new_emb)), 1e-10)
+        for i, tid in enumerate(ordered_ids):
+            target_emb = embs[i + 1]
+            norm_t = max(float(np.linalg.norm(target_emb)), 1e-10)
+            sim = float(np.dot(new_emb, target_emb) / (norm_new * norm_t))
+            self.add_edge(new_id, tid, "related_to", score=sim)
+
     def edge_counts(self, chunk_ids: list[int]) -> dict[int, int]:
         """Return the number of edges touching each chunk id."""
         if not chunk_ids:

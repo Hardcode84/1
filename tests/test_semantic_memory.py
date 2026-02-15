@@ -508,3 +508,34 @@ def test_save_cascade_stops_on_original_drift(store: MemoryStore) -> None:
     edges = store.conn.execute("SELECT edge_type FROM chunk_edges").fetchall()
     assert len(edges) == 1
     assert edges[0][0] == "related_to"
+
+
+def test_save_inherits_edges_on_merge(store: MemoryStore) -> None:
+    """Edges from absorbed chunks are inherited onto the merged chunk."""
+    id_a = store.save(_summary("fact A"))
+    id_b = store.save(_summary("fact B"))
+    # B has a pre-existing edge to A (from a previous rejected merge).
+    store.add_edge(id_b, id_a, "related_to", score=0.3)
+
+    mr = MergeResult(text="merged", abstract="abs", summary="sum")
+    # Merge absorbs B. Edge B↔A should be inherited onto the merge result.
+    with (
+        _patch_embeddings(_EMB_A),
+        patch("mindloop.semantic_memory.merge_texts", return_value=mr),
+    ):
+        final_id = save_memory(
+            store,
+            "new",
+            "abs",
+            "sum",
+            model="test-model",
+            max_neighbor_score=1.0,
+            max_rounds=1,
+        )
+
+    # The final merged chunk should have an inherited edge to whichever
+    # chunk was not absorbed. With uniform embeddings both A and B are
+    # candidates; the first search hit gets absorbed.
+    edges = store.edges(final_id)
+    inherited = [(eid, etype) for eid, etype, _ in edges if etype == "related_to"]
+    assert len(inherited) >= 1

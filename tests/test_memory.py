@@ -556,3 +556,78 @@ def test_leaf_texts_merged(store: MemoryStore) -> None:
 def test_leaf_texts_nonexistent(store: MemoryStore) -> None:
     """Nonexistent chunk returns empty list."""
     assert store.leaf_texts(999) == []
+
+
+# --- inherit_edges ---
+
+
+def test_inherit_edges_repoints(store: MemoryStore) -> None:
+    """Edges from absorbed chunks appear on the new merged chunk."""
+    id_a = store.save(_summary("a"))
+    id_b = store.save(_summary("b"))
+    id_c = store.save(_summary("c"))
+    store.add_edge(id_a, id_c, "related_to", score=0.5)
+
+    id_ab = store.save(_summary("ab"), source_a=id_a, source_b=id_b)
+
+    with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
+        store.inherit_edges(id_ab, [id_a, id_b])
+
+    edges = store.edges(id_ab)
+    assert len(edges) == 1
+    target_id, etype, score = edges[0]
+    assert target_id == id_c
+    assert etype == "related_to"
+    # Uniform embeddings → cosine=1.0 replaces old score.
+    assert score == pytest.approx(1.0)
+
+
+def test_inherit_edges_excludes_internal(store: MemoryStore) -> None:
+    """Edges between absorbed chunks are not inherited."""
+    id_a = store.save(_summary("a"))
+    id_b = store.save(_summary("b"))
+    store.add_edge(id_a, id_b, "related_to", score=0.4)
+
+    id_ab = store.save(_summary("ab"), source_a=id_a, source_b=id_b)
+
+    with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
+        store.inherit_edges(id_ab, [id_a, id_b])
+
+    # Edge A↔B is internal — should not appear on AB.
+    assert store.edges(id_ab) == []
+
+
+def test_inherit_edges_rescores(store: MemoryStore) -> None:
+    """Inherited edge score reflects cosine between new chunk and target."""
+    id_a = store.save(_summary("a"))
+    id_b = store.save(_summary("b"))
+    id_c = store.save(_summary("c"))
+    store.add_edge(id_a, id_c, "related_to", score=0.5)
+
+    id_ab = store.save(_summary("ab"), source_a=id_a, source_b=id_b)
+
+    # AB embedding orthogonal to C → score ~0.
+    _ab_emb = np.array([1.0, 0.0], dtype=np.float32)
+    _c_emb = np.array([0.0, 1.0], dtype=np.float32)
+
+    def _get_emb(texts: list[str], **_kw: object) -> np.ndarray:
+        return np.stack([_ab_emb, _c_emb])
+
+    with patch("mindloop.memory.get_embeddings", side_effect=_get_emb):
+        store.inherit_edges(id_ab, [id_a, id_b])
+
+    edges = store.edges(id_ab)
+    assert len(edges) == 1
+    assert edges[0][2] == pytest.approx(0.0, abs=0.01)
+
+
+def test_inherit_edges_no_targets(store: MemoryStore) -> None:
+    """No external edges → no embedding call needed."""
+    id_a = store.save(_summary("a"))
+    id_b = store.save(_summary("b"))
+    id_ab = store.save(_summary("ab"), source_a=id_a, source_b=id_b)
+
+    with patch("mindloop.memory.get_embeddings") as mock_emb:
+        store.inherit_edges(id_ab, [id_a, id_b])
+
+    mock_emb.assert_not_called()
