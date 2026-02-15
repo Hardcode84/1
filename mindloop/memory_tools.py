@@ -35,6 +35,18 @@ def _format_lineage(node: LineageNode, prefix: str = "", is_last: bool = True) -
     return "\n".join(lines)
 
 
+def _collect_leaves(node: LineageNode) -> list[LineageNode]:
+    """Return all leaf nodes from a lineage tree."""
+    if node.is_leaf:
+        return [node]
+    leaves: list[LineageNode] = []
+    if node.source_a is not None:
+        leaves.extend(_collect_leaves(node.source_a))
+    if node.source_b is not None:
+        leaves.extend(_collect_leaves(node.source_b))
+    return leaves
+
+
 class MemoryTools:
     """Encapsulates agent memory tool implementations bound to a store."""
 
@@ -77,18 +89,22 @@ class MemoryTools:
         )
         return f"Saved as #{row_id}."
 
-    def recall(self, query: str, top_k: int = 5) -> str:
+    def recall(self, query: str, top_k: int = 5, original_only: bool = False) -> str:
         """Search memory. Returns ranked results with id, abstract, summary, score."""
         self._track("recall")
-        results = self._store.search(query, top_k=top_k)
+        results = self._store.search(query, top_k=top_k, original_only=original_only)
         if not results:
             return "No memories found."
+        stats = self._store.merge_stats([r.id for r in results])
         lines = []
         for rank, r in enumerate(results, 1):
             cs = r.chunk_summary
+            depth, sources = stats.get(r.id, (0, 1))
+            meta = f"score={r.score:.2f}"
+            if depth > 0:
+                meta += f", depth={depth}, sources={sources}"
             lines.append(
-                f'[{rank}] #{r.id} (score={r.score:.2f}) "{cs.abstract}"\n'
-                f"    {cs.summary}"
+                f'[{rank}] #{r.id} ({meta}) "{cs.abstract}"\n' f"    {cs.summary}"
             )
         return "\n".join(lines)
 
@@ -112,7 +128,11 @@ class MemoryTools:
 
         node = self._store.lineage(chunk_id)
         if node is not None and not node.is_leaf:
-            parts.append(f"Lineage:\n{_format_lineage(node)}")
+            leaves = _collect_leaves(node)
+            leaf_lines = [f'  #{lf.id}: "{lf.abstract}"' for lf in leaves]
+            parts.append(
+                f"Sources ({len(leaves)} originals):\n" + "\n".join(leaf_lines)
+            )
 
         return "\n".join(parts)
 

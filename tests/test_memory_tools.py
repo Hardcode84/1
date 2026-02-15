@@ -109,21 +109,21 @@ def test_recall_detail_returns_text(mt: MemoryTools) -> None:
     assert "active" in result
 
 
-def test_recall_detail_shows_lineage(mt: MemoryTools) -> None:
+def test_recall_detail_shows_sources(mt: MemoryTools) -> None:
     id_a = mt.store.save(_summary("leaf a", "abs_a"))
     id_b = mt.store.save(_summary("leaf b", "abs_b"))
     merged_id = mt.store.save(_summary("merged", "abs_m"), source_a=id_a, source_b=id_b)
     result = mt.recall_detail(merged_id)
-    assert "Lineage:" in result
+    assert "Sources (2 originals)" in result
     assert "abs_a" in result
     assert "abs_b" in result
     assert "abs_m" in result
 
 
-def test_recall_detail_no_lineage_for_leaf(mt: MemoryTools) -> None:
+def test_recall_detail_no_sources_for_leaf(mt: MemoryTools) -> None:
     row_id = mt.store.save(_summary("leaf"))
     result = mt.recall_detail(row_id)
-    assert "Lineage:" not in result
+    assert "Sources" not in result
 
 
 # --- _format_lineage ---

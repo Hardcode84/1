@@ -430,7 +430,9 @@ def add_memory_tools(
         description=(
             "Search long-term memory by semantic similarity. "
             "Returns ranked results with id, abstract, summary, and score. "
-            "Use recall_detail with an id to get the full text."
+            "Use recall_detail with an id to get the full text. "
+            "Set original_only=true to search specific individual facts "
+            "instead of consolidated summaries."
         ),
         params=[
             Param(name="query", description="What to search for."),
@@ -438,6 +440,12 @@ def add_memory_tools(
                 name="top_k",
                 description="Maximum number of results. Default: 5.",
                 type="integer",
+                required=False,
+            ),
+            Param(
+                name="original_only",
+                description="Search specific individual facts instead of summaries. Default: false.",
+                type="boolean",
                 required=False,
             ),
         ],

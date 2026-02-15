@@ -379,6 +379,37 @@ class MemoryStore:
         row = self.conn.execute(query).fetchone()
         return row[0] if row else 0
 
+    def merge_stats(self, chunk_ids: list[int]) -> dict[int, tuple[int, int]]:
+        """Return (depth, leaf_count) for each chunk id.
+
+        Depth is the height of the merge tree (0 for originals).
+        Leaf count is the number of original inputs the chunk was built from.
+        """
+        if not chunk_ids:
+            return {}
+        # Bulk-fetch all chunk sources.
+        rows = self.conn.execute("SELECT id, source_a, source_b FROM chunks").fetchall()
+        sources: dict[int, tuple[int | None, int | None]] = {
+            r[0]: (r[1], r[2]) for r in rows
+        }
+
+        cache: dict[int, tuple[int, int]] = {}
+
+        def _walk(cid: int) -> tuple[int, int]:
+            if cid in cache:
+                return cache[cid]
+            sa, sb = sources.get(cid, (None, None))
+            if sa is None and sb is None:
+                cache[cid] = (0, 1)
+                return (0, 1)
+            d_a, l_a = _walk(sa) if sa is not None else (0, 0)
+            d_b, l_b = _walk(sb) if sb is not None else (0, 0)
+            result = (max(d_a, d_b) + 1, l_a + l_b)
+            cache[cid] = result
+            return result
+
+        return {cid: _walk(cid) for cid in chunk_ids if cid in sources}
+
     def lineage(self, chunk_id: int) -> LineageNode | None:
         """Build the full merge tree rooted at *chunk_id*.
 
