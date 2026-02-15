@@ -14,6 +14,7 @@ from typing import Any
 
 from mindloop.agent import run_agent
 from mindloop.client import API_KEY
+from mindloop.memory import MemoryStore
 from mindloop.quotes import NudgePool, quote_of_the_day
 from mindloop.recap import generate_recap, load_recap, save_recap
 from mindloop.messages import parse_filename_date
@@ -405,6 +406,23 @@ def _generate_session_recap(
         print(f"Warning: recap generation failed: {exc}")
 
 
+def _extract_session_memories(
+    jsonl_path: Path, store: MemoryStore, summarizer_model: str
+) -> None:
+    """Extract and save memories from the session log."""
+    if not jsonl_path.exists():
+        return
+    try:
+        from mindloop.extractor import extract_session
+
+        msgs = _load_messages(jsonl_path)
+        if msgs:
+            saved = extract_session(msgs, store, model=summarizer_model, log=print)
+            print(f"Extracted {saved} memories from session.")
+    except Exception as exc:
+        print(f"Warning: memory extraction failed: {exc}")
+
+
 def main() -> None:
     args = _parse_args()
 
@@ -506,9 +524,10 @@ def main() -> None:
     except KeyboardInterrupt:
         print("\n\nInterrupted.")
     finally:
-        mt.close()
         print("\n")
         _generate_session_recap(paths, jsonl_path, summarizer_model)
+        _extract_session_memories(jsonl_path, mt.store, summarizer_model)
+        mt.close()
 
     if paths.name:
         model_flag = f" --model {model}" if model != _DEFAULT_MODEL else ""
