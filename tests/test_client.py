@@ -13,6 +13,7 @@ from mindloop.client import _embedding_cache, chat, get_embeddings
 def _mock_non_streaming(message: dict[str, Any]) -> MagicMock:
     """Create a mock response for non-streaming chat."""
     mock_resp = MagicMock()
+    mock_resp.status_code = 200
     mock_resp.json.return_value = {"choices": [{"message": message}]}
     return mock_resp
 
@@ -26,6 +27,7 @@ def _mock_streaming(tokens: list[str]) -> MagicMock:
     lines.append(b"data: [DONE]")
 
     mock_resp = MagicMock()
+    mock_resp.status_code = 200
     mock_resp.iter_lines.return_value = lines
     return mock_resp
 
@@ -34,6 +36,7 @@ def _mock_embeddings(embeddings: list[list[float]]) -> MagicMock:
     """Create a mock response for embeddings."""
     data = [{"embedding": emb, "index": i} for i, emb in enumerate(embeddings)]
     mock_resp = MagicMock()
+    mock_resp.status_code = 200
     mock_resp.json.return_value = {"data": data}
     return mock_resp
 
@@ -197,6 +200,7 @@ def test_chat_streaming_tool_calls_with_null_fields(mock_post: MagicMock) -> Non
     lines.append(b"data: [DONE]")
 
     mock_resp = MagicMock()
+    mock_resp.status_code = 200
     mock_resp.iter_lines.return_value = lines
     mock_post.return_value = mock_resp
 

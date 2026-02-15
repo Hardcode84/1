@@ -123,7 +123,11 @@ def _stream_request(
         stream=True,
         timeout=_REQUEST_TIMEOUT,
     )
-    response.raise_for_status()
+    if response.status_code >= 400:
+        raise requests.HTTPError(
+            f"{response.status_code} {response.reason}: {response.text}",
+            response=response,
+        )
 
     full_reply: list[str] = []
     full_reasoning: list[str] = []
@@ -231,7 +235,11 @@ def chat(
                 json=payload,
                 timeout=_REQUEST_TIMEOUT,
             )
-            response.raise_for_status()
+            if response.status_code >= 400:
+                raise requests.HTTPError(
+                    f"{response.status_code} {response.reason}: {response.text}",
+                    response=response,
+                )
             body = response.json()
             msg: Message = body["choices"][0]["message"]
             if "usage" in body:
