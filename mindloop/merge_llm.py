@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from mindloop.client import Message, chat
+from mindloop.client import DETERMINISTIC_PARAMS, Message, chat
 
 _SYSTEM_PROMPT = """\
 You decide whether two consecutive text chunks belong to the same topic \
@@ -45,8 +45,7 @@ def should_merge(
         model=model,
         system_prompt=_SYSTEM_PROMPT,
         stream=False,
-        temperature=0.0,
-        seed=42,
+        **DETERMINISTIC_PARAMS,
         cache_messages=False,
     )
     answer = (resp.get("content") or "").strip().lower()
@@ -122,8 +121,7 @@ def merge_texts(
         model=model,
         system_prompt=system,
         stream=False,
-        temperature=0.0,
-        seed=42,
+        **DETERMINISTIC_PARAMS,
         cache_messages=False,
     )
     merged_text = (merge_resp.get("content") or "").strip()
@@ -136,8 +134,7 @@ def merge_texts(
         model=model,
         system_prompt=system,
         stream=False,
-        temperature=0.0,
-        seed=42,
+        **DETERMINISTIC_PARAMS,
         cache_messages=False,
     )
     raw = (summary_resp.get("content") or "").strip()

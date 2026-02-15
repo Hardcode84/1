@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
 from mindloop.chunker import Chunk
-from mindloop.client import chat
+from mindloop.client import DETERMINISTIC_PARAMS, chat
 from mindloop.util import DEFAULT_WORKERS, noop
 
 
@@ -36,8 +36,7 @@ def summarize_chunk(chunk: Chunk, model: str | None = None) -> ChunkSummary:
         model=model or _SUMMARIZATION_MODEL,
         system_prompt=_SYSTEM_PROMPT,
         stream=False,
-        temperature=0,
-        seed=42,
+        **DETERMINISTIC_PARAMS,
         cache_messages=False,
     )
     raw = msg.get("content", "")

@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from mindloop.chunker import chunk_turns, compact_chunks, merge_chunks
-from mindloop.client import chat, get_embeddings
+from mindloop.client import DETERMINISTIC_PARAMS, chat, get_embeddings
 from mindloop.memory import MemoryStore
 from mindloop.recap import collapse_messages
 from mindloop.semantic_memory import save_memory
@@ -93,8 +93,7 @@ def extract_facts(
         model=resolved_model,
         system_prompt=_SYSTEM_PROMPT,
         stream=False,
-        temperature=0,
-        seed=42,
+        **DETERMINISTIC_PARAMS,
         cache_messages=False,
     )
     raw = msg.get("content", "")
@@ -116,8 +115,7 @@ def extract_facts(
         model=resolved_model,
         system_prompt=_SYSTEM_PROMPT,
         stream=False,
-        temperature=0,
-        seed=42,
+        **DETERMINISTIC_PARAMS,
         cache_messages=False,
     )
     raw = msg.get("content", "")

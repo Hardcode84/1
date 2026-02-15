@@ -17,6 +17,9 @@ DEFAULT_EMBEDDING_MODEL: str = "qwen/qwen3-embedding-8b"
 Message = dict[str, Any]
 Tool = dict[str, Any]
 
+# Kwargs for deterministic one-shot LLM calls (summarization, merging, extraction).
+DETERMINISTIC_PARAMS: dict[str, Any] = {"temperature": 0, "seed": 42}
+
 # 1D embedding vector, shape (dim,), dtype float32.
 Embedding = np.ndarray
 # 2D embedding matrix, shape (n, dim), dtype float32.
