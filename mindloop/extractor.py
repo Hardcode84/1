@@ -20,7 +20,8 @@ _EXTRACTION_MODEL = "deepseek/deepseek-v3.2"
 _CONTEXT_CHARS = 200
 
 _SYSTEM_PROMPT = """\
-You extract factual memories from a conversation excerpt.
+You extract factual memories from a conversation excerpt between "You" (user) and "Bot" (assistant).
+Write from the assistant's perspective using first person ("I").
 Return a JSON array of objects, each with "text" and "abstract" keys.
 "text" is the full fact (1-3 sentences). "abstract" is a one-sentence TL;DR.
 Only extract concrete, reusable facts — skip greetings, filler, and meta-talk.
