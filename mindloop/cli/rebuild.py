@@ -10,12 +10,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from mindloop.client import API_KEY, DEFAULT_MODEL
+from mindloop.client import API_KEY
 from mindloop.extractor import extract_window
 from mindloop.memory import MemoryStore
 from mindloop.semantic_memory import save_memory
 from mindloop.summarizer import summarize_chunk
 from mindloop.util import DEDUP_THRESHOLD, noop
+
+_DEFAULT_MODEL = "deepseek/deepseek-v3.2"
 
 # Fallback window size when no boundary markers are found.
 _FALLBACK_WINDOW = 20
@@ -241,7 +243,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default=DEFAULT_MODEL,
+        default=_DEFAULT_MODEL,
         help="Model for extraction + summarization LLM calls.",
     )
     parser.add_argument(
