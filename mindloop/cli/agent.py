@@ -26,7 +26,7 @@ from mindloop.tools import (
     add_message_tools,
     create_default_registry,
 )
-from mindloop.util import SKIP_PREFIXES
+from mindloop.util import DEDUP_THRESHOLD, SKIP_PREFIXES
 
 _PROMPT_PATH = Path(__file__).resolve().parent.parent / "system_prompt.md"
 _NOTES_MAX_CHARS = 2000
@@ -406,9 +406,6 @@ def _generate_session_recap(
         print(f"Warning: recap generation failed: {exc}")
 
 
-_DEDUP_THRESHOLD = 0.7
-
-
 class MidSessionExtractor:
     """Runs extract_window in a background thread, commits results on drain."""
 
@@ -431,7 +428,7 @@ class MidSessionExtractor:
         results = self._store.search(text, top_k=1)
         if not results:
             return False
-        if results[0].score >= _DEDUP_THRESHOLD:
+        if results[0].score >= DEDUP_THRESHOLD:
             self._log(
                 f"\n[extract] skipping duplicate"
                 f" (score={results[0].score:.2f}): {text[:80]}"

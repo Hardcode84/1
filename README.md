@@ -119,6 +119,24 @@ mindloop-extract logs/001_agent_20260210_120000.jsonl --model deepseek/deepseek-
 
 Extracts factual memories from a session log as a post-session safety net. Collapses tool calls, chunks the conversation, then uses an LLM to identify reusable facts from each chunk. Each fact is summarized and saved into the semantic database with automatic dedup and merge.
 
+### Rebuild memory from logs
+
+```bash
+# Rebuild from a single session (wipes and recreates its memory.db).
+mindloop-rebuild --session 27bd995e -v
+
+# Dry run: show what would be saved/skipped without writing.
+mindloop-rebuild --session 27bd995e --dry-run -v
+
+# Rebuild from all sessions into a shared memory.db.
+mindloop-rebuild --all --db memory.db
+
+# Rebuild from explicit log files.
+mindloop-rebuild logs/001_agent_*.jsonl --db memory.db
+```
+
+Replays session logs through the current extraction pipeline to rebuild the memory database from scratch. Walks messages in order: explicit `remember` tool calls are saved immediately (with summarization and merge), while extraction boundaries (nudge/reflect markers, or a fallback every 20 messages) trigger LLM-based fact extraction with dedup gating. Processes logs chronologically so earlier memories are available for dedup when later logs are processed.
+
 ### List sessions
 
 ```bash
