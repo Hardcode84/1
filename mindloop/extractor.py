@@ -4,26 +4,28 @@ import json
 import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 from typing import Any
 
-from mindloop.chunker import Chunk, Turn, chunk_turns, compact_chunks, merge_chunks
+from mindloop.chunker import chunk_turns, compact_chunks, merge_chunks
 from mindloop.client import chat, get_embeddings
 from mindloop.memory import MemoryStore
 from mindloop.recap import collapse_messages
 from mindloop.semantic_memory import save_memory
-from mindloop.summarizer import summarize_chunk
 from mindloop.util import DEFAULT_WORKERS, noop
 
 _EXTRACTION_MODEL = "deepseek/deepseek-v3.2"
 
-_CONTEXT_CHARS = 200
+# Tail of the previous chunk passed as context to the next extraction call,
+# so the LLM can resolve references that span chunk boundaries.
+CONTEXT_CHARS = 200
 
 _SYSTEM_PROMPT = """\
 You extract factual memories from a conversation excerpt between "You" (user) and "Bot" (assistant).
 Write from the assistant's perspective using first person ("I").
-Return a JSON array of objects, each with "text" and "abstract" keys.
-"text" is the full fact (1-3 sentences). "abstract" is a one-sentence TL;DR.
+Return a JSON array of objects, each with "text", "abstract", and "summary" keys.
+"text" is the full fact (1-3 sentences).
+"abstract" is a one-sentence TL;DR.
+"summary" is a 2-4 sentence expanded overview.
 Only extract concrete, reusable facts — skip greetings, filler, and meta-talk.
 If there is nothing worth remembering, return an empty array: []
 Return ONLY valid JSON, no markdown fences or commentary.\
@@ -60,8 +62,10 @@ def extract_facts(
 ) -> list[dict[str, str]]:
     """Extract factual memories from a text chunk via LLM call.
 
-    Strips markdown fences before parsing. On malformed JSON, retries once
-    by feeding the bad output back to the model for correction.
+    *context* is an optional tail of the previous chunk, prepended so the LLM
+    can resolve references that span chunk boundaries.  Strips markdown fences
+    before parsing.  On malformed JSON, retries once by feeding the bad output
+    back to the model for correction.
     """
     user_content = text
     if context:
@@ -113,7 +117,7 @@ def extract_session(
     log: Callable[[str], None] = noop,
     workers: int = DEFAULT_WORKERS,
 ) -> int:
-    """Full extraction pipeline: collapse → chunk → extract → summarize → save.
+    """Full extraction pipeline: collapse → chunk → extract → save.
 
     Returns total number of facts saved.
     """
@@ -137,7 +141,7 @@ def extract_session(
     # Build context prefixes: chunk i gets tail of chunk i-1.
     contexts: list[str | None] = [None]
     for chunk in chunks[:-1]:
-        contexts.append(chunk.text[-_CONTEXT_CHARS:])
+        contexts.append(chunk.text[-CONTEXT_CHARS:])
 
     # Extract facts from each chunk (parallelized).
     all_facts: list[tuple[int, list[dict[str, str]]]] = []
@@ -163,20 +167,16 @@ def extract_session(
                 log(f"  Extracted chunk {done}/{n} (index {idx})...")
         all_facts = [x for x in ordered if x is not None]
 
-    # Summarize and save each fact sequentially (SQLite writes).
+    # Save each fact sequentially (SQLite writes).
     total_saved = 0
     for chunk_idx, facts in all_facts:
         for fact in facts:
             log(f"  Saving: {fact['abstract']}")
-            fact_chunk = Chunk(
-                turns=[Turn(timestamp=datetime.now(), role="memory", text=fact["text"])]
-            )
-            cs = summarize_chunk(fact_chunk, model=model)
             save_memory(
                 store,
                 text=fact["text"],
-                abstract=cs.abstract or fact["abstract"],
-                summary=cs.summary,
+                abstract=fact["abstract"],
+                summary=fact.get("summary", fact["abstract"]),
                 model=model or "openrouter/free",
                 log=log,
             )

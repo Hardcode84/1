@@ -10,10 +10,8 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from mindloop.chunker import Chunk
 from mindloop.extractor import extract_facts, extract_session
 from mindloop.memory import MemoryStore
-from mindloop.summarizer import ChunkSummary
 
 _EMB_A = np.array([1.0, 0.0], dtype=np.float32)
 
@@ -170,20 +168,18 @@ def test_extract_session_saves_facts(store: MemoryStore) -> None:
         {"role": "assistant", "content": "Cats are great pets."},
     ]
     facts_json = json.dumps(
-        [{"text": "Cats are great pets", "abstract": "Cats as pets"}]
+        [
+            {
+                "text": "Cats are great pets",
+                "abstract": "Cats as pets",
+                "summary": "Cats are great pets.",
+            }
+        ]
     )
 
     with (
         _patch_embeddings(),
         patch("mindloop.extractor.chat", side_effect=_mock_chat_returning(facts_json)),
-        patch(
-            "mindloop.extractor.summarize_chunk",
-            return_value=ChunkSummary(
-                chunk=Chunk(),
-                abstract="Cats as pets",
-                summary="Cats are great pets.",
-            ),
-        ),
     ):
         saved = extract_session(messages, store, workers=1)
 

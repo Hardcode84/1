@@ -70,7 +70,7 @@ def main() -> None:
     if args.dry_run:
         from mindloop.chunker import chunk_turns, compact_chunks, merge_chunks
         from mindloop.client import get_embeddings
-        from mindloop.extractor import extract_facts
+        from mindloop.extractor import CONTEXT_CHARS, extract_facts
         from mindloop.recap import collapse_messages
 
         turns = collapse_messages(messages)
@@ -81,10 +81,15 @@ def main() -> None:
 
         total = 0
         for i, chunk in enumerate(chunks):
-            context = chunks[i - 1].text[-200:] if i > 0 else None
+            # Tail of previous chunk gives the LLM cross-boundary context.
+            context = chunks[i - 1].text[-CONTEXT_CHARS:] if i > 0 else None
             facts = extract_facts(chunk.text, context=context, model=args.model)
             for fact in facts:
+                summary = fact.get("summary", "")
                 print(f"  [{fact['abstract']}] {fact['text']}")
+                if summary:
+                    print(f"    Summary: {summary}")
+                print()
             total += len(facts)
         print(f"\nExtracted {total} facts from {len(chunks)} chunks.")
     else:
