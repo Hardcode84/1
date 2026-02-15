@@ -139,6 +139,26 @@ def _init_db(conn: sqlite3.Connection) -> None:
     )
     # Rebuild FTS index from existing rows (idempotent, fast for small tables).
     conn.execute("INSERT OR IGNORE INTO chunks_fts(chunks_fts) VALUES('rebuild')")
+
+    # Edges between related-but-unmergeable chunks.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chunk_edges (
+            source_id INTEGER NOT NULL REFERENCES chunks(id),
+            target_id INTEGER NOT NULL REFERENCES chunks(id),
+            edge_type TEXT NOT NULL,
+            score REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (source_id, target_id, edge_type)
+        )
+    """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_edges_source ON chunk_edges(source_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_edges_target ON chunk_edges(target_id)"
+    )
     conn.commit()
 
 
@@ -197,6 +217,25 @@ class MemoryStore:
             "SELECT id FROM chunks WHERE active = 1 AND text = ?", (text,)
         ).fetchone()
         return row[0] if row else None
+
+    def add_edge(
+        self,
+        source_id: int,
+        target_id: int,
+        edge_type: str,
+        score: float | None = None,
+    ) -> None:
+        """Record a directional edge between two chunks.
+
+        Uses INSERT OR IGNORE so duplicate (source, target, type) triples
+        are silently skipped.
+        """
+        self.conn.execute(
+            "INSERT OR IGNORE INTO chunk_edges "
+            "(source_id, target_id, edge_type, score) VALUES (?, ?, ?, ?)",
+            (source_id, target_id, edge_type, score),
+        )
+        self._auto_commit()
 
     def save(
         self,

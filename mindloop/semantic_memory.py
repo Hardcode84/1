@@ -85,6 +85,8 @@ def save_memory(
                     log(f"[memory]   LLM says {'merge' if do_merge else 'no merge'}.")
 
                 if not do_merge:
+                    # LLM decided chunks are distinct but related.
+                    store.add_edge(last_id, result.id, "related_to", score=sim)
                     continue
 
                 mr: MergeResult = merge_texts(
@@ -100,6 +102,7 @@ def save_memory(
                         f"[memory]   Faithfulness {sim_a:.3f}/{sim_b:.3f}"
                         f" < {min_faithfulness} → aborting merge."
                     )
+                    store.add_edge(last_id, result.id, "related_to", score=sim)
                     break
 
                 # Check 2: neighbor score (deactivate absorbed chunk first).
@@ -111,6 +114,7 @@ def save_memory(
                         f" > {max_neighbor_score} → aborting merge."
                     )
                     store.activate([result.id])
+                    store.add_edge(last_id, result.id, "related_to", score=sim)
                     break
 
                 # Save merge node (disabled) to preserve the full tree.

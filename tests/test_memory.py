@@ -468,3 +468,35 @@ def test_find_exact_ignores_inactive(store: MemoryStore) -> None:
 def test_find_exact_no_match(store: MemoryStore) -> None:
     """find_exact returns None when no chunk matches."""
     assert store.find_exact("nonexistent") is None
+
+
+# --- add_edge ---
+
+
+def test_add_edge(store: MemoryStore) -> None:
+    """add_edge inserts a row into chunk_edges."""
+    id_a = store.save(_summary("a"))
+    id_b = store.save(_summary("b"))
+    store.add_edge(id_a, id_b, "related_to", score=0.45)
+
+    row = store.conn.execute(
+        "SELECT source_id, target_id, edge_type, score FROM chunk_edges"
+    ).fetchone()
+    assert row == (id_a, id_b, "related_to", pytest.approx(0.45))
+
+
+def test_add_edge_ignores_duplicate(store: MemoryStore) -> None:
+    """Duplicate (source, target, type) triple is silently skipped."""
+    id_a = store.save(_summary("a"))
+    id_b = store.save(_summary("b"))
+    store.add_edge(id_a, id_b, "related_to", score=0.5)
+    store.add_edge(id_a, id_b, "related_to", score=0.9)
+
+    count = store.conn.execute("SELECT COUNT(*) FROM chunk_edges").fetchone()[0]
+    assert count == 1
+    # Original score preserved.
+    score = store.conn.execute(
+        "SELECT score FROM chunk_edges WHERE source_id = ? AND target_id = ?",
+        (id_a, id_b),
+    ).fetchone()[0]
+    assert score == pytest.approx(0.5)

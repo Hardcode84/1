@@ -140,7 +140,7 @@ def test_save_stops_at_max_rounds(store: MemoryStore) -> None:
 
 
 def test_save_aborts_merge_when_too_generic(store: MemoryStore) -> None:
-    """Neighbor score exceeds threshold → merge aborted."""
+    """Neighbor score exceeds threshold → merge aborted, edge recorded."""
     # Multiple chunks so neighbors remain after absorbing one.
     for _ in range(3):
         store.save(_summary("similar"))
@@ -167,6 +167,11 @@ def test_save_aborts_merge_when_too_generic(store: MemoryStore) -> None:
     assert merge_count == 1
     # All original chunks still active + incoming leaf activated.
     assert store.count() == 4
+
+    # Edge recorded between the incoming leaf and the absorbed candidate.
+    edges = store.conn.execute("SELECT edge_type FROM chunk_edges").fetchall()
+    assert len(edges) == 1
+    assert edges[0][0] == "related_to"
 
 
 def test_save_records_sources_on_merge(store: MemoryStore) -> None:
@@ -339,6 +344,33 @@ def test_save_borderline_calls_should_merge(store: MemoryStore) -> None:
     mock_sm.assert_called_once()
 
 
+def test_save_borderline_llm_rejects_records_edge(store: MemoryStore) -> None:
+    """LLM says no merge in the borderline zone → edge recorded."""
+    store.save(_summary("old fact"))
+
+    with (
+        _patch_embeddings(_EMB_A),
+        patch("mindloop.semantic_memory.should_merge", return_value=False),
+    ):
+        save_memory(
+            store,
+            "new",
+            "abs",
+            "sum",
+            model="test-model",
+            sim_high=2.0,
+            sim_low=0.5,
+        )
+
+    # No merge happened — both chunks active.
+    assert store.count() == 2
+
+    # Edge recorded between incoming leaf and old chunk.
+    edges = store.conn.execute("SELECT edge_type, score FROM chunk_edges").fetchall()
+    assert len(edges) == 1
+    assert edges[0][0] == "related_to"
+
+
 def test_save_auto_skip_below_sim_low(store: MemoryStore) -> None:
     """Cosine sim below sim_low skips without calling should_merge."""
     store.save(_summary("old fact"))
@@ -383,7 +415,7 @@ def test_save_logs_progress(store: MemoryStore) -> None:
 
 
 def test_save_aborts_on_faithfulness_failure(store: MemoryStore) -> None:
-    """Faithfulness failure aborts merge without deactivating any chunks."""
+    """Faithfulness failure aborts merge and records an edge."""
     store.save(_summary("old fact"))
 
     mr = MergeResult(text="drifted", abstract="abs", summary="sum")
@@ -411,3 +443,10 @@ def test_save_aborts_on_faithfulness_failure(store: MemoryStore) -> None:
 
     # Merge aborted — old chunk still active, incoming leaf also active.
     assert store.count() == 2
+
+    # Edge recorded between the incoming leaf and the old chunk.
+    edges = store.conn.execute(
+        "SELECT source_id, target_id, edge_type FROM chunk_edges"
+    ).fetchall()
+    assert len(edges) == 1
+    assert edges[0][2] == "related_to"
