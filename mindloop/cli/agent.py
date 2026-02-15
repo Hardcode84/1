@@ -433,17 +433,21 @@ class MidSessionExtractor:
             return
         try:
             facts = self._future.result(timeout=30)
-            for fact in facts:
-                save_memory(
-                    self._store,
-                    fact["text"],
-                    fact["abstract"],
-                    fact.get("summary", fact["abstract"]),
-                    model=self._model or "openrouter/free",
-                    log=self._log,
-                )
+            if facts:
+                self._log(f"\n[extract] committing {len(facts)} mid-session facts")
+                for fact in facts:
+                    save_memory(
+                        self._store,
+                        fact["text"],
+                        fact["abstract"],
+                        fact.get("summary", fact["abstract"]),
+                        model=self._model or "openrouter/free",
+                        log=self._log,
+                    )
+            else:
+                self._log("\n[extract] no facts in window")
         except Exception as exc:
-            self._log(f"Warning: mid-session extraction save failed: {exc}")
+            self._log(f"\n[extract] warning: {exc}")
         self._future = None
 
     def on_extract(self, messages: list[dict[str, Any]]) -> None:
@@ -453,6 +457,9 @@ class MidSessionExtractor:
         # Wait for previous extraction to commit before launching the next.
         # This ensures memories are available for recall within the session.
         self._drain(wait=True)
+        self._log(
+            f"\n[extract] launching mid-session extraction ({len(messages)} messages)"
+        )
         self._future = self._executor.submit(extract_window, messages, self._model)
 
     def finish(self) -> None:
