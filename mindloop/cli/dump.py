@@ -21,6 +21,15 @@ def main() -> None:
         "SELECT id, text, abstract, summary, active, source_a, source_b, created_at "
         "FROM chunks ORDER BY id"
     ).fetchall()
+
+    # Load edges (table may not exist in older databases).
+    edge_rows: list[tuple[int, int, str, float | None]] = []
+    try:
+        edge_rows = conn.execute(
+            "SELECT source_id, target_id, edge_type, score FROM chunk_edges"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        pass
     conn.close()
 
     if not rows:
@@ -35,6 +44,12 @@ def main() -> None:
             if src is not None:
                 merged_into.setdefault(src, []).append(cid)
 
+    # Build edge adjacency: chunk id -> list of (related_id, type, score).
+    related: dict[int, list[tuple[int, str, float | None]]] = {}
+    for src_id, tgt_id, etype, score in edge_rows:
+        related.setdefault(src_id, []).append((tgt_id, etype, score))
+        related.setdefault(tgt_id, []).append((src_id, etype, score))
+
     lines: list[str] = []
     for row in rows:
         cid, text, abstract, summary, active, src_a, src_b, created = row
@@ -46,8 +61,18 @@ def main() -> None:
         merges = ""
         if cid in merged_into:
             merges = f"  merged_into: {', '.join(f'#{m}' for m in merged_into[cid])}"
+        edges = ""
+        if cid in related:
+            parts = []
+            for rid, etype, score in related[cid]:
+                tag = f"#{rid}({etype}"
+                if score is not None:
+                    tag += f" {score:.3f}"
+                tag += ")"
+                parts.append(tag)
+            edges = f"  related: {', '.join(parts)}"
 
-        lines.append(f"--- #{cid} ({status}){sources}{merges}  [{created}] ---")
+        lines.append(f"--- #{cid} ({status}){sources}{merges}{edges}  [{created}] ---")
         lines.append(f"Abstract: {abstract}")
         lines.append(f"Summary: {summary}")
         lines.append(text)
