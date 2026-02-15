@@ -22,6 +22,7 @@ class SearchResult:
     id: int
     chunk_summary: ChunkSummary
     score: float
+    cosine_score: float = 0.0
     source_a: int | None = None
     source_b: int | None = None
 
@@ -278,6 +279,9 @@ class MemoryStore:
         norms = np.maximum(norms, 1e-10)
         query_norm = max(float(np.linalg.norm(query_emb)), 1e-10)
         cos_scores: np.ndarray = (matrix @ query_emb) / (norms.squeeze() * query_norm)
+        cosine_by_id: dict[int, float] = {
+            ids[i]: float(cos_scores[i]) for i in range(len(ids))
+        }
         emb_order = np.argsort(cos_scores)[::-1]
         emb_rank: dict[int, int] = {
             ids[idx]: rank for rank, idx in enumerate(emb_order)
@@ -332,6 +336,7 @@ class MemoryStore:
                     id=cid,
                     chunk_summary=cs,
                     score=rrf_scores[cid],
+                    cosine_score=cosine_by_id[cid],
                     source_a=src_a,
                     source_b=src_b,
                 )
@@ -340,15 +345,15 @@ class MemoryStore:
         return results
 
     def neighbor_score(self, text: str, top_k: int = 3) -> float:
-        """Mean search score of the top-k neighbors for *text*.
+        """Mean cosine similarity of the top-k neighbors for *text*.
 
-        Returns 0.0 when no active chunks exist.  Reuses the hybrid
-        cosine + BM25 search infrastructure.
+        Returns 0.0 when no active chunks exist.  Uses cosine scores
+        rather than RRF ranking scores for meaningful similarity thresholds.
         """
         results = self.search(text, top_k=top_k)
         if not results:
             return 0.0
-        return sum(r.score for r in results) / len(results)
+        return sum(r.cosine_score for r in results) / len(results)
 
     def deactivate(self, chunk_ids: list[int]) -> None:
         """Mark chunks as inactive. They remain in the DB but are excluded from search."""

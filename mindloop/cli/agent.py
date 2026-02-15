@@ -428,10 +428,10 @@ class MidSessionExtractor:
         results = self._store.search(text, top_k=1)
         if not results:
             return False
-        if results[0].score >= DEDUP_THRESHOLD:
+        if results[0].cosine_score >= DEDUP_THRESHOLD:
             self._log(
                 f"\n[extract] skipping duplicate"
-                f" (score={results[0].score:.2f}): {text[:80]}"
+                f" (cosine={results[0].cosine_score:.2f}): {text[:80]}"
             )
             return True
         return False

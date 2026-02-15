@@ -134,9 +134,9 @@ def _save_extracted(
 
         # Dedup gate.
         results = store.search(text, top_k=1)
-        if results and results[0].score >= DEDUP_THRESHOLD:
+        if results and results[0].cosine_score >= DEDUP_THRESHOLD:
             log(
-                f"  [extract] duplicate (score={results[0].score:.2f}),"
+                f"  [extract] duplicate (cosine={results[0].cosine_score:.2f}),"
                 f" skipping: {abstract}"
             )
             skipped += 1

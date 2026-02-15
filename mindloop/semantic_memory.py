@@ -61,7 +61,7 @@ def save_memory(
             merged = False
             for result in results:
                 existing_text = result.chunk_summary.chunk.text
-                sim = result.score
+                sim = result.cosine_score
 
                 # Auto-merge / auto-skip by cosine similarity thresholds.
                 if sim >= sim_high:

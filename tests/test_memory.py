@@ -201,14 +201,14 @@ def test_neighbor_score_empty(store: MemoryStore) -> None:
 
 
 def test_neighbor_score_returns_mean(store: MemoryStore) -> None:
-    """Mean of top-k search scores."""
+    """Mean of top-k cosine scores."""
     store.save(_summary("a"))
     store.save(_summary("b"))
 
     with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
         score = store.neighbor_score("query", top_k=2)
-    # Uniform embeddings → all RRF scores identical and positive.
-    assert score > 0.0
+    # Uniform embeddings → cosine similarity is 1.0 for all chunks.
+    assert score == pytest.approx(1.0)
 
 
 def test_neighbor_score_ignores_inactive(store: MemoryStore) -> None:
@@ -221,6 +221,25 @@ def test_neighbor_score_ignores_inactive(store: MemoryStore) -> None:
         score = store.neighbor_score("query", top_k=5)
     # Only one active chunk — result is its single score.
     assert score > 0.0
+
+
+def test_search_populates_cosine_score(store: MemoryStore) -> None:
+    """SearchResult.cosine_score reflects raw cosine similarity."""
+    store.save(_summary("about cats", abstract="cats"))
+
+    emb_map = {
+        "You: about cats": np.array([0.6, 0.8], dtype=np.float32),
+    }
+    query_emb = np.array([1.0, 0.0], dtype=np.float32)
+
+    def _get_emb(texts: list[str], **_kw: object) -> np.ndarray:
+        return np.stack([emb_map.get(t, query_emb) for t in texts])
+
+    with patch("mindloop.memory.get_embeddings", side_effect=_get_emb):
+        results = store.search("cats", top_k=1)
+
+    assert len(results) == 1
+    assert results[0].cosine_score == pytest.approx(0.6, abs=0.01)
 
 
 def test_activate_restores_to_search(store: MemoryStore) -> None:
