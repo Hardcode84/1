@@ -32,15 +32,24 @@ not the act of learning or saving it.
 - "summary": 2-4 sentences adding context, implications, or reasoning \
 beyond what "text" already says. Do NOT just rephrase the text.
 
-Guidelines:
-- Extract concrete, reusable knowledge: decisions, constraints, tool behaviors, \
-user preferences, operational details (token limits, sandbox rules, etc.).
-- Skip greetings, filler, meta-talk, and self-referential statements about \
-remembering or saving memories.
-- Deduplicate: if multiple parts of the conversation describe the same event \
-or fact, produce ONE consolidated entry, not several.
-- Prefer specific operational facts over vague narrative summaries.
-- If there is nothing worth remembering, return an empty array: []
+Extract:
+- Decisions and their rationale.
+- User preferences and constraints.
+- Discoveries about tools, APIs, code behavior.
+- Conclusions that would be useful in a *different* session.
+
+Skip:
+- Greetings, filler, meta-talk, self-referential statements about remembering.
+- Session-specific state: token counts, budget remaining, file listings, \
+directory contents, workspace layout.
+- Facts that can be obtained by reading a file or listing a directory.
+- Vague observations that don't contain actionable information.
+
+Deduplicate: if multiple parts of the conversation describe the same fact, \
+produce ONE consolidated entry with the latest information, not several.
+
+Prefer fewer, higher-quality entries over many marginal ones. \
+When in doubt, skip it — return an empty array [] if nothing is worth keeping.
 
 Return ONLY valid JSON, no markdown fences or commentary.\
 """
