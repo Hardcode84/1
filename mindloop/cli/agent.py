@@ -470,7 +470,7 @@ class MidSessionExtractor:
             else:
                 self._log("\n[extract] no facts in window")
         except Exception as exc:
-            self._log(f"\n[extract] warning: {exc}")
+            self._log(f"\n[extract] warning: {type(exc).__name__}: {exc}\n")
         self._future = None
 
     def on_extract(self, messages: list[dict[str, Any]]) -> None:
