@@ -237,6 +237,39 @@ class MemoryStore:
         )
         self._auto_commit()
 
+    def edges(self, chunk_id: int) -> list[tuple[int, str, float | None]]:
+        """Return (other_id, edge_type, score) for all edges touching *chunk_id*."""
+        rows = self.conn.execute(
+            """
+            SELECT target_id, edge_type, score
+                FROM chunk_edges WHERE source_id = ?
+            UNION ALL
+            SELECT source_id, edge_type, score
+                FROM chunk_edges WHERE target_id = ?
+            """,
+            (chunk_id, chunk_id),
+        ).fetchall()
+        return [(r[0], r[1], r[2]) for r in rows]
+
+    def edge_counts(self, chunk_ids: list[int]) -> dict[int, int]:
+        """Return the number of edges touching each chunk id."""
+        if not chunk_ids:
+            return {}
+        ph = ",".join("?" for _ in chunk_ids)
+        rows = self.conn.execute(
+            f"""
+            SELECT id, SUM(cnt) FROM (
+                SELECT source_id AS id, COUNT(*) AS cnt
+                    FROM chunk_edges WHERE source_id IN ({ph}) GROUP BY source_id
+                UNION ALL
+                SELECT target_id AS id, COUNT(*) AS cnt
+                    FROM chunk_edges WHERE target_id IN ({ph}) GROUP BY target_id
+            ) GROUP BY id
+            """,
+            chunk_ids + chunk_ids,
+        ).fetchall()
+        return {cid: cnt for cid, cnt in rows}
+
     def save(
         self,
         chunk_summary: ChunkSummary,

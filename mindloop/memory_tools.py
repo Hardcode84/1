@@ -95,7 +95,9 @@ class MemoryTools:
         results = self._store.search(query, top_k=top_k, original_only=original_only)
         if not results:
             return "No memories found."
-        stats = self._store.merge_stats([r.id for r in results])
+        result_ids = [r.id for r in results]
+        stats = self._store.merge_stats(result_ids)
+        edge_counts = self._store.edge_counts(result_ids)
         lines = []
         for rank, r in enumerate(results, 1):
             cs = r.chunk_summary
@@ -103,6 +105,9 @@ class MemoryTools:
             meta = f"score={r.score:.2f}"
             if depth > 0:
                 meta += f", depth={depth}, sources={sources}"
+            n_edges = edge_counts.get(r.id, 0)
+            if n_edges > 0:
+                meta += f", +{n_edges} related"
             lines.append(
                 f'[{rank}] #{r.id} ({meta}) "{cs.abstract}"\n' f"    {cs.summary}"
             )
@@ -133,6 +138,22 @@ class MemoryTools:
             parts.append(
                 f"Sources ({len(leaves)} originals):\n" + "\n".join(leaf_lines)
             )
+
+        edges = self._store.edges(chunk_id)
+        if edges:
+            # Look up abstracts for related chunks.
+            related_ids = [eid for eid, _, _ in edges]
+            abs_rows = self._store.conn.execute(
+                f"SELECT id, abstract FROM chunks WHERE id IN "
+                f"({','.join('?' for _ in related_ids)})",
+                related_ids,
+            ).fetchall()
+            abs_map = dict(abs_rows)
+            edge_lines = [
+                f'  #{eid} ({etype}): "{abs_map.get(eid, "?")}"'
+                for eid, etype, _ in edges
+            ]
+            parts.append(f"Related ({len(edges)}):\n" + "\n".join(edge_lines))
 
         return "\n".join(parts)
 
