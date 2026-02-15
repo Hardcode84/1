@@ -10,7 +10,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from mindloop.extractor import extract_facts, extract_session
+from mindloop.extractor import extract_facts, extract_session, extract_window
 from mindloop.memory import MemoryStore
 
 _EMB_A = np.array([1.0, 0.0], dtype=np.float32)
@@ -223,3 +223,35 @@ def test_extract_session_empty_log(store: MemoryStore) -> None:
     """Empty messages returns 0 without crashing."""
     saved = extract_session([], store, workers=1)
     assert saved == 0
+
+
+# --- extract_window tests ---
+
+
+def test_extract_window_returns_facts() -> None:
+    """extract_window collapses messages and returns facts."""
+    messages: list[dict[str, Any]] = [
+        {"role": "user", "content": "Cats are pets"},
+        {"role": "assistant", "content": "Indeed they are."},
+    ]
+    facts_json = json.dumps([{"text": "Cats are pets", "abstract": "Cats"}])
+
+    calls: list[str] = []
+
+    def _capturing_chat(msgs: list[dict[str, Any]], **_kw: object) -> dict[str, str]:
+        calls.append(msgs[0]["content"])
+        return {"role": "assistant", "content": facts_json}
+
+    with patch("mindloop.extractor.chat", side_effect=_capturing_chat):
+        result = extract_window(messages)
+
+    assert len(result) == 1
+    assert result[0]["text"] == "Cats are pets"
+    # Verify the collapsed text was sent to the LLM.
+    assert "Cats are pets" in calls[0]
+
+
+def test_extract_window_empty_messages() -> None:
+    """Empty messages returns empty list without LLM call."""
+    result = extract_window([])
+    assert result == []

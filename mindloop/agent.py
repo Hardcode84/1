@@ -75,6 +75,7 @@ def run_agent(
     instance: int = 0,
     nudge_extra: str = "",
     nudge_pool: NudgePool | None = None,
+    on_extract: Callable[[list[Message]], None] | None = None,
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
     from mindloop.client import DEFAULT_MODEL
@@ -90,6 +91,7 @@ def run_agent(
     total_cost = 0.0
     warned_thresholds: set[float] = set()
     consecutive_tool_turns = 0
+    extract_checkpoint = len(messages)
 
     # Register runtime tools directly on the registry.
 
@@ -228,6 +230,11 @@ def run_agent(
         _inject_budget_warnings(
             total_tokens, max_tokens, warned_thresholds, messages, on_message
         )
+
+        # Mid-session memory extraction at reflection points.
+        if on_extract is not None and consecutive_tool_turns % _REFLECT_INTERVAL == 0:
+            on_extract(messages[extract_checkpoint:])
+            extract_checkpoint = len(messages)
 
         # Nudge reflection after consecutive tool-only turns.
         if consecutive_tool_turns % _REFLECT_INTERVAL == 0:

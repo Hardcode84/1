@@ -124,6 +124,23 @@ def extract_facts(
     return _parse_facts(raw) or []
 
 
+def extract_window(
+    messages: list[dict[str, Any]],
+    model: str | None = None,
+) -> list[dict[str, str]]:
+    """Extract facts from a short message window (no chunking/merging).
+
+    Collapses tool calls, joins turns into text, and runs a single
+    ``extract_facts`` call.  Returns the raw facts list — caller handles
+    saving.
+    """
+    turns = collapse_messages(messages)
+    if not turns:
+        return []
+    text = "\n".join(f"{t.role}: {t.text}" for t in turns)
+    return extract_facts(text, model=model)
+
+
 def extract_session(
     messages: list[dict[str, Any]],
     store: MemoryStore,

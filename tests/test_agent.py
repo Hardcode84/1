@@ -346,3 +346,51 @@ def test_initial_messages_seeded(mock_chat: MagicMock) -> None:
     first_call_messages = mock_chat.call_args_list[0][0][0]
     assert first_call_messages[0] == history[0]
     assert first_call_messages[1] == history[1]
+
+
+@patch("mindloop.agent._REFLECT_INTERVAL", 3)
+@patch("mindloop.agent.chat")
+def test_on_extract_fires_at_reflection(mock_chat: MagicMock) -> None:
+    """on_extract is called at reflection points with the correct message slice."""
+    tool_resp = _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')])
+    mock_chat.side_effect = [
+        tool_resp,
+        tool_resp,
+        tool_resp,  # 3rd consecutive → reflection + extraction.
+        _make_done_response("c2", "done"),
+    ]
+    extract_calls: list[list[dict[str, Any]]] = []
+    on_extract = MagicMock(side_effect=lambda msgs: extract_calls.append(list(msgs)))
+
+    run_agent("prompt", registry=_echo_registry(), on_extract=on_extract)
+
+    assert on_extract.call_count == 1
+    # The slice should contain messages from the session start.
+    assert len(extract_calls[0]) > 0
+
+
+@patch("mindloop.agent._REFLECT_INTERVAL", 2)
+@patch("mindloop.agent.chat")
+def test_on_extract_checkpoint_advances(mock_chat: MagicMock) -> None:
+    """Second extraction gets only messages since the previous checkpoint."""
+    tool_resp = _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')])
+    mock_chat.side_effect = [
+        tool_resp,
+        tool_resp,  # 2nd → first extraction.
+        tool_resp,
+        tool_resp,  # 4th → second extraction.
+        _make_done_response("c2", "done"),
+    ]
+    extract_calls: list[list[dict[str, Any]]] = []
+    on_extract = MagicMock(side_effect=lambda msgs: extract_calls.append(list(msgs)))
+
+    run_agent("prompt", registry=_echo_registry(), on_extract=on_extract)
+
+    assert on_extract.call_count == 2
+    assert len(extract_calls[0]) > 0
+    assert len(extract_calls[1]) > 0
+    # The second window should start with the reflect message injected
+    # after the first extraction point — proving the checkpoint advanced.
+    first_in_second = extract_calls[1][0]
+    assert first_in_second["role"] == "system"
+    assert "reflect" in first_in_second["content"].lower()

@@ -406,6 +406,55 @@ def _generate_session_recap(
         print(f"Warning: recap generation failed: {exc}")
 
 
+def _make_extract_callback(
+    store: MemoryStore,
+    model: str | None,
+    log: Callable[[str], None],
+) -> tuple[Callable[[list[dict[str, Any]]], None], Any]:
+    """Build a mid-session extraction callback with a background thread.
+
+    Returns ``(callback, executor)``.  The callback fires ``extract_window``
+    in the executor and drains previous results on the main thread.  The
+    caller must shut down the executor after ``run_agent`` returns.
+    """
+    from concurrent.futures import Future, ThreadPoolExecutor
+
+    from mindloop.extractor import extract_window
+    from mindloop.semantic_memory import save_memory
+
+    pending_future: Future[list[dict[str, str]]] | None = None
+    executor = ThreadPoolExecutor(max_workers=1)
+
+    def _drain() -> None:
+        nonlocal pending_future
+        if pending_future is not None and pending_future.done():
+            try:
+                facts = pending_future.result()
+                for fact in facts:
+                    save_memory(
+                        store,
+                        fact["text"],
+                        fact["abstract"],
+                        fact.get("summary", fact["abstract"]),
+                        model=model or "openrouter/free",
+                        log=log,
+                    )
+            except Exception as exc:
+                log(f"Warning: mid-session extraction save failed: {exc}")
+            pending_future = None
+
+    def _on_extract(messages: list[dict[str, Any]]) -> None:
+        nonlocal pending_future
+        # Drain previous results first (save on main thread).
+        _drain()
+        # Launch new extraction (LLM call in background).
+        if pending_future is None:
+            pending_future = executor.submit(extract_window, messages, model)
+
+    _on_extract.drain = _drain  # type: ignore[attr-defined]
+    return _on_extract, executor
+
+
 def _extract_session_memories(
     jsonl_path: Path, store: MemoryStore, summarizer_model: str
 ) -> None:
@@ -506,6 +555,10 @@ def main() -> None:
 
     nudge_pool = NudgePool()
 
+    on_extract, extract_executor = _make_extract_callback(
+        mt.store, summarizer_model, _print_step
+    )
+
     try:
         run_agent(
             system_prompt,
@@ -520,11 +573,15 @@ def main() -> None:
             instance=paths.instance,
             nudge_extra=nudge_extra,
             nudge_pool=nudge_pool,
+            on_extract=on_extract,
         )
     except KeyboardInterrupt:
         print("\n\nInterrupted.")
     finally:
         print("\n")
+        # Drain any pending mid-session extraction before post-session work.
+        on_extract.drain()  # type: ignore[attr-defined]
+        extract_executor.shutdown(wait=False)
         _generate_session_recap(paths, jsonl_path, summarizer_model)
         _extract_session_memories(jsonl_path, mt.store, summarizer_model)
         mt.close()
