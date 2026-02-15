@@ -203,6 +203,7 @@ def run_agent(
 
     def _stop(reason: str) -> str:
         """Log termination reason and return the last model content."""
+        extractor.advance(messages)
         cost_str = f", ${total_cost:.4f}" if total_cost else ""
         stop_msg: Message = {
             "role": "system",

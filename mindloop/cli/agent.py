@@ -468,23 +468,6 @@ class MidSessionExtractor:
         self._executor.shutdown(wait=False)
 
 
-def _extract_session_memories(
-    jsonl_path: Path, store: MemoryStore, summarizer_model: str
-) -> None:
-    """Extract and save memories from the session log."""
-    if not jsonl_path.exists():
-        return
-    try:
-        from mindloop.extractor import extract_session
-
-        msgs = _load_messages(jsonl_path)
-        if msgs:
-            saved = extract_session(msgs, store, model=summarizer_model, log=print)
-            print(f"Extracted {saved} memories from session.")
-    except Exception as exc:
-        print(f"Warning: memory extraction failed: {exc}")
-
-
 def main() -> None:
     args = _parse_args()
 
@@ -592,7 +575,6 @@ def main() -> None:
         print("\n")
         mid_extract.finish()
         _generate_session_recap(paths, jsonl_path, summarizer_model)
-        _extract_session_memories(jsonl_path, mt.store, summarizer_model)
         mt.close()
 
     if paths.name:

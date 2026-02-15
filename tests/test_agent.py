@@ -362,8 +362,9 @@ def test_on_extract_fires_at_reflection(mock_chat: MagicMock) -> None:
 
     run_agent("prompt", registry=_echo_registry(), on_extract=on_extract)
 
-    assert on_extract.call_count == 1
-    # The slice should contain messages from the session start.
+    # 1 at reflection + 1 final advance at session end.
+    assert on_extract.call_count == 2
+    # The first slice should contain messages from the session start.
     assert len(extract_calls[0]) > 0
 
 
@@ -384,7 +385,8 @@ def test_on_extract_checkpoint_advances(mock_chat: MagicMock) -> None:
 
     run_agent("prompt", registry=_echo_registry(), on_extract=on_extract)
 
-    assert on_extract.call_count == 2
+    # 2 at reflection points + 1 final advance at session end.
+    assert on_extract.call_count == 3
     assert len(extract_calls[0]) > 0
     assert len(extract_calls[1]) > 0
     # The second window should start with the reflect message injected
@@ -405,4 +407,5 @@ def test_on_extract_fires_on_text_nudge(mock_chat: MagicMock) -> None:
 
     run_agent("prompt", registry=_echo_registry(), on_extract=on_extract)
 
-    assert on_extract.call_count == 1
+    # 1 at text nudge + 1 final advance at session end.
+    assert on_extract.call_count == 2
