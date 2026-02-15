@@ -25,8 +25,12 @@ Three-tier similarity thresholds:
 
 Two-stage check prevents over-merging after each merge:
 
-1. **Faithfulness** (`faithfulness()` in `memory.py`): embeds the merged text and both source texts, checks that cosine similarity to each source meets a threshold (default 0.7). Runs before any deactivation — cheap bail-out if the merge drifted from a source.
+1. **Leaf faithfulness** (`leaf_faithfulness()` in `memory.py`): embeds the merged text and ALL original leaf texts from both sides of the merge, checks that cosine similarity to each leaf meets a threshold (default 0.7). An `incoming_leaves` accumulator grows across merge rounds so leaf texts are never re-traversed. This naturally caps merge depth — the more leaves, the harder to stay faithful to every one, so the loop self-terminates. Runs before any deactivation — cheap bail-out if the merge drifted from any original fact.
 2. **Neighbor score** (`MemoryStore.neighbor_score()`): deactivates the absorbed chunk, then calls `search()` and returns the mean score of the top-k results. If the score exceeds a threshold (default 0.6), the merged text is too close to existing memories and the merge is rejected. The absorbed chunk is reactivated on rejection.
+
+## Edge inheritance
+
+When chunks are absorbed during a merge, their `related_to` edges would become orphaned (pointing at inactive chunks). Instead, `inherit_edges()` repoints them onto the new merged chunk with a re-scored cosine similarity (one batched `get_embeddings` call per merge round). Internal edges between the absorbed chunks are dropped. In cascading merges, each round inherits from the previous round's result, so edges propagate transitively without deep lineage walks.
 
 ### Why mean neighbor score
 

@@ -50,13 +50,11 @@ Emit `related_to` edges at:
 
 Schema: same `chunk_edges` table from `graph_memory.md`. Single edge type for now. ~50 lines of code, no changes to merge logic itself.
 
-## 5. Anchor faithfulness to the original leaf
+## 5. Anchor faithfulness to original leaves — DONE
 
-Currently `faithfulness()` checks `sim(merged, source_a)` and `sim(merged, source_b)` where `source_a` is the result of the previous merge. Each step is faithful to its parent but the chain drifts.
+`leaf_faithfulness()` checks `sim(merged, leaf_i)` for ALL original leaf texts in the merge tree (both the incoming chain and the existing chunk's lineage). An `incoming_leaves` accumulator grows across merge rounds, avoiding re-traversal. This naturally caps depth — the more leaves, the harder to stay faithful to every one.
 
-Fix: preserve the original input text and add a check against it at each merge round. If `sim(merged_round_N, original_input) < threshold`, the loop stops.
-
-This naturally caps merge depth without an arbitrary `max_rounds` or char limit. The deeper the chain, the harder it is to stay faithful to the original, so the loop self-terminates. Cost: one extra embedding call per merge round (3 texts), cheap compared to the LLM merge call.
+Edge inheritance: when chunks merge, `inherit_edges()` repoints their `related_to` edges onto the merged chunk with cosine re-scoring. Each cascade round inherits from the previous, so edges propagate transitively.
 
 ## 6. Two-tier merge: dedup vs summary
 
@@ -85,7 +83,7 @@ This extracts more information from a call we are already making. Even before im
 2. **Depth/leaf count in recall** -- cheap signal, agent can make informed drill-down decisions.
 3. **Leaf abstracts in recall_detail** -- collapse multi-hop traversal.
 4. **Record rejection edges** -- capture horizontal relationships already discovered by the merge loop.
-5. **Anchor faithfulness to original leaf** -- natural depth cap, no arbitrary limits.
+5. ~~**Anchor faithfulness to original leaves**~~ -- done. Natural depth cap + edge inheritance.
 6. **Two-tier merge** -- bigger change, high payoff.
 7. **Richer should_merge output** -- supersedes detection, more edge types.
 
