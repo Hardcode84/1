@@ -122,7 +122,7 @@ def run_agent(
     total_tokens = 0
     total_cost = 0.0
     warned_thresholds: set[float] = set()
-    consecutive_tool_turns = 0
+    tool_turns_since_reflect = 0
     extract_checkpoint = len(messages)
 
     # Register runtime tools directly on the registry.
@@ -211,7 +211,6 @@ def run_agent(
 
         tool_calls = response.get("tool_calls")
         if not tool_calls:
-            consecutive_tool_turns = 0
             # Nudge the model to keep going.
             nudge_text = _USER_UNAVAILABLE
             if nudge_pool:
@@ -256,7 +255,7 @@ def run_agent(
         if finished:
             return _stop("model finished")
 
-        consecutive_tool_turns += 1
+        tool_turns_since_reflect += 1
 
         # Warn the model after all tool results are appended.
         _inject_budget_warnings(
@@ -264,7 +263,8 @@ def run_agent(
         )
 
         # Periodic reflection + mid-session extraction.
-        if consecutive_tool_turns % _REFLECT_INTERVAL == 0:
+        if tool_turns_since_reflect >= _REFLECT_INTERVAL:
+            tool_turns_since_reflect = 0
             extract_checkpoint = _maybe_reflect(
                 messages,
                 extract_checkpoint,

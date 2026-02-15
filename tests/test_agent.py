@@ -278,17 +278,15 @@ def test_reflect_nudge_after_consecutive_tools(mock_chat: MagicMock) -> None:
 
 @patch("mindloop.agent._REFLECT_INTERVAL", 3)
 @patch("mindloop.agent.chat")
-def test_reflect_counter_resets_on_text(mock_chat: MagicMock) -> None:
-    """Consecutive tool counter resets when model produces text."""
+def test_reflect_survives_text_interruption(mock_chat: MagicMock) -> None:
+    """Text response between tool batches does not prevent reflection."""
     tool_resp = _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')])
     mock_chat.side_effect = [
         tool_resp,
         tool_resp,
-        # Text response resets the counter.
+        # Text response — does NOT reset tool_turns_since_reflect.
         _make_final_response("let me think"),
-        tool_resp,
-        tool_resp,
-        # Only 2 after reset — no nudge. Then done.
+        tool_resp,  # 3rd tool turn → reflect fires.
         _make_done_response("c2", "ok"),
     ]
     on_msg = MagicMock()
@@ -300,7 +298,7 @@ def test_reflect_counter_resets_on_text(mock_chat: MagicMock) -> None:
         if c.args[0].get("role") == "system"
         and "reflect" in c.args[0].get("content", "").lower()
     ]
-    assert len(system_msgs) == 0
+    assert len(system_msgs) == 1
 
 
 @patch("mindloop.agent.chat")
