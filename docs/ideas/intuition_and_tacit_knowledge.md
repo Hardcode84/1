@@ -54,6 +54,36 @@ While LLMs have no sub-symbolic channel, we *can* influence the token distributi
 
 **The analogy:** temperature is a mood, logit bias is a disposition, CFG is a value system, activation steering is a personality trait. None of these *are* intuition (they don't arise from experience), but they shape the space where intuition would operate. For an API-bound agent, logit bias and potentially CFG are the actionable options.
 
+### Parallel guidance model: ControlNet-for-language
+
+A more radical idea: a second model that runs token-by-token alongside the primary LLM, whose output vocabulary is not words but *logit adjustment vectors* — nudges to the primary model's token distribution at each decoding step. The meta-model doesn't generate language; it continuously biases which words the primary model finds attractive.
+
+**Biological analogy:** the limbic system running in parallel with the cortex. The cortex doesn't "hear" the limbic signal as language — it just finds certain options inexplicably more or less attractive. The meta-model is the gut feeling, operating at the same temporal resolution as thought but in a different representational space.
+
+**Existing pieces that come close:**
+
+- **Hypernetworks** — a [network that generates weights for another network](https://link.springer.com/article/10.1007/s10462-024-10862-8). Applied to LLMs via [LoRA-based hypernetworks](https://www.emergentmind.com/topics/lora-based-hypernetwork) that dynamically generate adapter weights. But these are static per-input, not per-token.
+- **Process Reward Models** — [PRMs that score each reasoning step](https://www.emergentmind.com/topics/process-reward-models-prm) during generation. Recent work operates at [token-level granularity](https://arxiv.org/abs/2504.16828), and [reward-guided speculative decoding](https://arxiv.org/pdf/2501.19324) uses them to steer generation in real-time. Closest existing work, but PRMs output a scalar reward, not a full logit adjustment vector.
+- **ControlNet** — the [parallel guidance architecture](https://arxiv.org/abs/2302.05543) for diffusion models. A frozen copy of the main model plus a trainable copy, connected via zero convolutions. The trainable copy's output modulates the frozen copy's activations at each step. This is exactly the right pattern — a parallel model whose output space is "adjustments to the primary model" — but designed for images, not language.
+
+**What's novel:** the meta-model's vocabulary is neither words nor scalar rewards but logit adjustment vectors. Each "token" it produces is a nudge to the primary model's distribution. This is more expressive than PRMs (full distribution shaping, not just good/bad), more dynamic than hypernetworks (per-token, not per-input), and essentially ControlNet-for-language.
+
+**Encoding problem:** a full vocab-size logit vector (~128k dims) per token is intractable. Approaches to compress it:
+
+1. **Residual stream injection.** Don't operate in vocabulary space at all — inject into the hidden state (~4096 dims vs ~128k vocab). This is what ControlNet and activation steering actually do: steer the model's "thoughts" before they become word choices. Arguably the right level of abstraction (biasing concepts, not individual words). Requires deep model integration.
+
+2. **Low-rank factorization.** Output a small vector (e.g., 64 dims) per step, project to vocab size through a learned matrix. The meta-model produces 64 numbers, not 128k. Same insight as LoRA — meaningful adjustments live in a low-rank subspace.
+
+3. **Steering codebook (VQ-VAE style).** Pre-train a codebook of ~1024 canonical "steering patterns" (each a full logit adjustment vector). The meta-model outputs a discrete index — literally a token — selecting which pattern to apply. The only version where the "tokens" metaphor is literal. Each steering token encodes something like "increase caution" or "prefer concrete over abstract." The codebook is learned, not hand-designed.
+
+4. **Sparse nudges.** Most tokens don't need adjustment at any given step. Output a small set of (token_id, delta) pairs. This is dynamic logit bias — the most API-compatible approach. The meta-model's vocabulary is the set of possible (id, delta) actions.
+
+5. **Basis mixing.** Pre-compute a small basis of steering directions (e.g., "skeptical", "cautious", "creative", "precise"). Meta-model outputs mixing weights per step — a mood mixer. Very compact: just N scalars for N basis vectors. Could be trained end-to-end or hand-designed initially.
+
+Options 3 (codebook) and 5 (basis mixing) are the most promising — they compress the representation to something a small model can tractably output while remaining expressive. Option 1 (residual stream) is the most principled but requires the deepest integration.
+
+**Practical constraint:** all approaches require custom inference with access to the decoding loop. Cannot be done through APIs.
+
 ### The critic model fills a different gap
 
 The [cross-context critic](tactical_strategic_gap.md) (separate model reviewing changes) addresses the *local-coherence trap* — the generator can't see its own blind spots. But it doesn't address the *tacit knowledge gap* — the critic also has no intuition, it just has fresh eyes. Both mitigations are needed: explicit invariants give the critic something to check against; the fresh context lets it actually see violations the generator's reasoning chain obscured.
@@ -73,3 +103,9 @@ The [cross-context critic](tactical_strategic_gap.md) (separate model reviewing 
 - [CFG in LLMs Safety — NeurIPS 2024](https://medium.com/data-science/classifier-free-guidance-in-llms-safety-neurips-2024-challenge-experience-30c9d88d6b98)
 - [Activation Steering in LLMs](https://www.emergentmind.com/topics/activation-steering-method)
 - [Activation State Machines — ICLR 2025](https://openreview.net/pdf?id=HCG7UGGRqz)
+- [Hypernetworks: A Brief Review](https://link.springer.com/article/10.1007/s10462-024-10862-8)
+- [LoRA-Based Hypernetworks](https://www.emergentmind.com/topics/lora-based-hypernetwork)
+- [Process Reward Models That Think](https://arxiv.org/abs/2504.16828)
+- [Reward-Guided Speculative Decoding](https://arxiv.org/pdf/2501.19324)
+- [ControlNet: Conditional Control for Diffusion Models](https://arxiv.org/abs/2302.05543)
+- [Process Reward Models Overview](https://www.emergentmind.com/topics/process-reward-models-prm)
