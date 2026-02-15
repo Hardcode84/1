@@ -59,6 +59,36 @@ def _no_ask(message: str) -> str:
     return "User is unavailable."
 
 
+def _maybe_reflect(
+    messages: list[Message],
+    extract_checkpoint: int,
+    on_extract: Callable[[list[Message]], None] | None,
+    on_message: Callable[[Message], None],
+    nudge_extra: str,
+    nudge_pool: NudgePool | None,
+) -> int:
+    """Run mid-session extraction and inject a reflection nudge.
+
+    Returns the updated extract checkpoint.
+    """
+    if on_extract is not None:
+        on_extract(messages[extract_checkpoint:])
+        extract_checkpoint = len(messages)
+
+    reflect_text = (
+        "You've been using tools for a while. "
+        "Pause and reflect on what you've learned so far."
+    )
+    if nudge_extra:
+        reflect_text += "\n\n" + nudge_extra
+    if nudge_pool:
+        reflect_text += "\n\n" + nudge_pool.next()
+    reflect: Message = {"role": "system", "content": reflect_text}
+    messages.append(reflect)
+    on_message(reflect)
+    return extract_checkpoint
+
+
 def run_agent(
     system_prompt: str,
     registry: ToolRegistry | None = None,
@@ -231,26 +261,15 @@ def run_agent(
             total_tokens, max_tokens, warned_thresholds, messages, on_message
         )
 
-        # Mid-session memory extraction at reflection points.
-        if on_extract is not None and consecutive_tool_turns % _REFLECT_INTERVAL == 0:
-            on_extract(messages[extract_checkpoint:])
-            extract_checkpoint = len(messages)
-
-        # Nudge reflection after consecutive tool-only turns.
+        # Periodic reflection + mid-session extraction.
         if consecutive_tool_turns % _REFLECT_INTERVAL == 0:
-            reflect_text = (
-                "You've been using tools for a while. "
-                "Pause and reflect on what you've learned so far."
+            extract_checkpoint = _maybe_reflect(
+                messages,
+                extract_checkpoint,
+                on_extract=on_extract,
+                on_message=on_message,
+                nudge_extra=nudge_extra,
+                nudge_pool=nudge_pool,
             )
-            if nudge_extra:
-                reflect_text += "\n\n" + nudge_extra
-            if nudge_pool:
-                reflect_text += "\n\n" + nudge_pool.next()
-            reflect: Message = {
-                "role": "system",
-                "content": reflect_text,
-            }
-            messages.append(reflect)
-            on_message(reflect)
 
     return _stop(f"max iterations reached ({max_iterations})")
