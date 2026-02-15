@@ -406,6 +406,9 @@ def _generate_session_recap(
         print(f"Warning: recap generation failed: {exc}")
 
 
+_DEDUP_THRESHOLD = 0.7
+
+
 class MidSessionExtractor:
     """Runs extract_window in a background thread, commits results on drain."""
 
@@ -423,6 +426,19 @@ class MidSessionExtractor:
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._future: Any = None  # Future[list[dict[str, str]]] | None
 
+    def _is_duplicate(self, text: str) -> bool:
+        """Check if a similar memory already exists."""
+        results = self._store.search(text, top_k=1)
+        if not results:
+            return False
+        if results[0].score >= _DEDUP_THRESHOLD:
+            self._log(
+                f"\n[extract] skipping duplicate"
+                f" (score={results[0].score:.2f}): {text[:80]}"
+            )
+            return True
+        return False
+
     def _drain(self, wait: bool = False) -> None:
         """Commit pending extraction results to memory."""
         from mindloop.semantic_memory import save_memory
@@ -434,8 +450,10 @@ class MidSessionExtractor:
         try:
             facts = self._future.result(timeout=30)
             if facts:
-                self._log(f"\n[extract] committing {len(facts)} mid-session facts")
+                saved = 0
                 for fact in facts:
+                    if self._is_duplicate(fact["text"]):
+                        continue
                     save_memory(
                         self._store,
                         fact["text"],
@@ -444,6 +462,11 @@ class MidSessionExtractor:
                         model=self._model or "openrouter/free",
                         log=self._log,
                     )
+                    saved += 1
+                self._log(
+                    f"\n[extract] committed {saved}/{len(facts)} facts"
+                    f" ({len(facts) - saved} duplicates skipped)"
+                )
             else:
                 self._log("\n[extract] no facts in window")
         except Exception as exc:
