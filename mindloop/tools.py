@@ -415,7 +415,9 @@ def add_memory_tools(
             "Save a fact or insight to long-term memory. "
             "Provide the full text you want to remember and a short abstract "
             "(one-sentence label). The system auto-generates a summary and "
-            "merges with related memories."
+            "merges with related memories. "
+            "Do NOT save session-specific state: token counts, budget remaining, "
+            "instance numbers, file listings, or workspace layout."
         ),
         params=[
             Param(name="text", description="The text to remember."),
