@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -306,6 +307,7 @@ def main() -> None:
             db_path.unlink()
             print(f"Removed existing {db_path}")
 
+    t0 = time.monotonic()
     store = MemoryStore(db_path=db_path)
     total_remembers = 0
     total_saved = 0
@@ -325,8 +327,10 @@ def main() -> None:
         print(f"  remembers={r}, extracted={s}, skipped={sk}")
 
     store.close()
+    elapsed = time.monotonic() - t0
+    minutes, seconds = divmod(int(elapsed), 60)
     print(
-        f"\nDone. remembers={total_remembers},"
+        f"\nDone in {minutes}m{seconds:02d}s. remembers={total_remembers},"
         f" extracted={total_saved}, skipped={total_skipped}"
     )
     if not args.dry_run:
