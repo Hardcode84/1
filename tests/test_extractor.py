@@ -67,12 +67,63 @@ def test_extract_facts_empty_array() -> None:
 
 
 def test_extract_facts_malformed_json() -> None:
-    """Malformed JSON returns empty list without crashing."""
+    """Malformed JSON on both attempts returns empty list."""
     with patch(
         "mindloop.extractor.chat", side_effect=_mock_chat_returning("not valid json{")
     ):
         result = extract_facts("some text")
     assert result == []
+
+
+def test_extract_facts_strips_markdown_fences() -> None:
+    """JSON wrapped in markdown fences is parsed correctly."""
+    fenced = '```json\n[{"text": "fact", "abstract": "abs"}]\n```'
+    with patch("mindloop.extractor.chat", side_effect=_mock_chat_returning(fenced)):
+        result = extract_facts("some text")
+    assert len(result) == 1
+    assert result[0]["text"] == "fact"
+
+
+def test_extract_facts_retries_on_malformed_json() -> None:
+    """Malformed first response triggers retry; valid second response succeeds."""
+    good_json = json.dumps([{"text": "recovered", "abstract": "abs"}])
+    call_count = 0
+
+    def _failing_then_ok(
+        messages: list[dict[str, Any]], **_kw: object
+    ) -> dict[str, str]:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return {"role": "assistant", "content": "oops not json"}
+        return {"role": "assistant", "content": good_json}
+
+    with patch("mindloop.extractor.chat", side_effect=_failing_then_ok):
+        result = extract_facts("some text")
+
+    assert call_count == 2
+    assert len(result) == 1
+    assert result[0]["text"] == "recovered"
+
+
+def test_extract_facts_retry_sends_bad_output_back() -> None:
+    """Retry includes the failed response in the conversation for correction."""
+    calls: list[list[dict[str, Any]]] = []
+
+    def _capturing(messages: list[dict[str, Any]], **_kw: object) -> dict[str, str]:
+        calls.append(list(messages))
+        return {"role": "assistant", "content": "garbage"}
+
+    with patch("mindloop.extractor.chat", side_effect=_capturing):
+        extract_facts("input text")
+
+    assert len(calls) == 2
+    # Retry messages should include the original user message, the bad assistant
+    # response, and a correction request.
+    retry_msgs = calls[1]
+    assert retry_msgs[0]["role"] == "user"
+    assert retry_msgs[1] == {"role": "assistant", "content": "garbage"}
+    assert "not valid JSON" in retry_msgs[2]["content"]
 
 
 def test_extract_facts_with_context() -> None:

@@ -1,6 +1,7 @@
 """Post-session memory extraction from conversation logs."""
 
 import json
+import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -28,19 +29,49 @@ Return ONLY valid JSON, no markdown fences or commentary.\
 """
 
 
+_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
+
+
+def _strip_fences(raw: str) -> str:
+    """Strip markdown code fences if present."""
+    m = _FENCE_RE.search(raw)
+    return m.group(1) if m else raw
+
+
+def _parse_facts(raw: str) -> list[dict[str, str]] | None:
+    """Try to parse a JSON array of facts. Returns None on failure."""
+    raw = _strip_fences(raw).strip()
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(parsed, list):
+        return None
+    return [
+        f for f in parsed if isinstance(f, dict) and "text" in f and "abstract" in f
+    ]
+
+
 def extract_facts(
     text: str,
     context: str | None = None,
     model: str | None = None,
 ) -> list[dict[str, str]]:
-    """Extract factual memories from a text chunk via a single LLM call."""
+    """Extract factual memories from a text chunk via LLM call.
+
+    Strips markdown fences before parsing. On malformed JSON, retries once
+    by feeding the bad output back to the model for correction.
+    """
     user_content = text
     if context:
         user_content = f"Previous context: {context}\n---\n{text}"
 
+    messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
+    resolved_model = model or _EXTRACTION_MODEL
+
     msg = chat(
-        [{"role": "user", "content": user_content}],
-        model=model or _EXTRACTION_MODEL,
+        messages,
+        model=resolved_model,
         system_prompt=_SYSTEM_PROMPT,
         stream=False,
         temperature=0,
@@ -48,16 +79,30 @@ def extract_facts(
         cache_messages=False,
     )
     raw = msg.get("content", "")
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return []
-    if not isinstance(parsed, list):
-        return []
-    # Validate each entry has the required keys.
-    return [
-        f for f in parsed if isinstance(f, dict) and "text" in f and "abstract" in f
-    ]
+    result = _parse_facts(raw)
+    if result is not None:
+        return result
+
+    # Retry: feed the bad output back for correction.
+    messages.append({"role": "assistant", "content": raw})
+    messages.append(
+        {
+            "role": "user",
+            "content": "Your response was not valid JSON. "
+            "Return ONLY a JSON array, no markdown fences or extra text.",
+        }
+    )
+    msg = chat(
+        messages,
+        model=resolved_model,
+        system_prompt=_SYSTEM_PROMPT,
+        stream=False,
+        temperature=0,
+        seed=42,
+        cache_messages=False,
+    )
+    raw = msg.get("content", "")
+    return _parse_facts(raw) or []
 
 
 def extract_session(
