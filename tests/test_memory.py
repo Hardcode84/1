@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from mindloop.chunker import Chunk, Turn
-from mindloop.memory import MemoryStore, faithfulness
+from mindloop.memory import MemoryStore, faithfulness, leaf_faithfulness
 from mindloop.summarizer import ChunkSummary
 
 
@@ -500,3 +500,59 @@ def test_add_edge_ignores_duplicate(store: MemoryStore) -> None:
         (id_a, id_b),
     ).fetchone()[0]
     assert score == pytest.approx(0.5)
+
+
+# --- leaf_faithfulness ---
+
+
+def test_leaf_faithfulness_passes() -> None:
+    """Uniform embeddings → all leaves pass."""
+    with patch(
+        "mindloop.memory.get_embeddings",
+        side_effect=_emb_for(_E1),
+    ):
+        passed, min_sim = leaf_faithfulness("merged", ["leaf a", "leaf b"])
+    assert passed
+    assert min_sim == pytest.approx(1.0)
+
+
+def test_leaf_faithfulness_fails_one_leaf() -> None:
+    """One leaf is orthogonal → check fails, min_sim reflects the bad leaf."""
+    _merged = np.array([1.0, 0.0], dtype=np.float32)
+    _good = np.array([0.9, 0.44], dtype=np.float32)
+    _bad = np.array([0.0, 1.0], dtype=np.float32)
+
+    def _get_emb(texts: list[str], **_kw: object) -> np.ndarray:
+        return np.stack([_merged, _good, _bad])
+
+    with patch("mindloop.memory.get_embeddings", side_effect=_get_emb):
+        passed, min_sim = leaf_faithfulness("m", ["good", "bad"])
+    assert not passed
+    assert min_sim == pytest.approx(0.0, abs=0.01)
+
+
+# --- leaf_texts ---
+
+
+def test_leaf_texts_single(store: MemoryStore) -> None:
+    """Leaf chunk returns its own text."""
+    leaf_id = store.save(_summary("hello"))
+    texts = store.leaf_texts(leaf_id)
+    assert texts == ["You: hello"]
+
+
+def test_leaf_texts_merged(store: MemoryStore) -> None:
+    """Merged chunk returns texts of original leaves."""
+    id_a = store.save(_summary("a"))
+    id_b = store.save(_summary("b"))
+    id_ab = store.save(_summary("ab"), source_a=id_a, source_b=id_b)
+    id_c = store.save(_summary("c"))
+    id_abc = store.save(_summary("abc"), source_a=id_ab, source_b=id_c)
+
+    texts = store.leaf_texts(id_abc)
+    assert sorted(texts) == sorted(["You: a", "You: b", "You: c"])
+
+
+def test_leaf_texts_nonexistent(store: MemoryStore) -> None:
+    """Nonexistent chunk returns empty list."""
+    assert store.leaf_texts(999) == []

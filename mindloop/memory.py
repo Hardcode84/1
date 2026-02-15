@@ -71,6 +71,42 @@ def faithfulness(
     return (sim_a >= threshold and sim_b >= threshold, sim_a, sim_b)
 
 
+def leaf_faithfulness(
+    merged_text: str,
+    leaf_texts: list[str],
+    threshold: float = 0.7,
+) -> tuple[bool, float]:
+    """Check whether merged text faithfully represents all original leaves.
+
+    Embeds ``[merged_text] + leaf_texts`` in one call and checks that cosine
+    similarity between the merged text and each leaf meets *threshold*.
+    Returns ``(all_passed, min_similarity)``.
+    """
+    embs = get_embeddings([merged_text] + leaf_texts, model=DEFAULT_EMBEDDING_MODEL)
+    m = embs[0]
+    norm_m = max(float(np.linalg.norm(m)), 1e-10)
+    min_sim = 1.0
+    for i in range(1, len(embs)):
+        norm_l = max(float(np.linalg.norm(embs[i])), 1e-10)
+        sim = float(np.dot(m, embs[i]) / (norm_m * norm_l))
+        if sim < min_sim:
+            min_sim = sim
+    passed = min_sim >= threshold
+    return (passed, min_sim)
+
+
+def _collect_leaf_texts(node: LineageNode) -> list[str]:
+    """Collect text from all leaf nodes in a lineage tree."""
+    if node.is_leaf:
+        return [node.text]
+    leaves: list[str] = []
+    if node.source_a is not None:
+        leaves.extend(_collect_leaf_texts(node.source_a))
+    if node.source_b is not None:
+        leaves.extend(_collect_leaf_texts(node.source_b))
+    return leaves
+
+
 def _init_db(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -515,6 +551,16 @@ class MemoryStore:
             return node
 
         return _build(chunk_id)
+
+    def leaf_texts(self, chunk_id: int) -> list[str]:
+        """Return the texts of all leaf nodes in the merge tree for *chunk_id*.
+
+        Returns ``[]`` if the chunk does not exist.
+        """
+        node = self.lineage(chunk_id)
+        if node is None:
+            return []
+        return _collect_leaf_texts(node)
 
     def close(self) -> None:
         self.conn.close()

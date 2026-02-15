@@ -4,7 +4,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from mindloop.chunker import Chunk, Turn
-from mindloop.memory import MemoryStore, faithfulness
+from mindloop.memory import MemoryStore, leaf_faithfulness
 from mindloop.merge_llm import MergeResult, merge_texts, should_merge
 from mindloop.summarizer import ChunkSummary
 from mindloop.util import noop
@@ -54,6 +54,8 @@ def save_memory(
         last_id = store.save(cs)
         store.deactivate([last_id])
 
+        incoming_leaves = [stored_text]
+
         for round_idx in range(max_rounds):
             results = store.search(text, top_k=top_k)
             log(f"[memory] Round {round_idx + 1}: {len(results)} candidates.")
@@ -93,13 +95,16 @@ def save_memory(
                     text, existing_text, prefer=prefer, model=model
                 )
 
-                # Check 1: faithfulness (before deactivate — no store interaction).
-                passed, sim_a, sim_b = faithfulness(
-                    mr.text, text, existing_text, threshold=min_faithfulness
+                # Check 1: leaf faithfulness (before deactivate — no store interaction).
+                existing_leaves = store.leaf_texts(result.id)
+                all_leaves = incoming_leaves + existing_leaves
+                passed, min_sim = leaf_faithfulness(
+                    mr.text, all_leaves, threshold=min_faithfulness
                 )
                 if not passed:
                     log(
-                        f"[memory]   Faithfulness {sim_a:.3f}/{sim_b:.3f}"
+                        f"[memory]   Leaf faithfulness {min_sim:.3f}"
+                        f" (of {len(all_leaves)} leaves)"
                         f" < {min_faithfulness} → aborting merge."
                     )
                     store.add_edge(last_id, result.id, "related_to", score=sim)
@@ -128,6 +133,7 @@ def save_memory(
                 text = mr.text
                 abstract = mr.abstract
                 summary = mr.summary
+                incoming_leaves = all_leaves
                 merged = True
                 log(f"[memory]   Merged → #{last_id}: {mr.abstract}")
                 break  # Restart search with merged text.

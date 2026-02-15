@@ -420,16 +420,13 @@ def test_save_aborts_on_faithfulness_failure(store: MemoryStore) -> None:
 
     mr = MergeResult(text="drifted", abstract="abs", summary="sum")
 
-    # Merged text is orthogonal to source_b (old fact).
+    # Merged text is orthogonal to old fact's leaf text.
     _merged_emb = np.array([1.0, 0.0], dtype=np.float32)
     _old_emb = np.array([0.0, 1.0], dtype=np.float32)
 
-    call_count = 0
-
     def _faith_emb(texts: list[str], **_kw: object) -> np.ndarray:
-        nonlocal call_count
-        call_count += 1
-        # faithfulness() passes 3 texts: [merged, new, old].
+        # leaf_faithfulness passes [merged] + leaf_texts.
+        # For a single-leaf merge: [merged, incoming_leaf, old_leaf] = 3 texts.
         if len(texts) == 3:
             return np.stack([_merged_emb, _merged_emb, _old_emb])
         # search / other calls: uniform embeddings.
@@ -450,3 +447,64 @@ def test_save_aborts_on_faithfulness_failure(store: MemoryStore) -> None:
     ).fetchall()
     assert len(edges) == 1
     assert edges[0][2] == "related_to"
+
+
+def test_save_cascade_stops_on_original_drift(store: MemoryStore) -> None:
+    """Round-1 merge passes leaf check, round-2 drifts from original input.
+
+    Chunks A and B exist. New text merges with A (faithful to original +
+    A's leaves), but the round-2 merge with B drifts from the original
+    input text. Verify merge stops at round 1.
+    """
+    store.save(_summary("fact A"))
+    store.save(_summary("fact B"))
+
+    merge_count = 0
+
+    def _merge(*_a: object, **_kw: object) -> MergeResult:
+        nonlocal merge_count
+        merge_count += 1
+        if merge_count == 1:
+            return MergeResult(text="merged AB", abstract="abs", summary="sum")
+        return MergeResult(text="drifted ABC", abstract="abs", summary="sum")
+
+    # Stored texts use "You: " prefix via Chunk.text.
+    _orig = np.array([1.0, 0.0], dtype=np.float32)
+    _a_emb = np.array([0.9, 0.44], dtype=np.float32)
+    _b_emb = np.array([0.0, 1.0], dtype=np.float32)
+    _merged_ab = np.array([0.95, 0.22], dtype=np.float32)  # Close to orig + A.
+    _drifted = np.array([0.0, 1.0], dtype=np.float32)  # Orthogonal to orig.
+
+    leaf_faith_call = 0
+
+    def _emb(texts: list[str], **_kw: object) -> np.ndarray:
+        nonlocal leaf_faith_call
+        # leaf_faithfulness: [merged] + leaves.
+        # Round 1: 3 texts [merged_ab, incoming_leaf, a_leaf].
+        # Round 2: 4 texts [drifted, incoming_leaf, a_leaf, b_leaf].
+        if len(texts) == 3 and leaf_faith_call == 0:
+            leaf_faith_call += 1
+            return np.stack([_merged_ab, _orig, _a_emb])
+        if len(texts) == 4:
+            leaf_faith_call += 1
+            return np.stack([_drifted, _orig, _a_emb, _b_emb])
+        # search / other: uniform.
+        return np.tile(_EMB_A, (len(texts), 1))
+
+    with (
+        patch("mindloop.memory.get_embeddings", side_effect=_emb),
+        patch("mindloop.semantic_memory.merge_texts", side_effect=_merge),
+    ):
+        save_memory(
+            store, "new", "abs", "sum", model="test-model", max_neighbor_score=1.0
+        )
+
+    # Round-2 merge aborted → only first merge happened.
+    assert merge_count == 2
+    # B still active, round-1 merge result active. Original A + incoming deactivated.
+    assert store.count() == 2
+
+    # Edge recorded between round-1 merge and B.
+    edges = store.conn.execute("SELECT edge_type FROM chunk_edges").fetchall()
+    assert len(edges) == 1
+    assert edges[0][0] == "related_to"
