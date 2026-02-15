@@ -392,7 +392,7 @@ def create_default_registry(
 def add_memory_tools(
     registry: ToolRegistry,
     db_path: Path | None = None,
-    model: str = "openrouter/free",
+    model: str = "",
     log: Callable[[str], None] | None = None,
 ) -> MemoryTools:
     """Add remember / recall / recall_detail tools to *registry*.

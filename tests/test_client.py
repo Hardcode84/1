@@ -46,7 +46,7 @@ def test_chat_non_streaming(mock_post: MagicMock) -> None:
     message = {"role": "assistant", "content": "hello"}
     mock_post.return_value = _mock_non_streaming(message)
 
-    result = chat([{"role": "user", "content": "hi"}], stream=False)
+    result = chat([{"role": "user", "content": "hi"}], model="test-model", stream=False)
     assert result == message
     mock_post.assert_called_once()
 
@@ -55,7 +55,12 @@ def test_chat_non_streaming(mock_post: MagicMock) -> None:
 def test_chat_non_streaming_with_system_prompt(mock_post: MagicMock) -> None:
     mock_post.return_value = _mock_non_streaming({"role": "assistant", "content": "ok"})
 
-    chat([{"role": "user", "content": "hi"}], system_prompt="be nice", stream=False)
+    chat(
+        [{"role": "user", "content": "hi"}],
+        model="test-model",
+        system_prompt="be nice",
+        stream=False,
+    )
     payload = mock_post.call_args.kwargs["json"]
     assert payload["messages"][0] == {"role": "system", "content": "be nice"}
 
@@ -72,7 +77,10 @@ def test_chat_non_streaming_with_tools(mock_post: MagicMock) -> None:
 
     tools = [{"type": "function", "function": {"name": "ls"}}]
     result = chat(
-        [{"role": "user", "content": "list files"}], tools=tools, stream=False
+        [{"role": "user", "content": "list files"}],
+        model="test-model",
+        tools=tools,
+        stream=False,
     )
     assert result.get("tool_calls") is not None
     assert result["tool_calls"][0]["function"]["name"] == "ls"
@@ -84,6 +92,7 @@ def test_chat_non_streaming_temperature_and_seed(mock_post: MagicMock) -> None:
 
     chat(
         [{"role": "user", "content": "hi"}],
+        model="test-model",
         stream=False,
         temperature=0,
         seed=42,
@@ -103,6 +112,7 @@ def test_chat_streaming(mock_post: MagicMock) -> None:
     collected: list[str] = []
     result = chat(
         [{"role": "user", "content": "hi"}],
+        model="test-model",
         stream=True,
         on_token=lambda t: collected.append(t),
     )
@@ -116,6 +126,7 @@ def test_chat_streaming_empty(mock_post: MagicMock) -> None:
 
     result = chat(
         [{"role": "user", "content": "hi"}],
+        model="test-model",
         on_token=lambda t: None,
     )
     assert result == {"role": "assistant", "content": ""}
@@ -191,6 +202,7 @@ def test_chat_streaming_tool_calls_with_null_fields(mock_post: MagicMock) -> Non
 
     result = chat(
         [{"role": "user", "content": "list files"}],
+        model="test-model",
         stream=True,
         on_token=lambda t: None,
     )
@@ -208,7 +220,7 @@ def test_get_embeddings(mock_post: MagicMock) -> None:
     _embedding_cache.clear()
     mock_post.return_value = _mock_embeddings([[0.1, 0.2], [0.3, 0.4]])
 
-    result = get_embeddings(["hello", "world"])
+    result = get_embeddings(["hello", "world"], model="test-model")
     assert result.shape == (2, 2)
     np.testing.assert_allclose(result[0], [0.1, 0.2], atol=1e-6)
     np.testing.assert_allclose(result[1], [0.3, 0.4], atol=1e-6)
@@ -221,11 +233,11 @@ def test_get_embeddings_caching(mock_post: MagicMock) -> None:
     mock_post.return_value = _mock_embeddings([[0.1, 0.2]])
 
     # First call — hits API.
-    get_embeddings(["hello"])
+    get_embeddings(["hello"], model="test-model")
     assert mock_post.call_count == 1
 
     # Second call — cached.
-    result = get_embeddings(["hello"])
+    result = get_embeddings(["hello"], model="test-model")
     assert mock_post.call_count == 1
     np.testing.assert_allclose(result[0], [0.1, 0.2], atol=1e-6)
 
@@ -236,11 +248,11 @@ def test_get_embeddings_partial_cache(mock_post: MagicMock) -> None:
 
     # Prime cache with "hello".
     mock_post.return_value = _mock_embeddings([[0.1, 0.2]])
-    get_embeddings(["hello"])
+    get_embeddings(["hello"], model="test-model")
 
     # Request "hello" + "world" — only "world" should hit API.
     mock_post.return_value = _mock_embeddings([[0.3, 0.4]])
-    result = get_embeddings(["hello", "world"])
+    result = get_embeddings(["hello", "world"], model="test-model")
     np.testing.assert_allclose(result[0], [0.1, 0.2], atol=1e-6)
     np.testing.assert_allclose(result[1], [0.3, 0.4], atol=1e-6)
     # Second call sent only 1 text.
@@ -263,6 +275,7 @@ def test_chat_streaming_retries_on_timeout(
     ]
     result = chat(
         [{"role": "user", "content": "hi"}],
+        model="test-model",
         stream=True,
         on_token=lambda t: None,
     )
@@ -283,6 +296,7 @@ def test_chat_non_streaming_retries_on_timeout(
     ]
     result = chat(
         [{"role": "user", "content": "hi"}],
+        model="test-model",
         stream=False,
         on_token=lambda t: None,
     )
@@ -302,7 +316,7 @@ def test_get_embeddings_retries_on_timeout(
         requests.exceptions.ReadTimeout("timed out"),
         _mock_embeddings([[0.1, 0.2]]),
     ]
-    result = get_embeddings(["hello"])
+    result = get_embeddings(["hello"], model="test-model")
     np.testing.assert_allclose(result[0], [0.1, 0.2], atol=1e-6)
     assert mock_post.call_count == 2
     mock_sleep.assert_called_once()
@@ -316,6 +330,7 @@ def test_retry_exhausted_raises(mock_post: MagicMock, mock_sleep: MagicMock) -> 
     try:
         chat(
             [{"role": "user", "content": "hi"}],
+            model="test-model",
             stream=True,
             on_token=lambda t: None,
         )
@@ -337,6 +352,7 @@ def test_keyboard_interrupt_retries(
     ]
     result = chat(
         [{"role": "user", "content": "hi"}],
+        model="test-model",
         stream=True,
         on_token=lambda t: None,
     )

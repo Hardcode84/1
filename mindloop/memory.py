@@ -11,7 +11,7 @@ from types import TracebackType
 import numpy as np
 
 from mindloop.chunker import Chunk, Turn
-from mindloop.client import Embedding, get_embeddings
+from mindloop.client import DEFAULT_EMBEDDING_MODEL, Embedding, get_embeddings
 from mindloop.summarizer import ChunkSummary
 
 DEFAULT_DB_PATH = Path("memory.db")
@@ -58,7 +58,9 @@ def faithfulness(
     merged text and each source meets *threshold*.  Returns
     ``(passed, sim_a, sim_b)``.
     """
-    embs = get_embeddings([merged_text, source_a_text, source_b_text])
+    embs = get_embeddings(
+        [merged_text, source_a_text, source_b_text], model=DEFAULT_EMBEDDING_MODEL
+    )
     m, a, b = embs[0], embs[1], embs[2]
     norm_m = max(float(np.linalg.norm(m)), 1e-10)
     norm_a = max(float(np.linalg.norm(a)), 1e-10)
@@ -243,7 +245,7 @@ class MemoryStore:
         leaf chunks (those not produced by merging) regardless of active
         status.  Otherwise search active chunks only.
         """
-        query_emb: Embedding = get_embeddings([query])[0]
+        query_emb: Embedding = get_embeddings([query], model=DEFAULT_EMBEDDING_MODEL)[0]
 
         if original_only:
             where = "WHERE source_a IS NULL AND source_b IS NULL"
@@ -268,7 +270,9 @@ class MemoryStore:
         ids = list(meta_by_id.keys())
 
         # --- Embedding ranks ---
-        chunk_embeddings = get_embeddings([texts_by_id[cid] for cid in ids])
+        chunk_embeddings = get_embeddings(
+            [texts_by_id[cid] for cid in ids], model=DEFAULT_EMBEDDING_MODEL
+        )
         matrix = np.stack([chunk_embeddings[i] for i in range(len(ids))])
         norms = np.linalg.norm(matrix, axis=1, keepdims=True)
         norms = np.maximum(norms, 1e-10)

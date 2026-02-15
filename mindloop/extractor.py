@@ -7,13 +7,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from mindloop.chunker import chunk_turns, compact_chunks, merge_chunks
-from mindloop.client import DETERMINISTIC_PARAMS, chat, get_embeddings
+from mindloop.client import (
+    DEFAULT_EMBEDDING_MODEL,
+    DETERMINISTIC_PARAMS,
+    chat,
+    get_embeddings,
+)
 from mindloop.memory import MemoryStore
 from mindloop.recap import collapse_messages
 from mindloop.semantic_memory import save_memory
 from mindloop.util import DEFAULT_WORKERS, noop
-
-_EXTRACTION_MODEL = "deepseek/deepseek-v3.2"
 
 # Tail of the previous chunk passed as context to the next extraction call,
 # so the LLM can resolve references that span chunk boundaries.
@@ -81,7 +84,7 @@ def _parse_facts(raw: str) -> list[dict[str, str]] | None:
 def extract_facts(
     text: str,
     context: str | None = None,
-    model: str | None = None,
+    model: str = "",
 ) -> list[dict[str, str]]:
     """Extract factual memories from a text chunk via LLM call.
 
@@ -95,11 +98,9 @@ def extract_facts(
         user_content = f"Previous context: {context}\n---\n{text}"
 
     messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
-    resolved_model = model or _EXTRACTION_MODEL
-
     msg = chat(
         messages,
-        model=resolved_model,
+        model=model,
         system_prompt=_SYSTEM_PROMPT,
         stream=False,
         **DETERMINISTIC_PARAMS,
@@ -121,7 +122,7 @@ def extract_facts(
     )
     msg = chat(
         messages,
-        model=resolved_model,
+        model=model,
         system_prompt=_SYSTEM_PROMPT,
         stream=False,
         **DETERMINISTIC_PARAMS,
@@ -133,7 +134,7 @@ def extract_facts(
 
 def extract_window(
     messages: list[dict[str, Any]],
-    model: str | None = None,
+    model: str = "",
 ) -> list[dict[str, str]]:
     """Extract facts from a short message window (no chunking/merging).
 
@@ -151,7 +152,7 @@ def extract_window(
 def extract_session(
     messages: list[dict[str, Any]],
     store: MemoryStore,
-    model: str | None = None,
+    model: str = "",
     log: Callable[[str], None] = noop,
     workers: int = DEFAULT_WORKERS,
 ) -> int:
@@ -172,7 +173,9 @@ def extract_session(
 
     if len(chunks) >= 2:
         log("Embedding chunks for merge...")
-        embeddings = get_embeddings([c.text for c in chunks])
+        embeddings = get_embeddings(
+            [c.text for c in chunks], model=DEFAULT_EMBEDDING_MODEL
+        )
         chunks = merge_chunks(chunks, embeddings, log=log)
         log(f"Merged to {len(chunks)} chunks.")
 
@@ -215,7 +218,7 @@ def extract_session(
                 text=fact["text"],
                 abstract=fact["abstract"],
                 summary=fact.get("summary", fact["abstract"]),
-                model=model or "openrouter/free",
+                model=model,
                 log=log,
             )
             total_saved += 1

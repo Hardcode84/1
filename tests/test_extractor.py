@@ -51,7 +51,7 @@ def test_extract_facts_parses_json() -> None:
     """Valid JSON array is parsed correctly."""
     facts_json = json.dumps([{"text": "Python is great", "abstract": "Python praise"}])
     with patch("mindloop.extractor.chat", side_effect=_mock_chat_returning(facts_json)):
-        result = extract_facts("some conversation")
+        result = extract_facts("some conversation", model="test-model")
     assert len(result) == 1
     assert result[0]["text"] == "Python is great"
     assert result[0]["abstract"] == "Python praise"
@@ -60,7 +60,7 @@ def test_extract_facts_parses_json() -> None:
 def test_extract_facts_empty_array() -> None:
     """Empty JSON array returns empty list."""
     with patch("mindloop.extractor.chat", side_effect=_mock_chat_returning("[]")):
-        result = extract_facts("boring conversation")
+        result = extract_facts("boring conversation", model="test-model")
     assert result == []
 
 
@@ -69,7 +69,7 @@ def test_extract_facts_malformed_json() -> None:
     with patch(
         "mindloop.extractor.chat", side_effect=_mock_chat_returning("not valid json{")
     ):
-        result = extract_facts("some text")
+        result = extract_facts("some text", model="test-model")
     assert result == []
 
 
@@ -77,7 +77,7 @@ def test_extract_facts_strips_markdown_fences() -> None:
     """JSON wrapped in markdown fences is parsed correctly."""
     fenced = '```json\n[{"text": "fact", "abstract": "abs"}]\n```'
     with patch("mindloop.extractor.chat", side_effect=_mock_chat_returning(fenced)):
-        result = extract_facts("some text")
+        result = extract_facts("some text", model="test-model")
     assert len(result) == 1
     assert result[0]["text"] == "fact"
 
@@ -97,7 +97,7 @@ def test_extract_facts_retries_on_malformed_json() -> None:
         return {"role": "assistant", "content": good_json}
 
     with patch("mindloop.extractor.chat", side_effect=_failing_then_ok):
-        result = extract_facts("some text")
+        result = extract_facts("some text", model="test-model")
 
     assert call_count == 2
     assert len(result) == 1
@@ -113,7 +113,7 @@ def test_extract_facts_retry_sends_bad_output_back() -> None:
         return {"role": "assistant", "content": "garbage"}
 
     with patch("mindloop.extractor.chat", side_effect=_capturing):
-        extract_facts("input text")
+        extract_facts("input text", model="test-model")
 
     assert len(calls) == 2
     # Retry messages should include the original user message, the bad assistant
@@ -135,7 +135,7 @@ def test_extract_facts_with_context() -> None:
         return {"role": "assistant", "content": "[]"}
 
     with patch("mindloop.extractor.chat", side_effect=_capturing_chat):
-        extract_facts("current chunk", context="previous tail")
+        extract_facts("current chunk", context="previous tail", model="test-model")
 
     assert len(calls) == 1
     user_msg = calls[0][0]["content"]
@@ -153,7 +153,7 @@ def test_extract_facts_filters_invalid_entries() -> None:
         ]
     )
     with patch("mindloop.extractor.chat", side_effect=_mock_chat_returning(facts_json)):
-        result = extract_facts("text")
+        result = extract_facts("text", model="test-model")
     assert len(result) == 1
     assert result[0]["text"] == "good"
 
@@ -181,7 +181,7 @@ def test_extract_session_saves_facts(store: MemoryStore) -> None:
         _patch_embeddings(),
         patch("mindloop.extractor.chat", side_effect=_mock_chat_returning(facts_json)),
     ):
-        saved = extract_session(messages, store, workers=1)
+        saved = extract_session(messages, store, model="test-model", workers=1)
 
     assert saved == 1
     assert store.count() == 1
@@ -200,7 +200,7 @@ def test_extract_session_context_prefix(store: MemoryStore) -> None:
     extraction_calls: list[tuple[str, str | None]] = []
 
     def _tracking_extract(
-        text: str, context: str | None = None, model: str | None = None
+        text: str, context: str | None = None, model: str = ""
     ) -> list[dict[str, str]]:
         extraction_calls.append((text, context))
         return []
@@ -209,7 +209,7 @@ def test_extract_session_context_prefix(store: MemoryStore) -> None:
         _patch_embeddings(),
         patch("mindloop.extractor.extract_facts", side_effect=_tracking_extract),
     ):
-        saved = extract_session(messages, store, workers=1)
+        saved = extract_session(messages, store, model="test-model", workers=1)
 
     assert saved == 0
     # First chunk should have no context.
@@ -221,7 +221,7 @@ def test_extract_session_context_prefix(store: MemoryStore) -> None:
 
 def test_extract_session_empty_log(store: MemoryStore) -> None:
     """Empty messages returns 0 without crashing."""
-    saved = extract_session([], store, workers=1)
+    saved = extract_session([], store, model="test-model", workers=1)
     assert saved == 0
 
 
@@ -243,7 +243,7 @@ def test_extract_window_returns_facts() -> None:
         return {"role": "assistant", "content": facts_json}
 
     with patch("mindloop.extractor.chat", side_effect=_capturing_chat):
-        result = extract_window(messages)
+        result = extract_window(messages, model="test-model")
 
     assert len(result) == 1
     assert result[0]["text"] == "Cats are pets"
@@ -253,5 +253,5 @@ def test_extract_window_returns_facts() -> None:
 
 def test_extract_window_empty_messages() -> None:
     """Empty messages returns empty list without LLM call."""
-    result = extract_window([])
+    result = extract_window([], model="test-model")
     assert result == []

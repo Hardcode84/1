@@ -131,7 +131,7 @@ def _maybe_reflect(
 def run_agent(
     system_prompt: str,
     registry: ToolRegistry | None = None,
-    model: str | None = None,
+    model: str = "",
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     on_step: Callable[[str], None] = noop,
@@ -147,15 +147,12 @@ def run_agent(
     on_extract: Callable[[list[Message]], None] | None = None,
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
-    from mindloop.client import DEFAULT_MODEL
-
     if on_confirm is None:
         on_confirm = _auto_confirm
     if registry is None:
         registry = create_default_registry()
 
     messages: list[Message] = list(initial_messages) if initial_messages else []
-    effective_model = model if model is not None else DEFAULT_MODEL
     total_tokens = 0
     total_cost = 0.0
     warned_thresholds: set[float] = set()
@@ -225,7 +222,7 @@ def run_agent(
     for _ in range(max_iterations):
         response = chat(
             messages,
-            model=effective_model,
+            model=model,
             system_prompt=system_prompt,
             tools=registry.definitions(),
             stream=True,

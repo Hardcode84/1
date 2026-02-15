@@ -412,7 +412,7 @@ class MidSessionExtractor:
     def __init__(
         self,
         store: MemoryStore,
-        model: str | None,
+        model: str,
         log: Callable[[str], None],
     ) -> None:
         from concurrent.futures import ThreadPoolExecutor
@@ -456,7 +456,7 @@ class MidSessionExtractor:
                         fact["text"],
                         fact["abstract"],
                         fact.get("summary", fact["abstract"]),
-                        model=self._model or "openrouter/free",
+                        model=self._model,
                         log=self._log,
                     )
                     saved += 1

@@ -50,7 +50,7 @@ def test_tool_call_then_done(mock_chat: MagicMock) -> None:
         _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')]),
         _make_done_response("c2", "finished"),
     ]
-    run_agent("prompt", registry=_echo_registry())
+    run_agent("prompt", registry=_echo_registry(), model="test-model")
     assert mock_chat.call_count == 2
 
 
@@ -61,7 +61,7 @@ def test_nudge_injects_user_unavailable(mock_chat: MagicMock) -> None:
         _make_final_response("waiting for input"),
         _make_done_response("c1", "done"),
     ]
-    run_agent("prompt", registry=_echo_registry())
+    run_agent("prompt", registry=_echo_registry(), model="test-model")
 
     # After the first text response, a user message should be injected.
     messages = mock_chat.call_args_list[1][0][0]
@@ -76,7 +76,9 @@ def test_done_tool_terminates(mock_chat: MagicMock) -> None:
         _make_done_response("c1", "all done"),
     ]
     on_msg = MagicMock()
-    run_agent("prompt", registry=_echo_registry(), on_message=on_msg)
+    run_agent(
+        "prompt", registry=_echo_registry(), model="test-model", on_message=on_msg
+    )
     assert mock_chat.call_count == 1
 
     # Verify stop message was emitted.
@@ -96,7 +98,7 @@ def test_max_iterations_safety_valve(mock_chat: MagicMock) -> None:
     mock_chat.return_value = _make_tool_response(
         [_make_tool_call("c1", "echo", '{"text": "loop"}')]
     )
-    run_agent("prompt", registry=_echo_registry(), max_iterations=3)
+    run_agent("prompt", registry=_echo_registry(), model="test-model", max_iterations=3)
     assert mock_chat.call_count == 3
 
 
@@ -112,7 +114,7 @@ def test_multiple_tool_calls_in_single_response(mock_chat: MagicMock) -> None:
         ),
         _make_done_response("c3", "both done"),
     ]
-    run_agent("prompt", registry=_echo_registry())
+    run_agent("prompt", registry=_echo_registry(), model="test-model")
 
     # Verify both echo tool results were appended.
     second_call_messages = mock_chat.call_args_list[1][0][0]
@@ -145,7 +147,7 @@ def test_nudge_then_tool_call_continues(mock_chat: MagicMock) -> None:
         _make_tool_response([_make_tool_call("c1", "echo", '{"text": "go"}')]),
         _make_done_response("c2", "found it"),
     ]
-    run_agent("prompt", registry=_echo_registry())
+    run_agent("prompt", registry=_echo_registry(), model="test-model")
     assert mock_chat.call_count == 3
 
 
@@ -157,7 +159,7 @@ def test_malformed_tool_call_arguments(mock_chat: MagicMock) -> None:
         _make_tool_response([_make_tool_call("c1", "read", bad_args)]),
         _make_done_response("c2", "sorry"),
     ]
-    run_agent("prompt", registry=_echo_registry())
+    run_agent("prompt", registry=_echo_registry(), model="test-model")
 
     # Verify the tool result reports the malformed arguments.
     second_call_messages = mock_chat.call_args_list[1][0][0]
@@ -177,7 +179,7 @@ def test_empty_arguments_treated_as_empty_object(mock_chat: MagicMock) -> None:
         _make_tool_response([_make_tool_call("c1", "echo", "")]),
         _make_done_response("c2", "ok"),
     ]
-    run_agent("prompt", registry=_echo_registry())
+    run_agent("prompt", registry=_echo_registry(), model="test-model")
 
     second_call_messages = mock_chat.call_args_list[1][0][0]
     assistant_msg = second_call_messages[0]
@@ -198,7 +200,7 @@ def test_ask_tool_returns_user_response(mock_chat: MagicMock) -> None:
         _make_done_response("c2", "got answer"),
     ]
     on_ask = MagicMock(return_value="do nothing")
-    run_agent("prompt", registry=_echo_registry(), on_ask=on_ask)
+    run_agent("prompt", registry=_echo_registry(), model="test-model", on_ask=on_ask)
 
     on_ask.assert_called_once_with(message="what next?")
     second_call_messages = mock_chat.call_args_list[1][0][0]
@@ -213,7 +215,7 @@ def test_ask_tool_default_unavailable(mock_chat: MagicMock) -> None:
         _make_tool_response([_make_tool_call("c1", "ask", '{"message": "hello?"}')]),
         _make_done_response("c2", "ok"),
     ]
-    run_agent("prompt", registry=_echo_registry())
+    run_agent("prompt", registry=_echo_registry(), model="test-model")
 
     second_call_messages = mock_chat.call_args_list[1][0][0]
     tool_msg = [m for m in second_call_messages if m["role"] == "tool"][0]
@@ -228,7 +230,9 @@ def test_on_confirm_denied(mock_chat: MagicMock) -> None:
         _make_done_response("c2", "ok denied"),
     ]
     deny_echo = MagicMock(side_effect=lambda name, _args: name != "echo")
-    run_agent("prompt", registry=_echo_registry(), on_confirm=deny_echo)
+    run_agent(
+        "prompt", registry=_echo_registry(), model="test-model", on_confirm=deny_echo
+    )
 
     # Model should see the denial message, not the tool result.
     second_call_messages = mock_chat.call_args_list[1][0][0]
@@ -244,7 +248,9 @@ def test_on_confirm_approved(mock_chat: MagicMock) -> None:
         _make_done_response("c2", "got it"),
     ]
     approve_all = MagicMock(return_value=True)
-    run_agent("prompt", registry=_echo_registry(), on_confirm=approve_all)
+    run_agent(
+        "prompt", registry=_echo_registry(), model="test-model", on_confirm=approve_all
+    )
 
     # Tool should have actually executed.
     second_call_messages = mock_chat.call_args_list[1][0][0]
@@ -264,7 +270,9 @@ def test_reflect_nudge_after_consecutive_tools(mock_chat: MagicMock) -> None:
         _make_done_response("c2", "thinking now"),
     ]
     on_msg = MagicMock()
-    run_agent("prompt", registry=_echo_registry(), on_message=on_msg)
+    run_agent(
+        "prompt", registry=_echo_registry(), model="test-model", on_message=on_msg
+    )
 
     # Find system reflect messages among all on_message calls.
     system_msgs = [
@@ -290,7 +298,9 @@ def test_reflect_survives_text_interruption(mock_chat: MagicMock) -> None:
         _make_done_response("c2", "ok"),
     ]
     on_msg = MagicMock()
-    run_agent("prompt", registry=_echo_registry(), on_message=on_msg)
+    run_agent(
+        "prompt", registry=_echo_registry(), model="test-model", on_message=on_msg
+    )
 
     system_msgs = [
         c.args[0]
@@ -309,7 +319,7 @@ def test_token_budget_stops_loop(mock_chat: MagicMock) -> None:
         "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
     }
     mock_chat.return_value = response_with_usage
-    run_agent("prompt", registry=_echo_registry(), max_tokens=200)
+    run_agent("prompt", registry=_echo_registry(), model="test-model", max_tokens=200)
     # First call: 150 tokens (under 200), continues. Second call: 300 total (over 200), stops.
     assert mock_chat.call_count == 2
 
@@ -324,7 +334,7 @@ def test_token_budget_estimated_when_no_usage(mock_chat: MagicMock) -> None:
     )
     mock_chat.return_value["content"] = long_text
     # No "usage" key in response — estimation should kick in.
-    run_agent("prompt", registry=_echo_registry(), max_tokens=150)
+    run_agent("prompt", registry=_echo_registry(), model="test-model", max_tokens=150)
     # First call: ~100 estimated (under 150). Second call: prompt grows, estimate
     # exceeds 150. Loop stops.
     assert mock_chat.call_count == 2
@@ -340,7 +350,12 @@ def test_initial_messages_seeded(mock_chat: MagicMock) -> None:
         {"role": "assistant", "content": "previous response"},
         {"role": "user", "content": "continue"},
     ]
-    run_agent("prompt", registry=_echo_registry(), initial_messages=history)
+    run_agent(
+        "prompt",
+        registry=_echo_registry(),
+        model="test-model",
+        initial_messages=history,
+    )
     first_call_messages = mock_chat.call_args_list[0][0][0]
     assert first_call_messages[0] == history[0]
     assert first_call_messages[1] == history[1]
@@ -360,7 +375,9 @@ def test_on_extract_fires_at_reflection(mock_chat: MagicMock) -> None:
     extract_calls: list[list[dict[str, Any]]] = []
     on_extract = MagicMock(side_effect=lambda msgs: extract_calls.append(list(msgs)))
 
-    run_agent("prompt", registry=_echo_registry(), on_extract=on_extract)
+    run_agent(
+        "prompt", registry=_echo_registry(), model="test-model", on_extract=on_extract
+    )
 
     # 1 at reflection + 1 final advance at session end.
     assert on_extract.call_count == 2
@@ -383,7 +400,9 @@ def test_on_extract_checkpoint_advances(mock_chat: MagicMock) -> None:
     extract_calls: list[list[dict[str, Any]]] = []
     on_extract = MagicMock(side_effect=lambda msgs: extract_calls.append(list(msgs)))
 
-    run_agent("prompt", registry=_echo_registry(), on_extract=on_extract)
+    run_agent(
+        "prompt", registry=_echo_registry(), model="test-model", on_extract=on_extract
+    )
 
     # 2 at reflection points + 1 final advance at session end.
     assert on_extract.call_count == 3
@@ -405,7 +424,9 @@ def test_on_extract_fires_on_text_nudge(mock_chat: MagicMock) -> None:
     ]
     on_extract = MagicMock()
 
-    run_agent("prompt", registry=_echo_registry(), on_extract=on_extract)
+    run_agent(
+        "prompt", registry=_echo_registry(), model="test-model", on_extract=on_extract
+    )
 
     # 1 at text nudge + 1 final advance at session end.
     assert on_extract.call_count == 2

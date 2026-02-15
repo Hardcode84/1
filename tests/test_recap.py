@@ -172,7 +172,7 @@ def test_generate_recap_recency(*_mocks: object) -> None:
         _msg("user", "second topic"),
         _msg("assistant", "response two\n\nthird paragraph"),
     ]
-    recap = generate_recap(msgs, token_budget=10000)
+    recap = generate_recap(msgs, model="test-model", token_budget=10000)
     assert recap
     # The last summary should always be present (highest score).
     assert "Summary" in recap
@@ -188,8 +188,8 @@ def test_generate_recap_budget(*_mocks: object) -> None:
         msgs.append(_msg("user", f"topic {i}\n\n" + "x" * 600))
         msgs.append(_msg("assistant", f"response {i}\n\n" + "y" * 600))
     # Very tight budget: should drop some summaries.
-    recap_small = generate_recap(msgs, token_budget=50)
-    recap_large = generate_recap(msgs, token_budget=10000)
+    recap_small = generate_recap(msgs, model="test-model", token_budget=50)
+    recap_large = generate_recap(msgs, model="test-model", token_budget=10000)
     assert len(recap_small) < len(recap_large)
 
 
@@ -203,7 +203,7 @@ def test_generate_recap_chronological_order(*_mocks: object) -> None:
         _msg("user", "gamma " + "c" * 200),
         _msg("assistant", "delta " + "d" * 200),
     ]
-    recap = generate_recap(msgs, token_budget=10000)
+    recap = generate_recap(msgs, model="test-model", token_budget=10000)
     lines = recap.strip().splitlines()
     if len(lines) >= 2:
         # Extract summary indices and check they are in order.
@@ -220,7 +220,7 @@ def test_generate_recap_chronological_order(*_mocks: object) -> None:
 @_PATCH_SUMMARIZE
 def test_generate_recap_empty(*_mocks: object) -> None:
     """Empty messages produce empty recap."""
-    assert generate_recap([]) == ""
+    assert generate_recap([], model="test-model") == ""
 
 
 # --- load_recap / save_recap ---

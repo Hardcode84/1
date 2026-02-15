@@ -188,7 +188,7 @@ def _stream_request(
 
 def chat(
     messages: list[Message],
-    model: str = DEFAULT_MODEL,
+    model: str,
     system_prompt: str | None = None,
     tools: list[Tool] | None = None,
     stream: bool = True,
@@ -200,6 +200,8 @@ def chat(
     cache_messages: bool = True,
 ) -> Message:
     """Send a chat completion request. Returns the full response message dict."""
+    if not model:
+        raise ValueError("model must be a non-empty string")
     full_messages = list(messages)
     if system_prompt is not None:
         full_messages.insert(0, {"role": "system", "content": system_prompt})
@@ -251,10 +253,10 @@ def chat(
 _embedding_cache: dict[tuple[str, str], Embedding] = {}
 
 
-def get_embeddings(
-    texts: list[str], model: str = DEFAULT_EMBEDDING_MODEL
-) -> Embeddings:
+def get_embeddings(texts: list[str], model: str) -> Embeddings:
     """Fetch embeddings with per-text caching. Returns (n, dim) float32 ndarray."""
+    if not model:
+        raise ValueError("model must be a non-empty string")
     results: dict[int, Embedding] = {}
     uncached: list[tuple[int, str]] = []
 

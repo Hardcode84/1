@@ -9,9 +9,6 @@ from mindloop.client import DETERMINISTIC_PARAMS, chat
 from mindloop.util import DEFAULT_WORKERS, noop
 
 
-# _SUMMARIZATION_MODEL = "tngtech/deepseek-r1t2-chimera:free"
-_SUMMARIZATION_MODEL = "deepseek/deepseek-v3.2"
-
 _SYSTEM_PROMPT = """\
 You summarize conversation excerpts from a chat log between "You" (user) and "Bot" (assistant).
 Write from the assistant's perspective using first person ("I").
@@ -28,12 +25,12 @@ class ChunkSummary:
     summary: str
 
 
-def summarize_chunk(chunk: Chunk, model: str | None = None) -> ChunkSummary:
+def summarize_chunk(chunk: Chunk, model: str) -> ChunkSummary:
     """Summarize a single chunk into abstract + expanded summary."""
     messages = [{"role": "user", "content": chunk.text}]
     msg = chat(
         messages,
-        model=model or _SUMMARIZATION_MODEL,
+        model=model,
         system_prompt=_SYSTEM_PROMPT,
         stream=False,
         **DETERMINISTIC_PARAMS,
@@ -56,7 +53,7 @@ def summarize_chunk(chunk: Chunk, model: str | None = None) -> ChunkSummary:
 
 def summarize_chunks(
     chunks: list[Chunk],
-    model: str | None = None,
+    model: str,
     log: Callable[[str], None] = noop,
     workers: int = DEFAULT_WORKERS,
 ) -> list[ChunkSummary]:

@@ -26,7 +26,7 @@ def _summary(text: str, abstract: str = "abs", summary: str = "sum") -> ChunkSum
 
 @pytest.fixture()
 def mt(tmp_path: Path) -> MemoryTools:
-    return MemoryTools(db_path=tmp_path / "test.db")
+    return MemoryTools(db_path=tmp_path / "test.db", model="test-model")
 
 
 # --- remember ---
@@ -160,7 +160,7 @@ def test_format_lineage_tree() -> None:
 
 def test_add_memory_tools_registers_all(tmp_path: Path) -> None:
     reg = ToolRegistry()
-    mt = add_memory_tools(reg, db_path=tmp_path / "test.db")
+    mt = add_memory_tools(reg, db_path=tmp_path / "test.db", model="test-model")
     names = [d["function"]["name"] for d in reg.definitions()]
     assert "remember" in names
     assert "recall" in names
@@ -171,7 +171,7 @@ def test_add_memory_tools_registers_all(tmp_path: Path) -> None:
 def test_add_memory_tools_execute_recall(tmp_path: Path) -> None:
     """Tools are callable via registry.execute."""
     reg = ToolRegistry()
-    mt = add_memory_tools(reg, db_path=tmp_path / "test.db")
+    mt = add_memory_tools(reg, db_path=tmp_path / "test.db", model="test-model")
     with patch("mindloop.memory.get_embeddings", side_effect=_mock_embeddings):
         result = reg.execute("recall", '{"query": "test"}')
     assert "No memories found" in result
@@ -191,7 +191,7 @@ def test_stats_tracking(mt: MemoryTools) -> None:
 def test_stats_shared_with_registry(tmp_path: Path) -> None:
     """Stats dict is shared between MemoryTools and ToolRegistry."""
     reg = ToolRegistry()
-    mt = add_memory_tools(reg, db_path=tmp_path / "test.db")
+    mt = add_memory_tools(reg, db_path=tmp_path / "test.db", model="test-model")
     with patch("mindloop.memory.get_embeddings", side_effect=_mock_embeddings):
         reg.execute("recall", '{"query": "test"}')
     assert reg.stats["memory"]["recall"] == 1

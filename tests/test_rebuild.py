@@ -156,7 +156,7 @@ def test_save_extracted_dry_run() -> None:
         {"text": "fact two", "abstract": "abs two", "summary": "detail two"},
     ]
     # store is unused in dry run, pass a dummy.
-    saved, skipped = _save_extracted(None, facts, model=None, dry_run=True, log=lambda _: None)  # type: ignore[arg-type]
+    saved, skipped = _save_extracted(None, facts, model="test-model", dry_run=True, log=lambda _: None)  # type: ignore[arg-type]
     assert saved == 2
     assert skipped == 0
 
@@ -184,7 +184,7 @@ def test_save_extracted_dedup(store: MemoryStore) -> None:
         patch("mindloop.cli.rebuild.save_memory"),
     ):
         saved, skipped = _save_extracted(
-            store, facts, model=None, dry_run=False, log=lambda _: None
+            store, facts, model="test-model", dry_run=False, log=lambda _: None
         )
 
     # Uniform embeddings → cosine=1.0 → duplicate.
@@ -235,7 +235,7 @@ def test_rebuild_processes_remembers(store: MemoryStore) -> None:
         mock_summ.return_value = ChunkSummary(chunk=chunk, abstract="a", summary="s")
 
         r, s, sk = rebuild_from_log(
-            messages, store, model=None, dry_run=False, log=lambda _: None
+            messages, store, model="test-model", dry_run=False, log=lambda _: None
         )
 
     assert r == 1
@@ -261,7 +261,7 @@ def test_rebuild_extracts_at_boundaries(store: MemoryStore) -> None:
     )
 
     def _mock_extract(
-        msgs: list[dict[str, Any]], model: str | None = None
+        msgs: list[dict[str, Any]], model: str = ""
     ) -> list[dict[str, str]]:
         extract_calls.append(len(msgs))
         return list(json.loads(facts_json))
@@ -272,7 +272,7 @@ def test_rebuild_extracts_at_boundaries(store: MemoryStore) -> None:
         patch("mindloop.cli.rebuild.save_memory"),
     ):
         r, s, sk = rebuild_from_log(
-            messages, store, model=None, dry_run=False, log=lambda _: None
+            messages, store, model="test-model", dry_run=False, log=lambda _: None
         )
 
     # Two extraction calls: one at boundary, one at end-of-log.
@@ -297,14 +297,14 @@ def test_rebuild_fallback_window(store: MemoryStore) -> None:
     extract_calls: list[int] = []
 
     def _mock_extract(
-        msgs: list[dict[str, Any]], model: str | None = None
+        msgs: list[dict[str, Any]], model: str = ""
     ) -> list[dict[str, str]]:
         extract_calls.append(len(msgs))
         return []
 
     with patch("mindloop.cli.rebuild.extract_window", side_effect=_mock_extract):
         r, s, sk = rebuild_from_log(
-            messages, store, model=None, dry_run=False, log=lambda _: None
+            messages, store, model="test-model", dry_run=False, log=lambda _: None
         )
 
     # First flush at _FALLBACK_WINDOW, second for the remainder.
@@ -341,7 +341,7 @@ def test_rebuild_dry_run(store: MemoryStore) -> None:
 
     with patch("mindloop.cli.rebuild.extract_window", return_value=facts):
         r, s, sk = rebuild_from_log(
-            messages, store, model=None, dry_run=True, log=lambda _: None
+            messages, store, model="test-model", dry_run=True, log=lambda _: None
         )
 
     assert r == 1

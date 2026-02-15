@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from mindloop.client import API_KEY
+from mindloop.client import API_KEY, DEFAULT_EMBEDDING_MODEL, DEFAULT_MODEL
 from mindloop.util import DEFAULT_WORKERS
 
 
@@ -35,7 +35,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default=None,
+        default=DEFAULT_MODEL,
         help="Model for extraction + summarization LLM calls.",
     )
     parser.add_argument(
@@ -76,7 +76,9 @@ def main() -> None:
         turns = collapse_messages(messages)
         chunks = compact_chunks(chunk_turns(turns))
         if len(chunks) >= 2:
-            embeddings = get_embeddings([c.text for c in chunks])
+            embeddings = get_embeddings(
+                [c.text for c in chunks], model=DEFAULT_EMBEDDING_MODEL
+            )
             chunks = merge_chunks(chunks, embeddings, log=log)
 
         total = 0

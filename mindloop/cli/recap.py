@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from mindloop.client import API_KEY
+from mindloop.client import API_KEY, DEFAULT_MODEL
 from mindloop.recap import generate_recap, save_recap
 from mindloop.util import DEFAULT_WORKERS
 
@@ -30,8 +30,8 @@ def main() -> None:
     parser.add_argument("logfile", type=Path, help="Path to the JSONL log file.")
     parser.add_argument(
         "--model",
-        default=None,
-        help="Model to use for summarization (default: summarizer default).",
+        default=DEFAULT_MODEL,
+        help=f"Model to use for summarization (default: {DEFAULT_MODEL}).",
     )
     parser.add_argument(
         "--budget",

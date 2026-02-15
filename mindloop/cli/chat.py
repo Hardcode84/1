@@ -62,7 +62,7 @@ def main() -> None:
         _log_jsonl(jsonl_path, "user", user_input)
         try:
             print("Bot: ", end="", flush=True)
-            msg = chat(messages)
+            msg = chat(messages, model=DEFAULT_MODEL)
             print()
             reply = msg.get("content", "")
             messages.append(msg)

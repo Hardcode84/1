@@ -12,7 +12,13 @@ from mindloop.chunker import (
     parse_turns,
     parse_turns_md,
 )
-from mindloop.client import API_KEY, Embeddings, get_embeddings
+from mindloop.client import (
+    API_KEY,
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_MODEL,
+    Embeddings,
+    get_embeddings,
+)
 from mindloop.util import DEFAULT_WORKERS
 
 
@@ -86,7 +92,9 @@ def main() -> None:
             return
 
         if len(chunks) >= 2:
-            embeddings = get_embeddings([c.text for c in chunks])
+            embeddings = get_embeddings(
+                [c.text for c in chunks], model=DEFAULT_EMBEDDING_MODEL
+            )
             print("=== Before merging ===\n")
             print_chunks(chunks, embeddings, show_timestamps=not is_md)
 
@@ -103,7 +111,9 @@ def main() -> None:
         from mindloop.summarizer import summarize_chunks
 
         print("=== Summaries ===\n")
-        summaries = summarize_chunks(chunks, log=print, workers=args.workers)
+        summaries = summarize_chunks(
+            chunks, model=DEFAULT_MODEL, log=print, workers=args.workers
+        )
         for i, summary in enumerate(summaries, 1):
             print(f"--- Chunk {i} ---")
             print(f"  Abstract: {summary.abstract}")

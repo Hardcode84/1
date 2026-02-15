@@ -31,7 +31,7 @@ _USER_TEMPLATE = """\
 def should_merge(
     text_a: str,
     text_b: str,
-    model: str = "openrouter/free",
+    model: str,
 ) -> bool:
     """Ask the LLM whether two chunks belong together and should merge."""
     messages: list[Message] = [
@@ -99,7 +99,7 @@ def merge_texts(
     text_a: str,
     text_b: str,
     prefer: str = "equal",
-    model: str = "openrouter/free",
+    model: str = "",
 ) -> MergeResult:
     """Merge two chunk texts and generate abstract + summary.
 

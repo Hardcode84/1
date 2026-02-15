@@ -41,7 +41,7 @@ class MemoryTools:
     def __init__(
         self,
         db_path: Path = DEFAULT_DB_PATH,
-        model: str = "openrouter/free",
+        model: str = "",
         stats: dict[Any, Any] | None = None,
         log: Callable[[str], None] = noop,
     ) -> None:

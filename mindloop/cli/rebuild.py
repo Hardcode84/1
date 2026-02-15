@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from mindloop.client import API_KEY
+from mindloop.client import API_KEY, DEFAULT_MODEL
 from mindloop.extractor import extract_window
 from mindloop.memory import MemoryStore
 from mindloop.semantic_memory import save_memory
@@ -85,7 +85,7 @@ def _save_remember(
     store: MemoryStore,
     text: str,
     abstract: str,
-    model: str | None,
+    model: str,
     dry_run: bool,
     log: Callable[[str], None],
 ) -> bool:
@@ -106,7 +106,7 @@ def _save_remember(
         text=text,
         abstract=abstract,
         summary=cs.summary,
-        model=model or "openrouter/free",
+        model=model,
         log=log,
     )
     return True
@@ -115,7 +115,7 @@ def _save_remember(
 def _save_extracted(
     store: MemoryStore,
     facts: list[dict[str, str]],
-    model: str | None,
+    model: str,
     dry_run: bool,
     log: Callable[[str], None],
 ) -> tuple[int, int]:
@@ -147,7 +147,7 @@ def _save_extracted(
             text=text,
             abstract=abstract,
             summary=summary,
-            model=model or "openrouter/free",
+            model=model,
             log=log,
         )
         saved += 1
@@ -158,7 +158,7 @@ def _save_extracted(
 def rebuild_from_log(
     messages: list[dict[str, object]],
     store: MemoryStore,
-    model: str | None,
+    model: str,
     dry_run: bool,
     log: Callable[[str], None],
 ) -> tuple[int, int, int]:
@@ -240,7 +240,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default=None,
+        default=DEFAULT_MODEL,
         help="Model for extraction + summarization LLM calls.",
     )
     parser.add_argument(

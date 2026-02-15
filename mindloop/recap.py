@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from mindloop.chunker import Turn, chunk_turns, compact_chunks, merge_chunks
-from mindloop.client import get_embeddings
+from mindloop.client import DEFAULT_EMBEDDING_MODEL, get_embeddings
 from mindloop.summarizer import ChunkSummary, summarize_chunks
 from mindloop.util import CHARS_PER_TOKEN, DEFAULT_WORKERS, noop
 
@@ -115,7 +115,7 @@ def collapse_messages(messages: list[dict[str, Any]]) -> list[Turn]:
 
 def generate_recap(
     messages: list[dict[str, Any]],
-    model: str | None = None,
+    model: str = "",
     token_budget: int = 1000,
     log: Callable[[str], None] = noop,
     workers: int = DEFAULT_WORKERS,
@@ -134,7 +134,9 @@ def generate_recap(
 
     if len(chunks) >= 2:
         log("Embedding chunks...")
-        embeddings = get_embeddings([c.text for c in chunks])
+        embeddings = get_embeddings(
+            [c.text for c in chunks], model=DEFAULT_EMBEDDING_MODEL
+        )
         chunks = merge_chunks(chunks, embeddings, log=log)
         log(f"Merged to {len(chunks)} chunks.")
 

@@ -7,29 +7,29 @@ from mindloop.merge_llm import merge_texts, should_merge
 
 def test_llm_yes() -> None:
     with patch("mindloop.merge_llm.chat", return_value={"content": "yes"}) as mock_chat:
-        assert should_merge("a", "b") is True
+        assert should_merge("a", "b", model="test-model") is True
     mock_chat.assert_called_once()
 
 
 def test_llm_no() -> None:
     with patch("mindloop.merge_llm.chat", return_value={"content": "no"}) as mock_chat:
-        assert should_merge("a", "b") is False
+        assert should_merge("a", "b", model="test-model") is False
     mock_chat.assert_called_once()
 
 
 def test_unexpected_response_treated_as_no() -> None:
     with patch("mindloop.merge_llm.chat", return_value={"content": "maybe"}):
-        assert should_merge("a", "b") is False
+        assert should_merge("a", "b", model="test-model") is False
 
 
 def test_empty_response_treated_as_no() -> None:
     with patch("mindloop.merge_llm.chat", return_value={"content": ""}):
-        assert should_merge("a", "b") is False
+        assert should_merge("a", "b", model="test-model") is False
 
 
 def test_none_content_treated_as_no() -> None:
     with patch("mindloop.merge_llm.chat", return_value={}):
-        assert should_merge("a", "b") is False
+        assert should_merge("a", "b", model="test-model") is False
 
 
 # --- merge_texts ---
@@ -41,7 +41,7 @@ def test_merge_texts_two_calls() -> None:
         {"content": "ABSTRACT: A short summary.\nSUMMARY: A longer explanation."},
     ]
     with patch("mindloop.merge_llm.chat", side_effect=responses) as mock_chat:
-        result = merge_texts("chunk a", "chunk b")
+        result = merge_texts("chunk a", "chunk b", model="test-model")
     assert mock_chat.call_count == 2
     assert result.text == "Merged content here."
     assert result.abstract == "A short summary."
@@ -54,7 +54,7 @@ def test_merge_texts_second_call_has_conversation_context() -> None:
         {"content": "ABSTRACT: abs\nSUMMARY: sum"},
     ]
     with patch("mindloop.merge_llm.chat", side_effect=responses) as mock_chat:
-        merge_texts("a", "b")
+        merge_texts("a", "b", model="test-model")
     # Second call should have 3 messages: user, assistant (merged), user (summarize).
     second_call_messages = mock_chat.call_args_list[1][0][0]
     assert len(second_call_messages) == 3
@@ -65,7 +65,7 @@ def test_merge_texts_second_call_has_conversation_context() -> None:
 def test_merge_texts_prefer_a() -> None:
     responses = [{"content": "merged"}, {"content": "ABSTRACT: a\nSUMMARY: s"}]
     with patch("mindloop.merge_llm.chat", side_effect=responses) as mock_chat:
-        merge_texts("a", "b", prefer="a")
+        merge_texts("a", "b", prefer="a", model="test-model")
     system = mock_chat.call_args_list[0][1]["system_prompt"]
     assert "Chunk A is the primary source" in system
 
@@ -73,7 +73,7 @@ def test_merge_texts_prefer_a() -> None:
 def test_merge_texts_prefer_b() -> None:
     responses = [{"content": "merged"}, {"content": "ABSTRACT: a\nSUMMARY: s"}]
     with patch("mindloop.merge_llm.chat", side_effect=responses) as mock_chat:
-        merge_texts("a", "b", prefer="b")
+        merge_texts("a", "b", prefer="b", model="test-model")
     system = mock_chat.call_args_list[0][1]["system_prompt"]
     assert "Chunk B is the primary source" in system
 
@@ -84,7 +84,7 @@ def test_merge_texts_unparseable_summary() -> None:
         {"content": "The model did something unexpected."},
     ]
     with patch("mindloop.merge_llm.chat", side_effect=responses):
-        result = merge_texts("a", "b")
+        result = merge_texts("a", "b", model="test-model")
     assert result.text == "merged text"
     assert result.abstract == ""
     assert result.summary == ""
