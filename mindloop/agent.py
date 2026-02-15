@@ -61,37 +61,36 @@ def _no_ask(message: str) -> str:
     return "User is unavailable."
 
 
-def _try_extract(
-    messages: list[Message],
-    extract_checkpoint: int,
-    on_extract: Callable[[list[Message]], None] | None,
-) -> int:
-    """Fire mid-session extraction if a callback is registered.
+class Extractor:
+    """Tracks checkpoint and fires mid-session extraction callback."""
 
-    Returns the updated extract checkpoint.
-    """
-    if on_extract is not None:
-        on_extract(messages[extract_checkpoint:])
-        return len(messages)
-    return extract_checkpoint
+    def __init__(
+        self,
+        on_extract: Callable[[list[Message]], None] | None,
+        start: int = 0,
+    ) -> None:
+        self._on_extract = on_extract
+        self._checkpoint = start
+
+    def advance(self, messages: list[Message]) -> None:
+        """Send new messages to the extraction callback and advance checkpoint."""
+        if self._on_extract is not None:
+            self._on_extract(messages[self._checkpoint :])
+            self._checkpoint = len(messages)
 
 
 def _nudge_continue(
     messages: list[Message],
-    extract_checkpoint: int,
+    extractor: Extractor,
     total_tokens: int,
     max_tokens: int,
     warned_thresholds: set[float],
-    on_extract: Callable[[list[Message]], None] | None,
     on_message: Callable[[Message], None],
     on_step: Callable[[str], None],
     nudge_pool: NudgePool | None,
-) -> int:
-    """Inject a user-role nudge after a text-only model response.
-
-    Returns the updated extract checkpoint.
-    """
-    extract_checkpoint = _try_extract(messages, extract_checkpoint, on_extract)
+) -> None:
+    """Inject a user-role nudge after a text-only model response."""
+    extractor.advance(messages)
     nudge_text = _USER_UNAVAILABLE
     if nudge_pool:
         nudge_text += "\n\n" + nudge_pool.next()
@@ -102,23 +101,18 @@ def _nudge_continue(
     _inject_budget_warnings(
         total_tokens, max_tokens, warned_thresholds, messages, on_message, on_step
     )
-    return extract_checkpoint
 
 
 def _maybe_reflect(
     messages: list[Message],
-    extract_checkpoint: int,
-    on_extract: Callable[[list[Message]], None] | None,
+    extractor: Extractor,
     on_message: Callable[[Message], None],
     on_step: Callable[[str], None],
     nudge_extra: str,
     nudge_pool: NudgePool | None,
-) -> int:
-    """Run mid-session extraction and inject a reflection nudge.
-
-    Returns the updated extract checkpoint.
-    """
-    extract_checkpoint = _try_extract(messages, extract_checkpoint, on_extract)
+) -> None:
+    """Run mid-session extraction and inject a reflection nudge."""
+    extractor.advance(messages)
 
     reflect_text = (
         "You've been using tools for a while. "
@@ -132,7 +126,6 @@ def _maybe_reflect(
     messages.append(reflect)
     on_message(reflect)
     on_step(f"\n[reflect] {reflect_text}")
-    return extract_checkpoint
 
 
 def run_agent(
@@ -167,7 +160,7 @@ def run_agent(
     total_cost = 0.0
     warned_thresholds: set[float] = set()
     tool_turns_since_reflect = 0
-    extract_checkpoint = len(messages)
+    extractor = Extractor(on_extract, start=len(messages))
 
     # Register runtime tools directly on the registry.
 
@@ -255,13 +248,12 @@ def run_agent(
 
         tool_calls = response.get("tool_calls")
         if not tool_calls:
-            extract_checkpoint = _nudge_continue(
+            _nudge_continue(
                 messages,
-                extract_checkpoint,
+                extractor,
                 total_tokens,
                 max_tokens,
                 warned_thresholds,
-                on_extract,
                 on_message,
                 on_step,
                 nudge_pool,
@@ -315,10 +307,9 @@ def run_agent(
         # Periodic reflection + mid-session extraction.
         if tool_turns_since_reflect >= _REFLECT_INTERVAL:
             tool_turns_since_reflect = 0
-            extract_checkpoint = _maybe_reflect(
+            _maybe_reflect(
                 messages,
-                extract_checkpoint,
-                on_extract=on_extract,
+                extractor,
                 on_message=on_message,
                 on_step=on_step,
                 nudge_extra=nudge_extra,
