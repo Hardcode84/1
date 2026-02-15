@@ -51,6 +51,16 @@ def _with_retry(
             if attempt == _MAX_RETRIES - 1:
                 raise
             on_error("\n[interrupted, retrying...]")
+        except requests.exceptions.HTTPError as exc:
+            resp = exc.response
+            if resp is not None and resp.status_code >= 500:
+                if attempt == _MAX_RETRIES - 1:
+                    raise
+                wait = _RETRY_BACKOFF * (attempt + 1)
+                on_error(f"\n[server {resp.status_code}, retrying in {wait:.0f}s...]")
+                time.sleep(wait)
+            else:
+                raise  # 4xx errors are not retryable.
         except _TRANSIENT_ERRORS:
             if attempt == _MAX_RETRIES - 1:
                 raise
