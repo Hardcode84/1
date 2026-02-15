@@ -28,19 +28,21 @@ def _inject_budget_warnings(
     warned: set[float],
     messages: list[Message],
     on_message: Callable[[Message], None],
+    on_step: Callable[[str], None],
 ) -> None:
     """Inject system warnings when token usage crosses thresholds."""
     for threshold in _BUDGET_WARNING_THRESHOLDS:
         if threshold not in warned and total_tokens >= max_tokens * threshold:
             warned.add(threshold)
             pct = int(threshold * 100)
-            warn: Message = {
-                "role": "system",
-                "content": f"Warning: {pct}% of token budget used"
-                f" ({total_tokens} / {max_tokens}).",
-            }
+            text = (
+                f"Warning: {pct}% of token budget used"
+                f" ({total_tokens} / {max_tokens})."
+            )
+            warn: Message = {"role": "system", "content": text}
             messages.append(warn)
             on_message(warn)
+            on_step(f"\n[budget] {text}")
 
 
 def _estimate_tokens(messages: list[Message], response: Message) -> int:
@@ -57,6 +59,28 @@ def _auto_confirm(_name: str, _arguments: str) -> bool:
 
 def _no_ask(message: str) -> str:
     return "User is unavailable."
+
+
+def _nudge_continue(
+    messages: list[Message],
+    total_tokens: int,
+    max_tokens: int,
+    warned_thresholds: set[float],
+    on_message: Callable[[Message], None],
+    on_step: Callable[[str], None],
+    nudge_pool: NudgePool | None,
+) -> None:
+    """Inject a user-role nudge after a text-only model response."""
+    nudge_text = _USER_UNAVAILABLE
+    if nudge_pool:
+        nudge_text += "\n\n" + nudge_pool.next()
+    nudge: Message = {"role": "user", "content": nudge_text}
+    messages.append(nudge)
+    on_message(nudge)
+    on_step(f"\n[nudge] {nudge_text}")
+    _inject_budget_warnings(
+        total_tokens, max_tokens, warned_thresholds, messages, on_message, on_step
+    )
 
 
 def _maybe_reflect(
@@ -211,15 +235,14 @@ def run_agent(
 
         tool_calls = response.get("tool_calls")
         if not tool_calls:
-            # Nudge the model to keep going.
-            nudge_text = _USER_UNAVAILABLE
-            if nudge_pool:
-                nudge_text += "\n\n" + nudge_pool.next()
-            nudge: Message = {"role": "user", "content": nudge_text}
-            messages.append(nudge)
-            on_message(nudge)
-            _inject_budget_warnings(
-                total_tokens, max_tokens, warned_thresholds, messages, on_message
+            _nudge_continue(
+                messages,
+                total_tokens,
+                max_tokens,
+                warned_thresholds,
+                on_message,
+                on_step,
+                nudge_pool,
             )
             continue
 
@@ -259,7 +282,12 @@ def run_agent(
 
         # Warn the model after all tool results are appended.
         _inject_budget_warnings(
-            total_tokens, max_tokens, warned_thresholds, messages, on_message
+            total_tokens,
+            max_tokens,
+            warned_thresholds,
+            messages,
+            on_message,
+            on_step,
         )
 
         # Periodic reflection + mid-session extraction.
