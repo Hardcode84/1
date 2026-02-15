@@ -425,31 +425,33 @@ def _make_extract_callback(
     pending_future: Future[list[dict[str, str]]] | None = None
     executor = ThreadPoolExecutor(max_workers=1)
 
-    def _drain() -> None:
+    def _drain(wait: bool = False) -> None:
         nonlocal pending_future
-        if pending_future is not None and pending_future.done():
-            try:
-                facts = pending_future.result()
-                for fact in facts:
-                    save_memory(
-                        store,
-                        fact["text"],
-                        fact["abstract"],
-                        fact.get("summary", fact["abstract"]),
-                        model=model or "openrouter/free",
-                        log=log,
-                    )
-            except Exception as exc:
-                log(f"Warning: mid-session extraction save failed: {exc}")
-            pending_future = None
+        if pending_future is None:
+            return
+        if not wait and not pending_future.done():
+            return
+        try:
+            facts = pending_future.result(timeout=30)
+            for fact in facts:
+                save_memory(
+                    store,
+                    fact["text"],
+                    fact["abstract"],
+                    fact.get("summary", fact["abstract"]),
+                    model=model or "openrouter/free",
+                    log=log,
+                )
+        except Exception as exc:
+            log(f"Warning: mid-session extraction save failed: {exc}")
+        pending_future = None
 
     def _on_extract(messages: list[dict[str, Any]]) -> None:
         nonlocal pending_future
-        # Drain previous results first (save on main thread).
-        _drain()
-        # Launch new extraction (LLM call in background).
-        if pending_future is None:
-            pending_future = executor.submit(extract_window, messages, model)
+        # Wait for previous extraction to commit before launching the next.
+        # This ensures memories are available for recall within the session.
+        _drain(wait=True)
+        pending_future = executor.submit(extract_window, messages, model)
 
     _on_extract.drain = _drain  # type: ignore[attr-defined]
     return _on_extract, executor
@@ -579,8 +581,8 @@ def main() -> None:
         print("\n\nInterrupted.")
     finally:
         print("\n")
-        # Drain any pending mid-session extraction before post-session work.
-        on_extract.drain()  # type: ignore[attr-defined]
+        # Wait for any in-flight mid-session extraction before post-session work.
+        on_extract.drain(wait=True)  # type: ignore[attr-defined]
         extract_executor.shutdown(wait=False)
         _generate_session_recap(paths, jsonl_path, summarizer_model)
         _extract_session_memories(jsonl_path, mt.store, summarizer_model)
