@@ -156,7 +156,7 @@ def test_save_extracted_dry_run() -> None:
         {"text": "fact two", "abstract": "abs two", "summary": "detail two"},
     ]
     # store is unused in dry run, pass a dummy.
-    saved, skipped = _save_extracted(None, facts, dry_run=True, log=lambda _: None)  # type: ignore[arg-type]
+    saved, skipped = _save_extracted(None, facts, model=None, dry_run=True, log=lambda _: None)  # type: ignore[arg-type]
     assert saved == 2
     assert skipped == 0
 
@@ -184,7 +184,7 @@ def test_save_extracted_dedup(store: MemoryStore) -> None:
         patch("mindloop.cli.rebuild.save_memory"),
     ):
         saved, skipped = _save_extracted(
-            store, facts, dry_run=False, log=lambda _: None
+            store, facts, model=None, dry_run=False, log=lambda _: None
         )
 
     # Uniform embeddings → cosine=1.0 → duplicate.

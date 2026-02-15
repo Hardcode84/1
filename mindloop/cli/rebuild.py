@@ -115,6 +115,7 @@ def _save_remember(
 def _save_extracted(
     store: MemoryStore,
     facts: list[dict[str, str]],
+    model: str | None,
     dry_run: bool,
     log: Callable[[str], None],
 ) -> tuple[int, int]:
@@ -146,7 +147,7 @@ def _save_extracted(
             text=text,
             abstract=abstract,
             summary=summary,
-            model="openrouter/free",
+            model=model or "openrouter/free",
             log=log,
         )
         saved += 1
@@ -181,7 +182,7 @@ def rebuild_from_log(
             return
         log(f"  [extract] extracting window ({len(window)} messages)...")
         facts = extract_window(window, model=model)
-        s, sk = _save_extracted(store, facts, dry_run, log)
+        s, sk = _save_extracted(store, facts, model, dry_run, log)
         facts_saved += s
         facts_skipped += sk
         window.clear()
