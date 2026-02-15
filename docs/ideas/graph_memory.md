@@ -6,7 +6,7 @@ Keep chunks as separate nodes, connect them with typed edges instead of merging 
 
 ## Problem with current merge approach
 
-The merge loop snowballs. Two similar chunks merge, the result is similar to a third, that merges too, and after 5-7 rounds you get a 2000-char blob covering 5 unrelated topics. Guardrails (char cap, faithfulness, neighbor score) help but fight symptoms rather than the root cause: merging is the only way to express "these are related."
+The merge loop snowballs. Two similar chunks merge, the result is similar to a third, that merges too, and after 5-7 rounds you get a 2000-char blob covering 5 unrelated topics. Guardrails (faithfulness, neighbor score) help but fight symptoms rather than the root cause: merging is the only way to express "these are related."
 
 Observed failure modes:
 - **Mega-chunks**: depth-7 merge chains producing unfocused catch-all entries.
@@ -48,7 +48,7 @@ Minimal set to start:
 
 | Edge | Meaning | When created |
 |---|---|---|
-| `similar_to` | Topically related | On save, when merge gate *rejects* a merge (too large, failed faithfulness) but similarity is high |
+| `similar_to` | Topically related | On save, when merge gate *rejects* a merge (failed faithfulness, neighbor score too high) but similarity is high |
 | `supersedes` | Newer version of same fact | On save, when new chunk covers same topic with updated info. Old chunk deactivated, edge preserves lineage |
 | `elaborates` | Adds detail to existing chunk | On save, when new chunk extends an existing one without replacing it |
 
@@ -80,7 +80,7 @@ Current flow:
 Proposed flow:
 1. Search for similar chunks.
 2. If highly similar and both small → merge (keep current behavior for genuine duplicates).
-3. If similar but merge would be too large or loses focus → add `similar_to` edge, keep both.
+3. If similar but merge loses focus (faithfulness/neighbor rejection) → add `similar_to` edge, keep both.
 4. If new chunk supersedes existing fact → add `supersedes` edge, deactivate old chunk.
 5. No merge loop beyond 1-2 rounds.
 
@@ -121,7 +121,7 @@ When `should_merge()` returns true but the chunks have low source similarity (co
 
 Heuristic:
 - High similarity + small chunks → merge (dedup).
-- High similarity + large result → `similar_to` edge.
+- High similarity + merge rejected by gate → `similar_to` edge.
 - LLM says merge + low source similarity → `supersedes` edge, deactivate old.
 
 ### Migration
@@ -137,7 +137,7 @@ The `source_a`/`source_b` columns on chunks already encode merge lineage. These 
 ## Implementation order
 
 1. Add `chunk_edges` table and migration.
-2. Emit `similar_to` edges when merge is rejected (size cap, faithfulness failure) but similarity was above `sim_low`.
+2. Emit `similar_to` edges when merge is rejected (faithfulness failure, neighbor score) but similarity was above `sim_low`.
 3. Add `supersedes` edge type and detection heuristic.
 4. Expand search results by 1-hop edge traversal.
 5. Update recall tool to show relations.
