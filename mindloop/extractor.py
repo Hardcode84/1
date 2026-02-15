@@ -20,14 +20,28 @@ _EXTRACTION_MODEL = "deepseek/deepseek-v3.2"
 CONTEXT_CHARS = 200
 
 _SYSTEM_PROMPT = """\
-You extract factual memories from a conversation excerpt between "You" (user) and "Bot" (assistant).
+You extract factual memories from a conversation between "You" (user) and "Bot" (assistant).
 Write from the assistant's perspective using first person ("I").
-Return a JSON array of objects, each with "text", "abstract", and "summary" keys.
-"text" is the full fact (1-3 sentences).
-"abstract" is a one-sentence TL;DR.
-"summary" is a 2-4 sentence expanded overview.
-Only extract concrete, reusable facts — skip greetings, filler, and meta-talk.
-If there is nothing worth remembering, return an empty array: []
+The conversation may include "Bot thinking" (private reasoning) — attribute those \
+thoughts to the assistant, never to the user.
+
+Return a JSON array of objects with "text", "abstract", and "summary" keys:
+- "text": the fact itself (1-3 sentences). State *what was learned or decided*, \
+not the act of learning or saving it.
+- "abstract": one-sentence TL;DR.
+- "summary": 2-4 sentences adding context, implications, or reasoning \
+beyond what "text" already says. Do NOT just rephrase the text.
+
+Guidelines:
+- Extract concrete, reusable knowledge: decisions, constraints, tool behaviors, \
+user preferences, operational details (token limits, sandbox rules, etc.).
+- Skip greetings, filler, meta-talk, and self-referential statements about \
+remembering or saving memories.
+- Deduplicate: if multiple parts of the conversation describe the same event \
+or fact, produce ONE consolidated entry, not several.
+- Prefer specific operational facts over vague narrative summaries.
+- If there is nothing worth remembering, return an empty array: []
+
 Return ONLY valid JSON, no markdown fences or commentary.\
 """
 
