@@ -16,6 +16,7 @@ _DEFAULT_MAX_NEIGHBOR_SCORE = 0.6
 _DEFAULT_NEIGHBOR_K = 3
 _DEFAULT_SIM_HIGH = 0.9
 _DEFAULT_SIM_LOW = 0.2
+_DEFAULT_MAX_CHARS = 500
 
 
 def save_memory(
@@ -33,6 +34,7 @@ def save_memory(
     log: Callable[[str], None] = noop,
     sim_high: float = _DEFAULT_SIM_HIGH,
     sim_low: float = _DEFAULT_SIM_LOW,
+    max_chars: int = _DEFAULT_MAX_CHARS,
 ) -> int:
     """Save a memory, merging with similar existing memories until fixed point.
 
@@ -90,6 +92,14 @@ def save_memory(
                 mr: MergeResult = merge_texts(
                     text, existing_text, prefer=prefer, model=model
                 )
+
+                # Check 0: merged text too large.
+                if len(mr.text) > max_chars:
+                    log(
+                        f"[memory]   Merged text {len(mr.text)} chars"
+                        f" > {max_chars} → skipping merge."
+                    )
+                    continue
 
                 # Check 1: faithfulness (before deactivate — no store interaction).
                 passed, sim_a, sim_b = faithfulness(
