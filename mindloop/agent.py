@@ -64,6 +64,7 @@ def _maybe_reflect(
     extract_checkpoint: int,
     on_extract: Callable[[list[Message]], None] | None,
     on_message: Callable[[Message], None],
+    on_step: Callable[[str], None],
     nudge_extra: str,
     nudge_pool: NudgePool | None,
 ) -> int:
@@ -86,6 +87,7 @@ def _maybe_reflect(
     reflect: Message = {"role": "system", "content": reflect_text}
     messages.append(reflect)
     on_message(reflect)
+    on_step(f"\n[reflect] {reflect_text}")
     return extract_checkpoint
 
 
@@ -268,6 +270,7 @@ def run_agent(
                 extract_checkpoint,
                 on_extract=on_extract,
                 on_message=on_message,
+                on_step=on_step,
                 nudge_extra=nudge_extra,
                 nudge_pool=nudge_pool,
             )
