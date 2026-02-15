@@ -61,16 +61,37 @@ def _no_ask(message: str) -> str:
     return "User is unavailable."
 
 
+def _try_extract(
+    messages: list[Message],
+    extract_checkpoint: int,
+    on_extract: Callable[[list[Message]], None] | None,
+) -> int:
+    """Fire mid-session extraction if a callback is registered.
+
+    Returns the updated extract checkpoint.
+    """
+    if on_extract is not None:
+        on_extract(messages[extract_checkpoint:])
+        return len(messages)
+    return extract_checkpoint
+
+
 def _nudge_continue(
     messages: list[Message],
+    extract_checkpoint: int,
     total_tokens: int,
     max_tokens: int,
     warned_thresholds: set[float],
+    on_extract: Callable[[list[Message]], None] | None,
     on_message: Callable[[Message], None],
     on_step: Callable[[str], None],
     nudge_pool: NudgePool | None,
-) -> None:
-    """Inject a user-role nudge after a text-only model response."""
+) -> int:
+    """Inject a user-role nudge after a text-only model response.
+
+    Returns the updated extract checkpoint.
+    """
+    extract_checkpoint = _try_extract(messages, extract_checkpoint, on_extract)
     nudge_text = _USER_UNAVAILABLE
     if nudge_pool:
         nudge_text += "\n\n" + nudge_pool.next()
@@ -81,6 +102,7 @@ def _nudge_continue(
     _inject_budget_warnings(
         total_tokens, max_tokens, warned_thresholds, messages, on_message, on_step
     )
+    return extract_checkpoint
 
 
 def _maybe_reflect(
@@ -96,9 +118,7 @@ def _maybe_reflect(
 
     Returns the updated extract checkpoint.
     """
-    if on_extract is not None:
-        on_extract(messages[extract_checkpoint:])
-        extract_checkpoint = len(messages)
+    extract_checkpoint = _try_extract(messages, extract_checkpoint, on_extract)
 
     reflect_text = (
         "You've been using tools for a while. "
@@ -235,11 +255,13 @@ def run_agent(
 
         tool_calls = response.get("tool_calls")
         if not tool_calls:
-            _nudge_continue(
+            extract_checkpoint = _nudge_continue(
                 messages,
+                extract_checkpoint,
                 total_tokens,
                 max_tokens,
                 warned_thresholds,
+                on_extract,
                 on_message,
                 on_step,
                 nudge_pool,

@@ -392,3 +392,17 @@ def test_on_extract_checkpoint_advances(mock_chat: MagicMock) -> None:
     first_in_second = extract_calls[1][0]
     assert first_in_second["role"] == "system"
     assert "reflect" in first_in_second["content"].lower()
+
+
+@patch("mindloop.agent.chat")
+def test_on_extract_fires_on_text_nudge(mock_chat: MagicMock) -> None:
+    """on_extract is called during text-only nudges too."""
+    mock_chat.side_effect = [
+        _make_final_response("thinking out loud"),
+        _make_done_response("c1", "done"),
+    ]
+    on_extract = MagicMock()
+
+    run_agent("prompt", registry=_echo_registry(), on_extract=on_extract)
+
+    assert on_extract.call_count == 1
