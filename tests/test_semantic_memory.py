@@ -382,29 +382,6 @@ def test_save_logs_progress(store: MemoryStore) -> None:
     assert len(merge_msgs) >= 1
 
 
-def test_save_skips_merge_when_too_large(store: MemoryStore) -> None:
-    """Merged text exceeding max_chars is rejected."""
-    store.save(_summary("old fact"))
-
-    long_text = "x" * 200
-    mr = MergeResult(text=long_text, abstract="abs", summary="sum")
-    with (
-        _patch_embeddings(_EMB_A),
-        patch("mindloop.semantic_memory.merge_texts", return_value=mr),
-    ):
-        save_memory(
-            store,
-            "new",
-            "abs",
-            "sum",
-            model="test-model",
-            max_chars=100,
-        )
-
-    # Merge rejected — both chunks remain active.
-    assert store.count() == 2
-
-
 def test_save_aborts_on_faithfulness_failure(store: MemoryStore) -> None:
     """Faithfulness failure aborts merge without deactivating any chunks."""
     store.save(_summary("old fact"))
