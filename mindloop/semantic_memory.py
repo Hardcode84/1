@@ -65,6 +65,16 @@ def save_memory(
                 existing_text = result.chunk_summary.chunk.text
                 sim = result.cosine_score
 
+                # Skip if combined input already exceeds size cap.
+                # Merged text is typically shorter (dedup), but never longer.
+                combined = len(text) + len(existing_text)
+                if combined > max_chars * 2:
+                    log(
+                        f"[memory]   #{result.id} combined {combined} chars"
+                        f" > {max_chars * 2} → too large, skip."
+                    )
+                    continue
+
                 # Auto-merge / auto-skip by cosine similarity thresholds.
                 if sim >= sim_high:
                     log(
