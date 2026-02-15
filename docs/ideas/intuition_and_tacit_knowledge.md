@@ -84,6 +84,28 @@ Options 3 (codebook) and 5 (basis mixing) are the most promising — they compre
 
 **Practical constraint:** all approaches require custom inference with access to the decoding loop. Cannot be done through APIs.
 
+**Why the meta-model can be small.** The vocab size discussion applies directly here. A language model's dominant cost in small parameter regimes is the embedding/output matrices that scale with vocab size. The meta-model's effective vocab is tiny:
+
+| Encoding | Effective "vocab" | Output per step |
+|---|---|---|
+| Basis mixing | N/A (regression) | 5-10 scalars |
+| Steering codebook | ~1024 | 1024 logits |
+| Sparse nudges | variable | few (id, delta) pairs |
+| Low-rank | N/A (regression) | ~64 floats |
+
+A codebook model with vocab 1024 vs a language model's 128k has ~128x smaller output layer. Basis mixing has no vocab at all — just a regression head.
+
+The task is also simpler than language generation. The meta-model needs to recognize patterns ("sycophantic agreement," "circular reasoning," "overconfident about uncertain code") — closer to classification than generation. This means smaller hidden dims (256-512 vs 4096), fewer layers, and potentially non-transformer architectures (RNN, state-space models like Mamba) since the steering signal is mostly about tracking a running state, not attending over long contexts.
+
+Rough parameter estimates: 10-50M for basis mixing, 100-300M for a codebook model. Phone-runnable.
+
+**Training data** is the harder problem. You need (generation trace, steering signal) pairs. Possible sources:
+
+1. **Distillation from a larger model.** Have a strong model judge where a weaker model went wrong, label those points with the desired steering direction.
+2. **Human "bad vibes" annotations.** When a human flags "this is where it went off the rails" during an agent session, that's exactly the supervision signal. Sparse but high-quality.
+3. **Contrastive pairs.** Compare successful vs failed agent runs on the same task. The divergence points define where steering was needed.
+4. **Self-play.** Run the primary model with random steering perturbations, score outcomes, learn which perturbations helped. Requires a reliable outcome metric.
+
 ### The critic model fills a different gap
 
 The [cross-context critic](tactical_strategic_gap.md) (separate model reviewing changes) addresses the *local-coherence trap* — the generator can't see its own blind spots. But it doesn't address the *tacit knowledge gap* — the critic also has no intuition, it just has fresh eyes. Both mitigations are needed: explicit invariants give the critic something to check against; the fresh context lets it actually see violations the generator's reasoning chain obscured.
