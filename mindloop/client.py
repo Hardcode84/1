@@ -31,6 +31,7 @@ _TRANSIENT_ERRORS = (
     requests.exceptions.ConnectionError,
     requests.exceptions.ReadTimeout,
     requests.exceptions.ConnectTimeout,
+    requests.exceptions.JSONDecodeError,
 )
 _MAX_RETRIES = 4
 _RETRY_BACKOFF = 2.0
