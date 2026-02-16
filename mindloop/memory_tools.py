@@ -89,10 +89,18 @@ class MemoryTools:
         )
         return f"Saved as #{row_id}."
 
-    def recall(self, query: str, top_k: int = 5, original_only: bool = False) -> str:
+    def recall(
+        self,
+        query: str,
+        top_k: int = 5,
+        original_only: bool = False,
+        diversity: float = 0.0,
+    ) -> str:
         """Search memory. Returns ranked results with id, abstract, summary, score."""
         self._track("recall")
-        results = self._store.search(query, top_k=top_k, original_only=original_only)
+        results = self._store.search(
+            query, top_k=top_k, original_only=original_only, diversity=diversity
+        )
         if not results:
             return "No memories found."
         result_ids = [r.id for r in results]

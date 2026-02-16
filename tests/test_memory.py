@@ -450,6 +450,53 @@ def test_search_graceful_without_fts_match(store: MemoryStore) -> None:
     assert results[0].chunk_summary.abstract == "something"
 
 
+def test_search_diversity_spreads_results(store: MemoryStore) -> None:
+    """With high diversity, MMR picks results far from each other."""
+    # Two chunks clustered together, one far away but still relevant.
+    store.save(_summary("topic A1", abstract="A1"))
+    store.save(_summary("topic A2", abstract="A2"))
+    store.save(_summary("topic B1", abstract="B1"))
+
+    emb_map = {
+        # A1 and A2 are nearly identical (same cluster).
+        "You: topic A1": np.array([1.0, 0.1, 0.0], dtype=np.float32),
+        "You: topic A2": np.array([1.0, 0.0, 0.0], dtype=np.float32),
+        # B1 is relevant but orthogonal to the A cluster.
+        "You: topic B1": np.array([0.6, 0.0, 0.8], dtype=np.float32),
+    }
+    query_emb = np.array([1.0, 0.05, 0.0], dtype=np.float32)
+
+    def _get_emb(texts: list[str], **_kw: object) -> np.ndarray:
+        return np.stack([emb_map.get(t, query_emb) for t in texts])
+
+    # Without diversity: top-2 picks both A-cluster chunks.
+    with patch("mindloop.memory.get_embeddings", side_effect=_get_emb):
+        baseline = store.search("query", top_k=2, diversity=0.0)
+    baseline_abs = {r.chunk_summary.abstract for r in baseline}
+    assert baseline_abs == {"A1", "A2"}
+
+    # With diversity: top-2 picks one A-cluster + the B chunk.
+    with patch("mindloop.memory.get_embeddings", side_effect=_get_emb):
+        diverse = store.search("query", top_k=2, diversity=0.8)
+    diverse_abs = {r.chunk_summary.abstract for r in diverse}
+    assert "B1" in diverse_abs
+    # First result is still the most relevant.
+    assert diverse[0].chunk_summary.abstract in {"A1", "A2"}
+
+
+def test_search_diversity_zero_matches_baseline(store: MemoryStore) -> None:
+    """diversity=0.0 produces identical results to no-diversity path."""
+    store.save(_summary("cats", abstract="cats"))
+    store.save(_summary("dogs", abstract="dogs"))
+
+    with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
+        baseline = store.search("query", top_k=2)
+    with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
+        div_zero = store.search("query", top_k=2, diversity=0.0)
+
+    assert [r.id for r in baseline] == [r.id for r in div_zero]
+
+
 def test_find_exact_returns_active_match(store: MemoryStore) -> None:
     """find_exact returns the id of an active chunk with identical text."""
     cs = _summary("hello world")

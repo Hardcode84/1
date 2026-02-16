@@ -207,6 +207,53 @@ def _fts_escape(query: str) -> str:
     return " OR ".join(f'"{t}"' for t in tokens)
 
 
+def _mmr_select(
+    rrf_scores: dict[int, float],
+    matrix: np.ndarray,
+    norms: np.ndarray,
+    ids: list[int],
+    top_k: int,
+    diversity: float,
+) -> list[int]:
+    """Greedy Maximal Marginal Relevance selection.
+
+    Balances relevance (*rrf_scores*) against inter-result diversity.
+    *diversity* 0..1 controls the trade-off: 0 = pure relevance,
+    1 = maximum spread.  *matrix* / *norms* are the raw chunk embeddings
+    and their L2 norms, aligned with *ids*.
+    """
+    id_to_idx = {cid: i for i, cid in enumerate(ids)}
+    normed = matrix / norms  # Unit vectors for cosine.
+    candidates = sorted(rrf_scores, key=rrf_scores.__getitem__, reverse=True)
+    lam = 1.0 - diversity  # Weight for relevance term.
+
+    selected: list[int] = []
+    selected_idx: list[int] = []
+    selected_set: set[int] = set()
+
+    for _ in range(min(top_k, len(candidates))):
+        best_id = -1
+        best_mmr = -float("inf")
+        for cid in candidates:
+            if cid in selected_set:
+                continue
+            relevance = rrf_scores[cid]
+            if selected_idx:
+                sims = normed[selected_idx] @ normed[id_to_idx[cid]]
+                max_sim = float(np.max(sims))
+            else:
+                max_sim = 0.0
+            mmr = lam * relevance - diversity * max_sim
+            if mmr > best_mmr:
+                best_mmr = mmr
+                best_id = cid
+        selected.append(best_id)
+        selected_set.add(best_id)
+        selected_idx.append(id_to_idx[best_id])
+
+    return selected
+
+
 class MemoryStore:
     def __init__(self, db_path: Path = DEFAULT_DB_PATH) -> None:
         self.conn = sqlite3.connect(db_path)
@@ -404,7 +451,11 @@ class MemoryStore:
         return [self.save(summary) for summary in summaries]
 
     def search(
-        self, query: str, top_k: int = 5, original_only: bool = False
+        self,
+        query: str,
+        top_k: int = 5,
+        original_only: bool = False,
+        diversity: float = 0.0,
     ) -> list[SearchResult]:
         """Find the most relevant chunks via hybrid embedding + BM25 search.
 
@@ -412,6 +463,10 @@ class MemoryStore:
         Reciprocal Rank Fusion.  When *original_only* is True, search only
         leaf chunks (those not produced by merging) regardless of active
         status.  Otherwise search active chunks only.
+
+        *diversity* (0.0–1.0) controls MMR reranking.  0.0 = pure relevance,
+        1.0 = maximum inter-result diversity.  Results stay query-relevant
+        but are pushed apart from each other.
         """
         query_emb: Embedding = get_embeddings([query], model=DEFAULT_EMBEDDING_MODEL)[0]
 
@@ -491,7 +546,12 @@ class MemoryStore:
             raw = 1.0 / (_RRF_K + e_rank) + 1.0 / (_RRF_K + b_rank)
             rrf_scores[cid] = raw / rrf_max
 
-        top_ids = sorted(rrf_scores, key=rrf_scores.__getitem__, reverse=True)[:top_k]
+        if diversity > 0.0 and len(rrf_scores) > 1:
+            top_ids = _mmr_select(rrf_scores, matrix, norms, ids, top_k, diversity)
+        else:
+            top_ids = sorted(rrf_scores, key=rrf_scores.__getitem__, reverse=True)[
+                :top_k
+            ]
 
         results = []
         for cid in top_ids:

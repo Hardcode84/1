@@ -448,6 +448,12 @@ def add_memory_tools(
                 type="boolean",
                 required=False,
             ),
+            Param(
+                name="diversity",
+                description="Diversity weight 0.0-1.0. Higher values spread results across different topics. Default: 0.0.",
+                type="number",
+                required=False,
+            ),
         ],
         func=mt.recall,
     )
