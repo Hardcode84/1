@@ -18,7 +18,11 @@ Message = dict[str, Any]
 Tool = dict[str, Any]
 
 # Kwargs for deterministic one-shot LLM calls (summarization, merging, extraction).
-DETERMINISTIC_PARAMS: dict[str, Any] = {"temperature": 0, "seed": 42}
+DETERMINISTIC_PARAMS: dict[str, Any] = {
+    "temperature": 0,
+    "seed": 42,
+    "max_tokens": 4096,
+}
 
 # 1D embedding vector, shape (dim,), dtype float32.
 Embedding = np.ndarray
@@ -213,6 +217,7 @@ def chat(
     seed: int | None = None,
     reasoning_effort: str | None = None,
     cache_messages: bool = True,
+    max_tokens: int | None = None,
 ) -> Message:
     """Send a chat completion request. Returns the full response message dict."""
     if not model:
@@ -231,6 +236,8 @@ def chat(
         payload["temperature"] = temperature
     if seed is not None:
         payload["seed"] = seed
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     if reasoning_effort is not None:
         payload["reasoning"] = {"enabled": True, "effort": reasoning_effort}
 

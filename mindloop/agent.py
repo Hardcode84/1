@@ -18,6 +18,7 @@ def _noop_message(_msg: Message) -> None:
 
 
 DEFAULT_MAX_TOKENS = 200_000 * 5
+_MAX_OUTPUT_TOKENS = 16_384
 _BUDGET_WARNING_THRESHOLDS = (0.5, 0.8)
 _REFLECT_INTERVAL = 5
 
@@ -230,6 +231,7 @@ def run_agent(
             on_token=on_step,
             on_thinking=on_thinking,
             reasoning_effort=reasoning_effort,
+            max_tokens=_MAX_OUTPUT_TOKENS,
         )
         usage = response.get("usage")
         if usage:

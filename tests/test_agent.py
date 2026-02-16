@@ -3,7 +3,7 @@
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from mindloop.agent import _USER_UNAVAILABLE, run_agent
+from mindloop.agent import _MAX_OUTPUT_TOKENS, _USER_UNAVAILABLE, run_agent
 from mindloop.tools import Param, ToolRegistry
 
 
@@ -430,3 +430,14 @@ def test_on_extract_fires_on_text_nudge(mock_chat: MagicMock) -> None:
 
     # 1 at text nudge + 1 final advance at session end.
     assert on_extract.call_count == 2
+
+
+@patch("mindloop.agent.chat")
+def test_agent_passes_max_output_tokens(mock_chat: MagicMock) -> None:
+    """run_agent passes _MAX_OUTPUT_TOKENS to chat()."""
+    mock_chat.side_effect = [
+        _make_done_response("c1", "ok"),
+    ]
+    run_agent("prompt", registry=_echo_registry(), model="test-model")
+    _, kwargs = mock_chat.call_args
+    assert kwargs["max_tokens"] == _MAX_OUTPUT_TOKENS

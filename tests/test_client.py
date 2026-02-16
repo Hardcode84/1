@@ -363,3 +363,33 @@ def test_keyboard_interrupt_retries(
     assert result["content"] == "hello"
     assert mock_post.call_count == 2
     mock_sleep.assert_not_called()
+
+
+# --- max_tokens ---
+
+
+@patch("mindloop.client.requests.post")
+def test_chat_max_tokens_in_payload(mock_post: MagicMock) -> None:
+    """max_tokens is included in the API payload when set."""
+    mock_post.return_value = _mock_non_streaming({"role": "assistant", "content": "ok"})
+    chat(
+        [{"role": "user", "content": "hi"}],
+        model="test-model",
+        stream=False,
+        max_tokens=4096,
+    )
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["max_tokens"] == 4096
+
+
+@patch("mindloop.client.requests.post")
+def test_chat_max_tokens_absent_when_none(mock_post: MagicMock) -> None:
+    """max_tokens is omitted from the payload when not set."""
+    mock_post.return_value = _mock_non_streaming({"role": "assistant", "content": "ok"})
+    chat(
+        [{"role": "user", "content": "hi"}],
+        model="test-model",
+        stream=False,
+    )
+    payload = mock_post.call_args.kwargs["json"]
+    assert "max_tokens" not in payload
