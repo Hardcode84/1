@@ -393,3 +393,83 @@ def test_chat_max_tokens_absent_when_none(mock_post: MagicMock) -> None:
     )
     payload = mock_post.call_args.kwargs["json"]
     assert "max_tokens" not in payload
+
+
+# --- coherence detection ---
+
+
+@patch("mindloop.client.requests.post")
+def test_coherence_aborts_degenerate_stream(mock_post: MagicMock) -> None:
+    """Streaming aborts early when content is degenerate repetition."""
+    # ~50 bytes per phrase, 200 repetitions = 10KB. Should trigger well before end.
+    phrase = "the cat sat on the mat and looked at the door. "
+    tokens = [phrase] * 200
+    mock_post.return_value = _mock_streaming(tokens)
+
+    result = chat(
+        [{"role": "user", "content": "hi"}],
+        model="test-model",
+        stream=True,
+        on_token=lambda t: None,
+    )
+    # Should have been truncated well before all 200 repetitions.
+    assert len(result["content"]) < len(phrase) * 200
+
+
+@patch("mindloop.client.requests.post")
+def test_coherence_allows_normal_text(mock_post: MagicMock) -> None:
+    """Normal varied text is not aborted by coherence detection."""
+    # Diverse sentences that compress poorly (high entropy).
+    tokens = [
+        "The quick brown fox jumps over the lazy dog. ",
+        "Meanwhile, scientists discovered a new species in the Amazon. ",
+        "Financial markets responded positively to the latest earnings report. ",
+        "A chef in Tokyo created an innovative fusion dish last night. ",
+        "The orchestra performed Beethoven's ninth symphony to a packed house. ",
+    ]
+    mock_post.return_value = _mock_streaming(tokens)
+
+    result = chat(
+        [{"role": "user", "content": "hi"}],
+        model="test-model",
+        stream=True,
+        on_token=lambda t: None,
+    )
+    assert result["content"] == "".join(tokens)
+
+
+def _mock_streaming_reasoning(reasoning_tokens: list[str]) -> MagicMock:
+    """Create a mock streaming response with reasoning_details deltas."""
+    lines: list[bytes] = []
+    for token in reasoning_tokens:
+        reason_chunk: dict[str, Any] = {
+            "choices": [{"delta": {"reasoning_details": [{"text": token}]}}]
+        }
+        lines.append(b"data: " + json.dumps(reason_chunk).encode())
+    # End with a content token so the response has content.
+    content_chunk: dict[str, Any] = {"choices": [{"delta": {"content": "done"}}]}
+    lines.append(b"data: " + json.dumps(content_chunk).encode())
+    lines.append(b"data: [DONE]")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.iter_lines.return_value = lines
+    return mock_resp
+
+
+@patch("mindloop.client.requests.post")
+def test_coherence_aborts_degenerate_reasoning(mock_post: MagicMock) -> None:
+    """Streaming aborts early when reasoning tokens are degenerate."""
+    phrase = "Let me reconsider this problem from another angle. "
+    mock_post.return_value = _mock_streaming_reasoning([phrase] * 200)
+
+    result = chat(
+        [{"role": "user", "content": "hi"}],
+        model="test-model",
+        stream=True,
+        on_token=lambda t: None,
+    )
+    # Reasoning should be truncated, and content token never reached.
+    reasoning = result.get("reasoning", "")
+    assert len(reasoning) < len(phrase) * 200
+    assert result["content"] == ""

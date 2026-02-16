@@ -3,6 +3,7 @@
 import json
 import os
 import time
+import zlib
 from collections.abc import Callable
 from typing import Any
 
@@ -40,6 +41,59 @@ _TRANSIENT_ERRORS = (
 _MAX_RETRIES = 4
 _RETRY_BACKOFF = 2.0
 _REQUEST_TIMEOUT = 60
+
+# Coherence detection via streaming zlib incremental compression ratio.
+# The first window is warmup (zlib builds its dictionary). After that, each
+# window's incremental ratio (new_compressed / new_raw) cleanly separates
+# normal text (~0.09-0.12) from degenerate loops (~0.016-0.017).
+_COHERENCE_WARMUP_BYTES = 2048
+_COHERENCE_CHECK_INTERVAL = 1024
+_COHERENCE_THRESHOLD = 0.04
+_COHERENCE_STREAK = 3
+
+
+class _CoherenceMonitor:
+    """Detect degenerate repetition via streaming zlib incremental ratio."""
+
+    def __init__(self) -> None:
+        self._compressor = zlib.compressobj()
+        self._raw = 0
+        self._compressed = 0
+        self._last_check = 0
+        self._last_raw = 0
+        self._last_compressed = 0
+        self._warmed_up = False
+        self._bad_streak = 0
+
+    def feed(self, text: str) -> bool:
+        """Feed text and return True if degeneration detected."""
+        encoded = text.encode()
+        self._raw += len(encoded)
+        self._compressed += len(self._compressor.compress(encoded))
+        if self._raw - self._last_check < _COHERENCE_CHECK_INTERVAL:
+            return False
+        self._compressed += len(self._compressor.flush(zlib.Z_SYNC_FLUSH))
+        self._last_check = self._raw
+
+        if not self._warmed_up:
+            if self._raw >= _COHERENCE_WARMUP_BYTES:
+                self._warmed_up = True
+                self._last_raw = self._raw
+                self._last_compressed = self._compressed
+            return False
+
+        # Incremental ratio for this window.
+        d_raw = self._raw - self._last_raw
+        d_compressed = self._compressed - self._last_compressed
+        self._last_raw = self._raw
+        self._last_compressed = self._compressed
+
+        ratio = d_compressed / d_raw if d_raw > 0 else 1.0
+        if ratio < _COHERENCE_THRESHOLD:
+            self._bad_streak += 1
+        else:
+            self._bad_streak = 0
+        return self._bad_streak >= _COHERENCE_STREAK
 
 
 def _with_retry(
@@ -149,6 +203,10 @@ def _stream_request(
     tool_calls_by_index: dict[int, dict[str, Any]] = {}
     usage: dict[str, Any] | None = None
 
+    # Streaming coherence monitors for content and reasoning.
+    content_monitor = _CoherenceMonitor()
+    reasoning_monitor = _CoherenceMonitor()
+
     for line in response.iter_lines():
         if not line or not line.startswith(b"data: "):
             continue
@@ -164,18 +222,25 @@ def _stream_request(
         delta = choices[0].get("delta", {})
 
         # Accumulate reasoning tokens.
+        degenerate = False
         for detail in delta.get("reasoning_details", []):
             text = detail.get("text", "")
             if text:
                 if on_thinking is not None:
                     on_thinking(text)
                 full_reasoning.append(text)
+                if reasoning_monitor.feed(text):
+                    degenerate = True
+        if degenerate:
+            break
 
         # Accumulate content tokens.
         token = delta.get("content", "")
         if token:
             on_token(token)
             full_reply.append(token)
+            if content_monitor.feed(token):
+                break
 
         # Accumulate tool call deltas.
         for tc_delta in delta.get("tool_calls", []):
