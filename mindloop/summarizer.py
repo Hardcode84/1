@@ -11,7 +11,8 @@ from mindloop.util import DEFAULT_WORKERS, noop
 
 _SYSTEM_PROMPT = """\
 You summarize conversation excerpts from a chat log between "You" (user) and "Bot" (assistant).
-Write from the assistant's perspective using first person ("I").
+Write from the assistant's perspective using first person ("I"). \
+Never use third person ("the AI", "the assistant", "the bot", "an instance").
 Respond in exactly this format (two lines, keep the prefixes):
 ABSTRACT: <one sentence TL;DR>
 SUMMARY: <2-4 sentence expanded overview>\

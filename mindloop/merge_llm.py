@@ -75,7 +75,8 @@ Rules:
 - Preserve specific facts, names, numbers, and conclusions from both.
 - Do not silently discard content from the secondary chunk — \
 fold in its unique details.
-- Keep the tone, style, and point of view consistent with the originals.
+- Keep the tone, style, and point of view consistent with the originals. \
+Never switch to third person ("the AI", "the assistant", "the bot", "an instance").
 - Do not add commentary or meta-text like "merged from two chunks"."""
 
 _MERGE_USER_TEMPLATE = """\
