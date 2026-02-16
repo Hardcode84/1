@@ -39,7 +39,7 @@ During intrusive recall, the top N pinned memories by priority are included as c
 
 ### Interaction with intrusive recall
 
-Pinned memories integrate with intrusive recall (see `intrusive_recall.md`) rather than replacing it:
+Pinned memories integrate with intrusive recall (see `../design/intrusive_recall.md`) rather than replacing it:
 
 1. During reflection nudges, the **top N pinned memories** (by priority) are always included as candidates regardless of similarity score. They bypass the similarity threshold but still go through activation/cooldown.
 2. Lower-priority pinned memories may still surface via normal similarity matching if relevant to the current context.
@@ -137,6 +137,6 @@ def intrusive_candidates(context_embedding, top_k=3):
 
 ## Ethical considerations
 
-Pinned memories are agent-controlled, which preserves autonomy better than system-imposed always-visible notes. The agent decides what's core to its identity. However, the same manipulation concerns from `intrusive_recall.md` apply: whoever has write access to the memory store can pin memories the agent didn't choose, creating a subtle influence channel.
+Pinned memories are agent-controlled, which preserves autonomy better than system-imposed always-visible notes. The agent decides what's core to its identity. However, the same manipulation concerns from `../design/intrusive_recall.md` apply: whoever has write access to the memory store can pin memories the agent didn't choose, creating a subtle influence channel.
 
 The priority system adds a nuance: a manipulator would need to assign a high priority to ensure their injected memory surfaces prominently. This is slightly more visible than a boolean flag — the agent can notice an unfamiliar memory at the top of its pinned list.

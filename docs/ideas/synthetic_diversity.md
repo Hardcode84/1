@@ -22,7 +22,7 @@ Each injection is slightly different, breaking pattern-matching. Zero API calls,
 
 Periodically pull a random chunk from long-term memory and inject it as a "spontaneous thought." Memories from past sessions are inherently diverse relative to the current loop. This models how human minds avoid fixation through spontaneous association.
 
-Connects to the existing intrusive recall idea (see `intrusive_recall.md`). The memory system already exists — `search()` with a random query or random chunk selection would work.
+Connects to intrusive recall (see `../design/intrusive_recall.md`). The memory system already exists — `search()` with a random query or random chunk selection would work.
 
 **Cold start problem**: no memories exist at bootstrap. Pool size may be small or topically narrow in early sessions. Must fall back to stochastic prompts.
 

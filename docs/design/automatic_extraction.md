@@ -84,10 +84,13 @@ Explicit `remember` stays for high-confidence, agent-curated moments. Automatic 
 - **MemGPT / Letta (2023)**: OS-inspired tiered memory. Context as scarce resource, but still agent-managed.
 - **Generative Agents (Park et al., 2023)**: Store everything, score later. Retrieval scored by recency * importance * relevance.
 
+## Interaction with intrusive recall
+
+Auto-extracted memories could create a feedback loop if surfaced back to the agent immediately via intrusive recall. This is prevented by drain pre-seeding: when `_drain()` commits extracted facts, the returned chunk IDs are added to `MidSessionExtractor._seen_ids`, which intrusive recall checks before surfacing results. See `intrusive_recall.md` for details.
+
 ## Open questions
 
 - Should extracted memories be tagged as "auto-extracted" vs "agent-curated"? Would let retrieval weight them differently.
-- How does this interact with intrusive recall? Auto-extracted memories surfaced in reflection nudges could create a feedback loop.
 
 ## References
 

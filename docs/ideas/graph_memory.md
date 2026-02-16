@@ -131,7 +131,7 @@ The `source_a`/`source_b` columns on chunks already encode merge lineage. These 
 ## Interaction with other ideas
 
 - **Memory activation** (`memory_activation.md`): activation scores work on nodes regardless of edges. Edges could boost activation spreading — retrieving one node boosts connected ones (Hebbian).
-- **Intrusive recall** (`intrusive_recall.md`): graph traversal could surface not just the recalled memory but its neighbors, providing richer context in nudges.
+- **Intrusive recall** (`../design/intrusive_recall.md`): graph traversal could surface not just the recalled memory but its neighbors, providing richer context in nudges.
 - **Importance scoring** (`importance_scoring.md`): graph centrality (degree, PageRank) becomes a natural importance signal — well-connected memories are more central to the knowledge base.
 
 ## Implementation order
