@@ -84,8 +84,8 @@ This extracts more information from a call we are already making. Even before im
 3. **Leaf abstracts in recall_detail** -- collapse multi-hop traversal.
 4. **Record rejection edges** -- capture horizontal relationships already discovered by the merge loop.
 5. ~~**Anchor faithfulness to original leaves**~~ -- done. Natural depth cap + edge inheritance.
-6. **Two-tier merge** -- bigger change, high payoff.
-7. **Richer should_merge output** -- supersedes detection, more edge types.
+6. ~~**Two-tier merge**~~ -- leaf faithfulness makes this largely unnecessary. Deep merges self-terminate.
+7. **Supersedes detection** -- the only valuable part of richer `should_merge`. `related`/`distinct` already covered by three-tier similarity + edges.
 
 Steps 1-3 are retrieval-only changes, no risk to the save path. Step 4 is additive (new table, inserts at rejection points). Steps 5-7 modify the merge loop.
 
