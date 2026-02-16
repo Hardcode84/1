@@ -562,7 +562,7 @@ def test_leaf_texts_nonexistent(store: MemoryStore) -> None:
 
 
 def test_inherit_edges_repoints(store: MemoryStore) -> None:
-    """Edges from absorbed chunks appear on the new merged chunk."""
+    """Edges from absorbed chunks move onto the new merged chunk."""
     id_a = store.save(_summary("a"))
     id_b = store.save(_summary("b"))
     id_c = store.save(_summary("c"))
@@ -573,17 +573,25 @@ def test_inherit_edges_repoints(store: MemoryStore) -> None:
     with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
         store.inherit_edges(id_ab, [id_a, id_b])
 
+    # New edge on merged chunk.
     edges = store.edges(id_ab)
     assert len(edges) == 1
     target_id, etype, score = edges[0]
     assert target_id == id_c
     assert etype == "related_to"
-    # Uniform embeddings → cosine=1.0 replaces old score.
     assert score == pytest.approx(1.0)
+
+    # Old edge on absorbed chunk is deleted.
+    assert store.edges(id_a) == []
+
+    # C sees only the new edge, not the old one.
+    c_edges = store.edges(id_c)
+    assert len(c_edges) == 1
+    assert c_edges[0][0] == id_ab
 
 
 def test_inherit_edges_excludes_internal(store: MemoryStore) -> None:
-    """Edges between absorbed chunks are not inherited."""
+    """Edges between absorbed chunks are deleted, not inherited."""
     id_a = store.save(_summary("a"))
     id_b = store.save(_summary("b"))
     store.add_edge(id_a, id_b, "related_to", score=0.4)
@@ -593,8 +601,10 @@ def test_inherit_edges_excludes_internal(store: MemoryStore) -> None:
     with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
         store.inherit_edges(id_ab, [id_a, id_b])
 
-    # Edge A↔B is internal — should not appear on AB.
+    # Edge A↔B is internal — deleted, not inherited.
     assert store.edges(id_ab) == []
+    assert store.edges(id_a) == []
+    assert store.edges(id_b) == []
 
 
 def test_inherit_edges_rescores(store: MemoryStore) -> None:

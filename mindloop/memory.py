@@ -288,12 +288,13 @@ class MemoryStore:
         return [(r[0], r[1], r[2]) for r in rows]
 
     def inherit_edges(self, new_id: int, absorbed_ids: list[int]) -> None:
-        """Repoint edges from absorbed chunks onto *new_id* with re-scored cosine.
+        """Move edges from absorbed chunks onto *new_id* with re-scored cosine.
 
         Collects all edges from *absorbed_ids* that point outside the merge
         (i.e. not to *new_id* or any of the *absorbed_ids*), computes cosine
-        similarity between *new_id*'s text and each target, and creates new
-        edges.  One ``get_embeddings`` call for the whole batch.
+        similarity between *new_id*'s text and each target, creates new
+        edges, and deletes the old ones.  One ``get_embeddings`` call for the
+        whole batch.
         """
         exclude = set(absorbed_ids) | {new_id}
 
@@ -304,7 +305,15 @@ class MemoryStore:
                 if other_id not in exclude:
                     targets.add(other_id)
 
+        # Delete all edges touching absorbed chunks.
+        for aid in absorbed_ids:
+            self.conn.execute(
+                "DELETE FROM chunk_edges WHERE source_id = ? OR target_id = ?",
+                (aid, aid),
+            )
+
         if not targets:
+            self._auto_commit()
             return
 
         # Fetch texts for new chunk + all targets.
@@ -313,6 +322,7 @@ class MemoryStore:
             "SELECT text FROM chunks WHERE id = ?", (new_id,)
         ).fetchone()
         if new_text_row is None:
+            self._auto_commit()
             return
         ph = ",".join("?" for _ in target_ids)
         rows = self.conn.execute(
@@ -323,6 +333,7 @@ class MemoryStore:
         # Order target texts for a single batch embedding call.
         ordered_ids = [tid for tid in target_ids if tid in text_by_id]
         if not ordered_ids:
+            self._auto_commit()
             return
         texts = [new_text_row[0]] + [text_by_id[tid] for tid in ordered_ids]
         embs = get_embeddings(texts, model=DEFAULT_EMBEDDING_MODEL)
