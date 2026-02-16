@@ -145,6 +145,7 @@ def run_agent(
     nudge_extra: str = "",
     nudge_pool: NudgePool | None = None,
     on_extract: Callable[[list[Message]], None] | None = None,
+    on_reflect: Callable[[], str] | None = None,
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
     if on_confirm is None:
@@ -305,12 +306,21 @@ def run_agent(
         # Periodic reflection + mid-session extraction.
         if tool_turns_since_reflect >= _REFLECT_INTERVAL:
             tool_turns_since_reflect = 0
+            combined_extra = nudge_extra
+            if on_reflect is not None:
+                intrusive = on_reflect()
+                if intrusive:
+                    combined_extra = (
+                        (nudge_extra + "\n\n" + intrusive).strip()
+                        if nudge_extra
+                        else intrusive
+                    )
             _maybe_reflect(
                 messages,
                 extractor,
                 on_message=on_message,
                 on_step=on_step,
-                nudge_extra=nudge_extra,
+                nudge_extra=combined_extra,
                 nudge_pool=nudge_pool,
             )
 

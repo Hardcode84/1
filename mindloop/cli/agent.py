@@ -16,7 +16,7 @@ from mindloop.agent import run_agent
 from mindloop.client import API_KEY
 from mindloop.memory import MemoryStore
 from mindloop.quotes import NudgePool, quote_of_the_day
-from mindloop.recap import generate_recap, load_recap, save_recap
+from mindloop.recap import collapse_messages, generate_recap, load_recap, save_recap
 from mindloop.messages import parse_filename_date
 from mindloop.message_tools import MessageTools
 from mindloop.tools import (
@@ -406,8 +406,17 @@ def _generate_session_recap(
         print(f"Warning: recap generation failed: {exc}")
 
 
+_INTRUSIVE_TOP_K = 3
+_INTRUSIVE_MIN_SCORE = 0.4
+_INTRUSIVE_DIVERSITY = 0.5
+
+
 class MidSessionExtractor:
-    """Runs extract_window in a background thread, commits results on drain."""
+    """Runs extract_window in a background thread, commits results on drain.
+
+    Also provides intrusive recall: surfaces relevant memories at reflection
+    nudges using the previous message window as the query.
+    """
 
     def __init__(
         self,
@@ -422,6 +431,8 @@ class MidSessionExtractor:
         self._log = log
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._future: Any = None  # Future[list[dict[str, str]]] | None
+        self._pending_texts: list[str] = []
+        self._seen_ids: set[int] = set()
 
     def _is_duplicate(self, text: str) -> bool:
         """Check if a similar memory already exists."""
@@ -451,7 +462,7 @@ class MidSessionExtractor:
                 for fact in facts:
                     if self._is_duplicate(fact["text"]):
                         continue
-                    save_memory(
+                    chunk_id = save_memory(
                         self._store,
                         fact["text"],
                         fact["abstract"],
@@ -459,6 +470,9 @@ class MidSessionExtractor:
                         model=self._model,
                         log=self._log,
                     )
+                    # Exclude freshly saved chunks from intrusive recall so
+                    # we don't surface memories the agent just produced.
+                    self._seen_ids.add(chunk_id)
                     saved += 1
                 self._log(
                     f"\n[extract] committed {saved}/{len(facts)} facts"
@@ -477,10 +491,40 @@ class MidSessionExtractor:
         # Wait for previous extraction to commit before launching the next.
         # This ensures memories are available for recall within the session.
         self._drain(wait=True)
+
+        # Accumulate collapsed text for intrusive recall. on_extract fires on
+        # both text nudges and tool reflections, but intrusive_recall only runs
+        # at tool reflections — so we accumulate until consumed.
+        turns = collapse_messages(messages)
+        if turns:
+            self._pending_texts.append("\n".join(f"{t.role}: {t.text}" for t in turns))
+
         self._log(
             f"\n[extract] launching mid-session extraction ({len(messages)} messages)"
         )
         self._future = self._executor.submit(extract_window, messages, self._model)
+
+    def intrusive_recall(self) -> str:
+        """Query memory with accumulated window text. Resets buffer on use."""
+        if not self._pending_texts:
+            return ""
+        query = "\n".join(self._pending_texts)
+        self._pending_texts.clear()
+        results = self._store.search(
+            query,
+            top_k=_INTRUSIVE_TOP_K,
+            diversity=_INTRUSIVE_DIVERSITY,
+        )
+        hits = [
+            r
+            for r in results
+            if r.id not in self._seen_ids and r.cosine_score >= _INTRUSIVE_MIN_SCORE
+        ]
+        if not hits:
+            return ""
+        self._seen_ids.update(r.id for r in hits)
+        lines = [f'- "{r.chunk_summary.abstract}" (#{r.id})' for r in hits]
+        return "These memories seem related to what you're doing:\n" + "\n".join(lines)
 
     def finish(self) -> None:
         """Wait for in-flight extraction and shut down the executor."""
@@ -588,6 +632,7 @@ def main() -> None:
             nudge_extra=nudge_extra,
             nudge_pool=nudge_pool,
             on_extract=mid_extract.on_extract,
+            on_reflect=mid_extract.intrusive_recall,
         )
     except KeyboardInterrupt:
         print("\n\nInterrupted.")
