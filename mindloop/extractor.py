@@ -47,6 +47,10 @@ Skip:
 directory contents, workspace layout.
 - Facts that can be obtained by reading a file or listing a directory.
 - Vague observations that don't contain actionable information.
+- Inferred goals, intentions, or tasks not explicitly stated in the conversation.
+
+Every fact must be directly supported by explicit statements in the text. \
+Do not infer, extrapolate, or assume intent beyond what was actually said or decided.
 
 Deduplicate: if multiple parts of the conversation describe the same fact, \
 produce ONE consolidated entry with the latest information, not several.

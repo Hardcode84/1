@@ -33,6 +33,7 @@ Skip:
 - Greetings, filler, tool results, session logistics.
 - Actions without reasoning ("I read the file" — unless it reveals a pattern).
 - Vague or formulaic observations.
+- Dispositions not directly supported by the text — do not infer or invent.
 
 Most windows will have zero dispositions — that's fine, return [].
 
