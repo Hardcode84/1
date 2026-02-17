@@ -117,7 +117,8 @@ def _maybe_reflect(
 
     reflect_text = (
         "You've been using tools for a while. "
-        "Pause and reflect on what you've learned so far."
+        "Pause and reflect on what you've learned and whether your approach "
+        "aligns with what matters to you."
     )
     if nudge_extra:
         reflect_text += "\n\n" + nudge_extra
