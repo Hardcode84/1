@@ -23,7 +23,7 @@ def save_memory(
     text: str,
     abstract: str,
     summary: str,
-    model: str = "",
+    model: str,
     top_k: int = _DEFAULT_TOP_K,
     max_rounds: int = _DEFAULT_MAX_ROUNDS,
     min_faithfulness: float = _DEFAULT_MIN_FAITHFULNESS,

@@ -26,7 +26,7 @@ def _make_search_result(chunk_id: int, abstract: str, cosine: float) -> SearchRe
 def test_intrusive_recall_empty_before_first_window() -> None:
     """No prior window means empty string."""
     store = MagicMock()
-    ext = MidSessionExtractor(store, model="m", log=lambda _: None)
+    ext = MidSessionExtractor(store, model="m", log=lambda _: None, agent_model="m")
     assert ext.intrusive_recall() == ""
     store.search.assert_not_called()
 
@@ -40,7 +40,7 @@ def test_intrusive_recall_surfaces_matches(mock_collapse: MagicMock) -> None:
         _make_search_result(57, "Dogs like bones.", 0.6),
     ]
 
-    ext = MidSessionExtractor(store, model="m", log=lambda _: None)
+    ext = MidSessionExtractor(store, model="m", log=lambda _: None, agent_model="m")
 
     # Simulate on_extract: mock collapse_messages to return turns.
     turn = MagicMock()
@@ -66,7 +66,7 @@ def test_intrusive_recall_cooldown(mock_collapse: MagicMock) -> None:
         _make_search_result(42, "Cats like fish.", 0.7),
     ]
 
-    ext = MidSessionExtractor(store, model="m", log=lambda _: None)
+    ext = MidSessionExtractor(store, model="m", log=lambda _: None, agent_model="m")
 
     turn = MagicMock()
     turn.role = "Bot"
@@ -92,7 +92,7 @@ def test_intrusive_recall_filters_low_score(mock_collapse: MagicMock) -> None:
         _make_search_result(11, "High score.", _INTRUSIVE_MIN_SCORE + 0.1),
     ]
 
-    ext = MidSessionExtractor(store, model="m", log=lambda _: None)
+    ext = MidSessionExtractor(store, model="m", log=lambda _: None, agent_model="m")
 
     turn = MagicMock()
     turn.role = "Bot"
@@ -113,7 +113,7 @@ def test_intrusive_recall_accumulates_windows(mock_collapse: MagicMock) -> None:
         _make_search_result(10, "Accumulated fact.", 0.8),
     ]
 
-    ext = MidSessionExtractor(store, model="m", log=lambda _: None)
+    ext = MidSessionExtractor(store, model="m", log=lambda _: None, agent_model="m")
 
     turn1 = MagicMock()
     turn1.role = "Bot"
@@ -160,7 +160,7 @@ def test_drain_excludes_saved_ids_from_recall(
     ]
     mock_save.return_value = 99  # save_memory returns chunk ID 99.
 
-    ext = MidSessionExtractor(store, model="m", log=lambda _: None)
+    ext = MidSessionExtractor(store, model="m", log=lambda _: None, agent_model="m")
 
     # First on_extract: no drain (no future), accumulates text.
     turn = MagicMock()

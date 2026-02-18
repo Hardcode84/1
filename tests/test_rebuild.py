@@ -260,9 +260,7 @@ def test_rebuild_extracts_at_boundaries(store: MemoryStore) -> None:
         [{"text": "a fact", "abstract": "abs", "summary": "sum"}]
     )
 
-    def _mock_extract(
-        msgs: list[dict[str, Any]], model: str = ""
-    ) -> list[dict[str, str]]:
+    def _mock_extract(msgs: list[dict[str, Any]], model: str) -> list[dict[str, str]]:
         extract_calls.append(len(msgs))
         return list(json.loads(facts_json))
 
@@ -296,9 +294,7 @@ def test_rebuild_fallback_window(store: MemoryStore) -> None:
 
     extract_calls: list[int] = []
 
-    def _mock_extract(
-        msgs: list[dict[str, Any]], model: str = ""
-    ) -> list[dict[str, str]]:
+    def _mock_extract(msgs: list[dict[str, Any]], model: str) -> list[dict[str, str]]:
         extract_calls.append(len(msgs))
         return []
 

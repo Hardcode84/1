@@ -132,8 +132,8 @@ def _maybe_reflect(
 
 def run_agent(
     system_prompt: str,
+    model: str,
     registry: ToolRegistry | None = None,
-    model: str = "",
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     on_step: Callable[[str], None] = noop,

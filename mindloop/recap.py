@@ -115,7 +115,7 @@ def collapse_messages(messages: list[dict[str, Any]]) -> list[Turn]:
 
 def generate_recap(
     messages: list[dict[str, Any]],
-    model: str = "",
+    model: str,
     token_budget: int = 1000,
     log: Callable[[str], None] = noop,
     workers: int = DEFAULT_WORKERS,

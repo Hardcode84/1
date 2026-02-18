@@ -21,7 +21,7 @@ def _mock_save_memory(
     text: str,
     abstract: str,
     summary: str,
-    model: str = "",
+    model: str,
     **_kw: object,
 ) -> int:
     return 1

@@ -458,8 +458,8 @@ class MidSessionExtractor:
         store: MemoryStore,
         model: str,
         log: Callable[[str], None],
+        agent_model: str,
         dispositions_path: Path | None = None,
-        agent_model: str = "",
     ) -> None:
         from concurrent.futures import ThreadPoolExecutor
 
@@ -693,8 +693,8 @@ def main() -> None:
         mt.store,
         summarizer_model,
         _print_step,
-        dispositions_path=disp_path,
         agent_model=model,
+        dispositions_path=disp_path,
     )
 
     try:

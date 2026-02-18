@@ -87,8 +87,8 @@ def _parse_facts(raw: str) -> list[dict[str, str]] | None:
 
 def extract_facts(
     text: str,
+    model: str,
     context: str | None = None,
-    model: str = "",
 ) -> list[dict[str, str]]:
     """Extract factual memories from a text chunk via LLM call.
 
@@ -150,7 +150,7 @@ Answer ONLY "yes" or "no".
 def verify_fact(
     fact: dict[str, str],
     messages: list[dict[str, Any]],
-    model: str = "",
+    model: str,
 ) -> bool:
     """Check if a single fact is supported by the conversation."""
     verify_msgs = list(messages) + [
@@ -175,7 +175,7 @@ def verify_fact(
 def verify_facts(
     facts: list[dict[str, str]],
     messages: list[dict[str, Any]],
-    model: str = "",
+    model: str,
     workers: int = DEFAULT_WORKERS,
 ) -> list[dict[str, str]]:
     """Verify all facts in parallel, return only those confirmed."""
@@ -188,7 +188,7 @@ def verify_facts(
 
 def extract_window(
     messages: list[dict[str, Any]],
-    model: str = "",
+    model: str,
 ) -> list[dict[str, str]]:
     """Extract facts from a short message window (no chunking/merging).
 
@@ -206,7 +206,7 @@ def extract_window(
 def extract_session(
     messages: list[dict[str, Any]],
     store: MemoryStore,
-    model: str = "",
+    model: str,
     log: Callable[[str], None] = noop,
     workers: int = DEFAULT_WORKERS,
 ) -> int:
@@ -251,7 +251,7 @@ def extract_session(
         ordered: list[tuple[int, list[dict[str, str]]] | None] = [None] * n
         with ThreadPoolExecutor(max_workers=workers) as pool:
             future_to_idx = {
-                pool.submit(extract_facts, chunk.text, contexts[i], model): i
+                pool.submit(extract_facts, chunk.text, model, contexts[i]): i
                 for i, chunk in enumerate(chunks)
             }
             done = 0

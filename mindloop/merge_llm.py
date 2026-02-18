@@ -119,8 +119,8 @@ def _parse_merge_response(raw: str) -> MergeResult | None:
 def merge_texts(
     text_a: str,
     text_b: str,
+    model: str,
     prefer: str = "equal",
-    model: str = "",
 ) -> MergeResult:
     """Merge two chunk texts and generate abstract + summary.
 

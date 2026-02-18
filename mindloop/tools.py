@@ -391,8 +391,8 @@ def create_default_registry(
 
 def add_memory_tools(
     registry: ToolRegistry,
+    model: str,
     db_path: Path | None = None,
-    model: str = "",
     log: Callable[[str], None] | None = None,
 ) -> MemoryTools:
     """Add remember / recall / recall_detail tools to *registry*.

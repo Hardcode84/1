@@ -206,7 +206,7 @@ def test_extract_session_context_prefix(store: MemoryStore) -> None:
     extraction_calls: list[tuple[str, str | None]] = []
 
     def _tracking_extract(
-        text: str, context: str | None = None, model: str = ""
+        text: str, model: str, context: str | None = None
     ) -> list[dict[str, str]]:
         extraction_calls.append((text, context))
         return []

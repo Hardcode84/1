@@ -82,7 +82,7 @@ def _parse_dispositions(raw: str) -> list[dict[str, str]] | None:
 
 def extract_dispositions(
     text: str,
-    model: str = "",
+    model: str,
 ) -> list[dict[str, str]]:
     """Extract behavioral dispositions from a text chunk via LLM call."""
     messages: list[dict[str, Any]] = [{"role": "user", "content": text}]
@@ -122,7 +122,7 @@ def extract_dispositions(
 
 def extract_dispositions_window(
     messages: list[dict[str, Any]],
-    model: str = "",
+    model: str,
 ) -> list[dict[str, str]]:
     """Extract dispositions from a short message window (no chunking).
 
@@ -136,7 +136,7 @@ def extract_dispositions_window(
     return extract_dispositions(text, model=model)
 
 
-def distill_values(raw_path: Path, model: str = "") -> str:
+def distill_values(raw_path: Path, model: str) -> str:
     """Consolidate raw dispositions into a coherent self-understanding.
 
     Reads accumulated dispositions from *raw_path* (one JSON object per line),
