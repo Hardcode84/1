@@ -20,6 +20,7 @@ mindloop-sessions = "mindloop.cli.sessions:main"
 mindloop-message = "mindloop.cli.message:main"
 mindloop-extract = "mindloop.cli.extract:main"
 mindloop-rebuild = "mindloop.cli.rebuild:main"
+mindloop-symlink = "mindloop.cli.symlink:main"
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov"]

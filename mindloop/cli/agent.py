@@ -189,6 +189,18 @@ class SessionPaths:
     root: Path | None = None
 
 
+_SYMLINKS_FILE = "_symlinks.json"
+
+
+def _load_symlinks(session_root: Path) -> dict[str, Path] | None:
+    """Load virtual symlinks from session config file."""
+    path = session_root / _SYMLINKS_FILE
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text())
+    return {name: Path(target) for name, target in data.items()}
+
+
 def _setup_session(session: str | None, timestamp: str) -> SessionPaths:
     """Resolve log, memory, and workspace paths."""
     if session:
@@ -629,7 +641,8 @@ def main() -> None:
     jsonl_path = paths.log_dir / f"{log_prefix}.jsonl"
     log_path = paths.log_dir / f"{log_prefix}.log"
 
-    registry = create_default_registry(root_dir=paths.workspace)
+    symlinks = _load_symlinks(paths.root) if paths.root else None
+    registry = create_default_registry(root_dir=paths.workspace, symlinks=symlinks)
     mt = add_memory_tools(
         registry, db_path=paths.db_path, model=summarizer_model, log=_print_step
     )

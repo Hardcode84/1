@@ -137,6 +137,21 @@ mindloop-rebuild logs/001_agent_*.jsonl --db memory.db
 
 Replays session logs through the current extraction pipeline to rebuild the memory database from scratch. Walks messages in order: explicit `remember` tool calls are saved immediately (with summarization and merge), while extraction boundaries (nudge/reflect markers, or a fallback every 20 messages) trigger LLM-based fact extraction with dedup gating. Processes logs chronologically so earlier memories are available for dedup when later logs are processed.
 
+### Virtual symlinks
+
+```bash
+# Mount an external directory as a read-only symlink.
+mindloop-symlink mysession add shared /home/user/docs
+
+# List configured symlinks.
+mindloop-symlink mysession list
+
+# Remove a symlink.
+mindloop-symlink mysession remove shared
+```
+
+Virtual symlinks let the agent read files from directories outside its workspace sandbox. They appear as `l`-type entries in `ls` and are read-only (writes and edits are blocked). Configuration is stored in `sessions/<name>/_symlinks.json` and persists across instances.
+
 ### List sessions
 
 ```bash
