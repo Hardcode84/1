@@ -2,9 +2,13 @@
 
 import json
 import os
+import threading
 import time
 import zlib
+from collections import defaultdict
 from collections.abc import Callable
+from dataclasses import dataclass
+from types import TracebackType
 from typing import Any
 
 import numpy as np
@@ -29,6 +33,94 @@ DETERMINISTIC_PARAMS: dict[str, Any] = {
 Embedding = np.ndarray
 # 2D embedding matrix, shape (n, dim), dtype float32.
 Embeddings = np.ndarray
+
+
+# --- Monotonic API usage counters (thread-safe, per-model). ---
+
+
+@dataclass
+class Counters:
+    """API usage snapshot."""
+
+    tokens: int = 0
+    cost: float = 0.0
+
+
+_counters_lock = threading.Lock()
+_counters: defaultdict[str, Counters] = defaultdict(Counters)
+
+
+def _record_usage(model: str, usage: dict[str, Any]) -> None:
+    """Accumulate token and cost from an API response."""
+    tokens = int(usage.get("total_tokens", 0))
+    cost = usage.get("cost")
+    with _counters_lock:
+        c = _counters[model]
+        c.tokens += tokens
+        if cost is not None:
+            c.cost += float(cost)
+
+
+def _estimate_tokens(messages: list[Message], response: Message) -> int:
+    """Estimate total tokens for a call from character counts."""
+    from mindloop.util import CHARS_PER_TOKEN
+
+    prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
+    response_chars = len(str(response.get("content", "")))
+    response_chars += len(str(response.get("reasoning", "")))
+    return (prompt_chars + response_chars) // CHARS_PER_TOKEN
+
+
+class Stats:
+    """Context manager that captures API usage over a scope.
+
+    Snapshots the monotonic per-model counters on entry.  The
+    ``counters`` property returns an aggregate delta; ``by_model``
+    returns per-model deltas.
+    """
+
+    def __init__(self) -> None:
+        self._start: dict[str, Counters] = {}
+
+    def __enter__(self) -> "Stats":
+        with _counters_lock:
+            self._start = {m: Counters(c.tokens, c.cost) for m, c in _counters.items()}
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        pass  # Nothing to clean up; counters keep growing.
+
+    @property
+    def counters(self) -> Counters:
+        """Aggregate delta across all models since entering the context."""
+        with _counters_lock:
+            tok = sum(c.tokens for c in _counters.values()) - sum(
+                c.tokens for c in self._start.values()
+            )
+            cst = sum(c.cost for c in _counters.values()) - sum(
+                c.cost for c in self._start.values()
+            )
+        return Counters(tokens=tok, cost=cst)
+
+    @property
+    def per_model(self) -> defaultdict[str, Counters]:
+        """Per-model deltas since entering the context."""
+        with _counters_lock:
+            result: defaultdict[str, Counters] = defaultdict(Counters)
+            for model, current in _counters.items():
+                start = self._start.get(model, Counters())
+                delta = Counters(
+                    tokens=current.tokens - start.tokens,
+                    cost=current.cost - start.cost,
+                )
+                if delta.tokens or delta.cost:
+                    result[model] = delta
+            return result
 
 
 _TRANSIENT_ERRORS = (
@@ -330,6 +422,10 @@ def chat(
             return msg
 
         msg: Message = _with_retry(_non_streaming_request, on_token)
+        if "usage" in msg:
+            _record_usage(model, msg["usage"])
+        else:
+            _record_usage(model, {"total_tokens": _estimate_tokens(full_messages, msg)})
         return msg
 
     payload["stream"] = True
@@ -337,6 +433,10 @@ def chat(
     result: Message = _with_retry(
         _stream_request, on_token, payload, on_token, on_thinking
     )
+    if "usage" in result:
+        _record_usage(model, result["usage"])
+    else:
+        _record_usage(model, {"total_tokens": _estimate_tokens(full_messages, result)})
     return result
 
 

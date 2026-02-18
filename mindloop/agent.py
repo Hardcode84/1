@@ -4,10 +4,10 @@ import json
 from collections.abc import Callable
 from datetime import datetime
 
-from mindloop.client import Message, chat
+from mindloop.client import Message, Stats, chat
 from mindloop.quotes import NudgePool
 from mindloop.tools import Param, ToolRegistry, create_default_registry
-from mindloop.util import CHARS_PER_TOKEN, noop
+from mindloop.util import noop
 
 DEFAULT_MAX_ITERATIONS = 1000
 _USER_UNAVAILABLE = "Continue autonomously. Use the ask tool if you need user input."
@@ -44,14 +44,6 @@ def _inject_budget_warnings(
             messages.append(warn)
             on_message(warn)
             on_step(f"\n[budget] {text}")
-
-
-def _estimate_tokens(messages: list[Message], response: Message) -> int:
-    """Estimate total tokens for a call from character counts."""
-    prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
-    response_chars = len(str(response.get("content", "")))
-    response_chars += len(str(response.get("reasoning", "")))
-    return (prompt_chars + response_chars) // CHARS_PER_TOKEN
 
 
 def _auto_confirm(_name: str, _arguments: str) -> bool:
@@ -156,175 +148,176 @@ def run_agent(
         registry = create_default_registry()
 
     messages: list[Message] = list(initial_messages) if initial_messages else []
-    total_tokens = 0
-    total_cost = 0.0
-    warned_thresholds: set[float] = set()
-    tool_turns_since_reflect = 0
-    extractor = Extractor(on_extract, start=len(messages))
+    with Stats() as stats:
 
-    # Register runtime tools directly on the registry.
+        def total_tokens() -> int:
+            return stats.per_model[model].tokens
 
-    def _status() -> str:
-        now = datetime.now().isoformat(timespec="seconds")
-        lines = [f"time: {now}", f"tokens used: {total_tokens} / {max_tokens}"]
-        if instance:
-            lines.append(f"instance: {instance}")
-        return "\n".join(lines)
+        def total_cost() -> float:
+            return stats.counters.cost
 
-    registry.add(
-        name="status",
-        description="Query system info: current time, token usage and limit.",
-        params=[],
-        func=_status,
-    )
+        warned_thresholds: set[float] = set()
+        tool_turns_since_reflect = 0
+        extractor = Extractor(on_extract, start=len(messages))
 
-    finished = False
+        # Register runtime tools directly on the registry.
 
-    def _done(summary: str) -> str:
-        nonlocal finished
-        finished = True
-        return summary
+        def _status() -> str:
+            now = datetime.now().isoformat(timespec="seconds")
+            lines = [f"time: {now}", f"tokens used: {total_tokens()} / {max_tokens}"]
+            if instance:
+                lines.append(f"instance: {instance}")
+            return "\n".join(lines)
 
-    registry.add(
-        name="done",
-        description="Call when you are finished. Terminates the session.",
-        params=[
-            Param(name="summary", description="Brief summary of what was accomplished.")
-        ],
-        func=_done,
-    )
-
-    registry.add(
-        name="ask",
-        description="Ask the user a question. User may not always be immediately available for an answer.",
-        params=[Param(name="message", description="Message to show the user.")],
-        func=on_ask,
-    )
-
-    def _stop(reason: str) -> str:
-        """Log termination reason and return the last model content."""
-        extractor.advance(messages)
-        cost_str = f", ${total_cost:.4f}" if total_cost else ""
-        stop_msg: Message = {
-            "role": "system",
-            "content": f"[stop] {reason} ({total_tokens} tokens{cost_str})",
-        }
-        on_message(stop_msg)
-        on_step(f"\n[stop] {reason} ({total_tokens} tokens{cost_str})")
-        if registry.stats:
-            stats_text = json.dumps(registry.stats)
-            stats_msg: Message = {
-                "role": "system",
-                "content": f"[stats] {stats_text}",
-            }
-            on_message(stats_msg)
-            on_step(f"\n[stats] {stats_text}")
-        last = messages[-1].get("content", "") if messages else ""
-        return str(last)
-
-    for _ in range(max_iterations):
-        response = chat(
-            messages,
-            model=model,
-            system_prompt=system_prompt,
-            tools=registry.definitions(),
-            stream=True,
-            on_token=on_step,
-            on_thinking=on_thinking,
-            reasoning_effort=reasoning_effort,
-            max_tokens=_MAX_OUTPUT_TOKENS,
+        registry.add(
+            name="status",
+            description="Query system info: current time, token usage and limit.",
+            params=[],
+            func=_status,
         )
-        usage = response.get("usage")
-        if usage:
-            total_tokens += int(usage.get("total_tokens", 0))
-            cost = usage.get("cost")
-            if cost is not None:
-                total_cost += float(cost)
-        else:
-            total_tokens += _estimate_tokens(messages, response)
-        messages.append(response)
-        on_message(response)
 
-        if total_tokens >= max_tokens:
-            return _stop(f"token budget exceeded (limit {max_tokens})")
+        finished = False
 
-        tool_calls = response.get("tool_calls")
-        if not tool_calls:
-            _nudge_continue(
+        def _done(summary: str) -> str:
+            nonlocal finished
+            finished = True
+            return summary
+
+        registry.add(
+            name="done",
+            description="Call when you are finished. Terminates the session.",
+            params=[
+                Param(
+                    name="summary",
+                    description="Brief summary of what was accomplished.",
+                )
+            ],
+            func=_done,
+        )
+
+        registry.add(
+            name="ask",
+            description="Ask the user a question. User may not always be immediately available for an answer.",
+            params=[Param(name="message", description="Message to show the user.")],
+            func=on_ask,
+        )
+
+        def _stop(reason: str) -> str:
+            """Log termination reason and return the last model content."""
+            extractor.advance(messages)
+            cost_str = f", ${total_cost():.4f}" if total_cost() else ""
+            stop_msg: Message = {
+                "role": "system",
+                "content": f"[stop] {reason} ({total_tokens()} tokens{cost_str})",
+            }
+            on_message(stop_msg)
+            on_step(f"\n[stop] {reason} ({total_tokens()} tokens{cost_str})")
+            if registry.stats:
+                stats_text = json.dumps(registry.stats)
+                stats_msg: Message = {
+                    "role": "system",
+                    "content": f"[stats] {stats_text}",
+                }
+                on_message(stats_msg)
+                on_step(f"\n[stats] {stats_text}")
+            last = messages[-1].get("content", "") if messages else ""
+            return str(last)
+
+        for _ in range(max_iterations):
+            response = chat(
                 messages,
-                extractor,
-                total_tokens,
+                model=model,
+                system_prompt=system_prompt,
+                tools=registry.definitions(),
+                stream=True,
+                on_token=on_step,
+                on_thinking=on_thinking,
+                reasoning_effort=reasoning_effort,
+                max_tokens=_MAX_OUTPUT_TOKENS,
+            )
+            messages.append(response)
+            on_message(response)
+
+            if total_tokens() >= max_tokens:
+                return _stop(f"token budget exceeded (limit {max_tokens})")
+
+            tool_calls = response.get("tool_calls")
+            if not tool_calls:
+                _nudge_continue(
+                    messages,
+                    extractor,
+                    total_tokens(),
+                    max_tokens,
+                    warned_thresholds,
+                    on_message,
+                    on_step,
+                    nudge_pool,
+                )
+                continue
+
+            for call in tool_calls:
+                name = call["function"]["name"].strip()
+                arguments = call["function"]["arguments"]
+                on_step(f"[tool] {name}({arguments})")
+                # Treat empty arguments as {} (models often omit args for no-param tools).
+                if not arguments or not arguments.strip():
+                    arguments = "{}"
+                    call["function"]["arguments"] = arguments
+
+                # Reject truly malformed JSON so the model learns its mistake.
+                try:
+                    json.loads(arguments)
+                except (json.JSONDecodeError, TypeError):
+                    call["function"]["arguments"] = "{}"
+                    tool_result = f"Error: malformed arguments: {arguments}"
+                else:
+                    if not on_confirm(name, arguments):
+                        tool_result = f"Error: {name} was denied by the user."
+                    else:
+                        tool_result = registry.execute(name, arguments)
+                on_step(f"[result] {tool_result}")
+                tool_msg: Message = {
+                    "role": "tool",
+                    "tool_call_id": call["id"],
+                    "content": tool_result,
+                }
+                messages.append(tool_msg)
+                on_message(tool_msg)
+
+            if finished:
+                return _stop("model finished")
+
+            tool_turns_since_reflect += 1
+
+            # Warn the model after all tool results are appended.
+            _inject_budget_warnings(
+                total_tokens(),
                 max_tokens,
                 warned_thresholds,
+                messages,
                 on_message,
                 on_step,
-                nudge_pool,
             )
-            continue
 
-        for call in tool_calls:
-            name = call["function"]["name"].strip()
-            arguments = call["function"]["arguments"]
-            on_step(f"[tool] {name}({arguments})")
-            # Treat empty arguments as {} (models often omit args for no-param tools).
-            if not arguments or not arguments.strip():
-                arguments = "{}"
-                call["function"]["arguments"] = arguments
-
-            # Reject truly malformed JSON so the model learns its mistake.
-            try:
-                json.loads(arguments)
-            except (json.JSONDecodeError, TypeError):
-                call["function"]["arguments"] = "{}"
-                tool_result = f"Error: malformed arguments: {arguments}"
-            else:
-                if not on_confirm(name, arguments):
-                    tool_result = f"Error: {name} was denied by the user."
-                else:
-                    tool_result = registry.execute(name, arguments)
-            on_step(f"[result] {tool_result}")
-            tool_msg: Message = {
-                "role": "tool",
-                "tool_call_id": call["id"],
-                "content": tool_result,
-            }
-            messages.append(tool_msg)
-            on_message(tool_msg)
-
-        if finished:
-            return _stop("model finished")
-
-        tool_turns_since_reflect += 1
-
-        # Warn the model after all tool results are appended.
-        _inject_budget_warnings(
-            total_tokens,
-            max_tokens,
-            warned_thresholds,
-            messages,
-            on_message,
-            on_step,
-        )
-
-        # Periodic reflection + mid-session extraction.
-        if tool_turns_since_reflect >= _REFLECT_INTERVAL:
-            tool_turns_since_reflect = 0
-            combined_extra = nudge_extra
-            if on_reflect is not None:
-                intrusive = on_reflect()
-                if intrusive:
-                    combined_extra = (
-                        (nudge_extra + "\n\n" + intrusive).strip()
-                        if nudge_extra
-                        else intrusive
-                    )
-            _maybe_reflect(
-                messages,
-                extractor,
-                on_message=on_message,
-                on_step=on_step,
-                nudge_extra=combined_extra,
-                nudge_pool=nudge_pool,
-            )
+            # Periodic reflection + mid-session extraction.
+            if tool_turns_since_reflect >= _REFLECT_INTERVAL:
+                tool_turns_since_reflect = 0
+                combined_extra = nudge_extra
+                if on_reflect is not None:
+                    intrusive = on_reflect()
+                    if intrusive:
+                        combined_extra = (
+                            (nudge_extra + "\n\n" + intrusive).strip()
+                            if nudge_extra
+                            else intrusive
+                        )
+                _maybe_reflect(
+                    messages,
+                    extractor,
+                    on_message=on_message,
+                    on_step=on_step,
+                    nudge_extra=combined_extra,
+                    nudge_pool=nudge_pool,
+                )
 
     return _stop(f"max iterations reached ({max_iterations})")

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import requests
 
-from mindloop.client import _embedding_cache, chat, get_embeddings
+from mindloop.client import Stats, _embedding_cache, _record_usage, chat, get_embeddings
 
 
 def _mock_non_streaming(message: dict[str, Any]) -> MagicMock:
@@ -473,3 +473,48 @@ def test_coherence_aborts_degenerate_reasoning(mock_post: MagicMock) -> None:
     reasoning = result.get("reasoning", "")
     assert len(reasoning) < len(phrase) * 200
     assert result["content"] == ""
+
+
+# --- Stats tests ---
+
+
+def test_stats_captures_delta() -> None:
+    """Stats.counters returns delta, not absolute total."""
+    # Record some usage before the context to prove delta isolation.
+    _record_usage("pre-model", {"total_tokens": 999})
+
+    with Stats() as s:
+        _record_usage("model-a", {"total_tokens": 100, "cost": 0.01})
+        _record_usage("model-b", {"total_tokens": 50, "cost": 0.005})
+        c = s.counters
+    assert c.tokens == 150
+    assert abs(c.cost - 0.015) < 1e-9
+
+
+def test_stats_per_model() -> None:
+    """per_model returns per-model deltas."""
+    with Stats() as s:
+        _record_usage("fast", {"total_tokens": 200, "cost": 0.02})
+        _record_usage("slow", {"total_tokens": 80, "cost": 0.10})
+        pm = s.per_model
+    assert pm["fast"].tokens == 200
+    assert pm["slow"].tokens == 80
+    assert abs(pm["slow"].cost - 0.10) < 1e-9
+
+
+def test_stats_nesting() -> None:
+    """Inner Stats scope sees only its own usage."""
+    with Stats() as outer:
+        _record_usage("m", {"total_tokens": 100})
+        with Stats() as inner:
+            _record_usage("m", {"total_tokens": 50})
+            assert inner.counters.tokens == 50
+        assert outer.counters.tokens == 150
+
+
+def test_stats_no_cost() -> None:
+    """Cost stays zero when API omits it."""
+    with Stats() as s:
+        _record_usage("m", {"total_tokens": 42})
+        assert s.counters.cost == 0.0
+        assert s.counters.tokens == 42
