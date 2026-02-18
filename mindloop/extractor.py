@@ -3,7 +3,7 @@
 import json
 import re
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from typing import Any
 
 from mindloop.chunker import chunk_turns, compact_chunks, merge_chunks
@@ -16,7 +16,8 @@ from mindloop.client import (
 from mindloop.memory import MemoryStore
 from mindloop.recap import collapse_messages
 from mindloop.semantic_memory import save_memory
-from mindloop.util import DEFAULT_WORKERS, noop
+from mindloop.pool import submit
+from mindloop.util import noop
 
 # Tail of the previous chunk passed as context to the next extraction call,
 # so the LLM can resolve references that span chunk boundaries.
@@ -176,14 +177,12 @@ def verify_facts(
     facts: list[dict[str, str]],
     messages: list[dict[str, Any]],
     model: str,
-    workers: int = DEFAULT_WORKERS,
 ) -> list[dict[str, str]]:
     """Verify all facts in parallel, return only those confirmed."""
     if not facts:
         return []
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(verify_fact, f, messages, model): f for f in facts}
-        return [futures[fut] for fut in as_completed(futures) if fut.result()]
+    futures = {submit(verify_fact, f, messages, model): f for f in facts}
+    return [futures[fut] for fut in as_completed(futures) if fut.result()]
 
 
 def extract_window(
@@ -208,7 +207,6 @@ def extract_session(
     store: MemoryStore,
     model: str,
     log: Callable[[str], None] = noop,
-    workers: int = DEFAULT_WORKERS,
 ) -> int:
     """Full extraction pipeline: collapse → chunk → extract → save.
 
@@ -238,29 +236,22 @@ def extract_session(
     for chunk in chunks[:-1]:
         contexts.append(chunk.text[-CONTEXT_CHARS:])
 
-    # Extract facts from each chunk (parallelized).
-    all_facts: list[tuple[int, list[dict[str, str]]]] = []
+    # Extract facts from each chunk (parallelized via global pool).
     n = len(chunks)
-
-    if workers <= 1:
-        for i, chunk in enumerate(chunks):
-            log(f"  Extracting chunk {i + 1}/{n}...")
-            facts = extract_facts(chunk.text, context=contexts[i], model=model)
-            all_facts.append((i, facts))
-    else:
-        ordered: list[tuple[int, list[dict[str, str]]] | None] = [None] * n
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            future_to_idx = {
-                pool.submit(extract_facts, chunk.text, model, contexts[i]): i
-                for i, chunk in enumerate(chunks)
-            }
-            done = 0
-            for future in as_completed(future_to_idx):
-                idx = future_to_idx[future]
-                ordered[idx] = (idx, future.result())
-                done += 1
-                log(f"  Extracted chunk {done}/{n} (index {idx})...")
-        all_facts = [x for x in ordered if x is not None]
+    ordered: list[tuple[int, list[dict[str, str]]] | None] = [None] * n
+    future_to_idx = {
+        submit(extract_facts, chunk.text, model, contexts[i]): i
+        for i, chunk in enumerate(chunks)
+    }
+    done = 0
+    for future in as_completed(future_to_idx):
+        idx = future_to_idx[future]
+        ordered[idx] = (idx, future.result())
+        done += 1
+        log(f"  Extracted chunk {done}/{n} (index {idx})...")
+    all_facts: list[tuple[int, list[dict[str, str]]]] = [
+        x for x in ordered if x is not None
+    ]
 
     # Save each fact sequentially (SQLite writes).
     total_saved = 0

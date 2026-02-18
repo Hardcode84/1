@@ -1,12 +1,13 @@
 """Chunk summarization into abstract + expanded summary."""
 
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from dataclasses import dataclass
 
 from mindloop.chunker import Chunk
 from mindloop.client import DETERMINISTIC_PARAMS, chat
-from mindloop.util import DEFAULT_WORKERS, noop
+from mindloop.pool import submit
+from mindloop.util import noop
 
 
 _SYSTEM_PROMPT = """\
@@ -56,29 +57,18 @@ def summarize_chunks(
     chunks: list[Chunk],
     model: str,
     log: Callable[[str], None] = noop,
-    workers: int = DEFAULT_WORKERS,
 ) -> list[ChunkSummary]:
-    """Summarize a list of chunks, optionally in parallel."""
+    """Summarize a list of chunks in parallel via global pool."""
     n = len(chunks)
-    if workers <= 1:
-        results: list[ChunkSummary] = []
-        for i, chunk in enumerate(chunks, 1):
-            log(f"  Summarizing chunk {i}/{n}...")
-            results.append(summarize_chunk(chunk, model=model))
-        return results
-
-    # Parallel path: preserve input order via index.
     ordered: list[ChunkSummary | None] = [None] * n
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        future_to_idx = {
-            pool.submit(summarize_chunk, chunk, model): i
-            for i, chunk in enumerate(chunks)
-        }
-        done = 0
-        for future in as_completed(future_to_idx):
-            idx = future_to_idx[future]
-            ordered[idx] = future.result()
-            done += 1
-            log(f"  Summarized chunk {done}/{n} (index {idx})...")
+    future_to_idx = {
+        submit(summarize_chunk, chunk, model): i for i, chunk in enumerate(chunks)
+    }
+    done = 0
+    for future in as_completed(future_to_idx):
+        idx = future_to_idx[future]
+        ordered[idx] = future.result()
+        done += 1
+        log(f"  Summarized chunk {done}/{n} (index {idx})...")
 
     return list(ordered)  # type: ignore[arg-type]

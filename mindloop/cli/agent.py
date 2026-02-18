@@ -461,12 +461,9 @@ class MidSessionExtractor:
         agent_model: str,
         dispositions_path: Path | None = None,
     ) -> None:
-        from concurrent.futures import ThreadPoolExecutor
-
         self._store = store
         self._model = model
         self._log = log
-        self._executor = ThreadPoolExecutor(max_workers=2)
         self._future: Any = None  # Future[list[dict[str, str]]] | None
         self._disp_future: Any = None  # Future[list[dict[str, str]]] | None
         self._pending_texts: list[str] = []
@@ -572,9 +569,11 @@ class MidSessionExtractor:
         self._log(
             f"\n[extract] launching mid-session extraction ({len(messages)} messages)"
         )
-        self._future = self._executor.submit(self._extract_and_verify, messages)
+        from mindloop.pool import submit
+
+        self._future = submit(self._extract_and_verify, messages)
         if self._dispositions_path:
-            self._disp_future = self._executor.submit(
+            self._disp_future = submit(
                 extract_dispositions_window, messages, self._model
             )
 
@@ -601,9 +600,8 @@ class MidSessionExtractor:
         return "These memories seem related to what you're doing:\n" + "\n".join(lines)
 
     def finish(self) -> None:
-        """Wait for in-flight extraction and shut down the executor."""
+        """Wait for in-flight extraction to complete."""
         self._drain(wait=True)
-        self._executor.shutdown(wait=False)
 
 
 def main() -> None:
@@ -699,31 +697,34 @@ def main() -> None:
         dispositions_path=disp_path,
     )
 
-    try:
-        run_agent(
-            system_prompt,
-            registry=registry,
-            on_step=_print_step,
-            model=model,
-            on_thinking=_print_thinking,
-            on_message=logger,
-            on_confirm=confirm,
-            on_ask=_ask_user,
-            initial_messages=initial_messages,
-            instance=paths.instance,
-            nudge_extra=nudge_extra,
-            nudge_pool=nudge_pool,
-            on_extract=mid_extract.on_extract,
-            on_reflect=mid_extract.intrusive_recall,
-        )
-    except KeyboardInterrupt:
-        print("\n\nInterrupted.")
-    finally:
-        print("\n")
-        mid_extract.finish()
-        _generate_session_recap(paths, jsonl_path, summarizer_model)
-        _distill_session_values(paths, summarizer_model)
-        mt.close()
+    from mindloop.pool import Executor
+
+    with Executor():
+        try:
+            run_agent(
+                system_prompt,
+                registry=registry,
+                on_step=_print_step,
+                model=model,
+                on_thinking=_print_thinking,
+                on_message=logger,
+                on_confirm=confirm,
+                on_ask=_ask_user,
+                initial_messages=initial_messages,
+                instance=paths.instance,
+                nudge_extra=nudge_extra,
+                nudge_pool=nudge_pool,
+                on_extract=mid_extract.on_extract,
+                on_reflect=mid_extract.intrusive_recall,
+            )
+        except KeyboardInterrupt:
+            print("\n\nInterrupted.")
+        finally:
+            print("\n")
+            mid_extract.finish()
+            _generate_session_recap(paths, jsonl_path, summarizer_model)
+            _distill_session_values(paths, summarizer_model)
+            mt.close()
 
     if paths.name:
         model_flag = f" --model {model}" if model != _DEFAULT_MODEL else ""

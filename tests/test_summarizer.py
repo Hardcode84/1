@@ -32,7 +32,7 @@ def test_summarize_chunk_parses_response(_mock: Any) -> None:
 def test_summarize_chunks_sequential(_mock: Any) -> None:
     """Sequential summarization preserves order."""
     chunks = [_make_chunk("a"), _make_chunk("b"), _make_chunk("c")]
-    results = summarize_chunks(chunks, model="test-model", workers=1)
+    results = summarize_chunks(chunks, model="test-model")
     assert len(results) == 3
     assert [r.abstract for r in results] == [
         "abs of You: a",
@@ -45,7 +45,7 @@ def test_summarize_chunks_sequential(_mock: Any) -> None:
 def test_summarize_chunks_parallel(_mock: Any) -> None:
     """Parallel summarization returns results in original order."""
     chunks = [_make_chunk("x"), _make_chunk("y"), _make_chunk("z")]
-    results = summarize_chunks(chunks, model="test-model", workers=2)
+    results = summarize_chunks(chunks, model="test-model")
     assert len(results) == 3
     assert [r.abstract for r in results] == [
         "abs of You: x",
@@ -59,7 +59,7 @@ def test_summarize_chunks_parallel_logs_progress(_mock: Any) -> None:
     """Parallel path calls the log function for each completed chunk."""
     logged: list[str] = []
     chunks = [_make_chunk("p"), _make_chunk("q")]
-    summarize_chunks(chunks, model="test-model", workers=2, log=logged.append)
+    summarize_chunks(chunks, model="test-model", log=logged.append)
     assert len(logged) == 2
 
 

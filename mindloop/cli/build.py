@@ -8,7 +8,7 @@ from mindloop.chunker import chunk_turns, compact_chunks, parse_turns, parse_tur
 from mindloop.memory import MemoryStore
 from mindloop.semantic_memory import save_memory
 from mindloop.summarizer import summarize_chunks
-from mindloop.util import DEFAULT_WORKERS
+from mindloop.pool import Executor
 
 
 def _truncate(text: str, limit: int = 120) -> str:
@@ -24,7 +24,6 @@ def process_file(
     store: MemoryStore,
     model: str,
     verbose: bool = False,
-    workers: int = 1,
 ) -> int:
     """Run the full pipeline on a single file. Returns number of chunks saved."""
     if path.suffix == ".md":
@@ -44,7 +43,7 @@ def process_file(
 
     # Summarize all chunks (parallel when workers > 1).
     summaries = summarize_chunks(
-        chunks, model=model, log=print if verbose else lambda _: None, workers=workers
+        chunks, model=model, log=print if verbose else lambda _: None
     )
 
     # Save sequentially (SQLite writes can't be parallelized safely).
@@ -78,12 +77,6 @@ def main() -> None:
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Print each pipeline stage."
     )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=DEFAULT_WORKERS,
-        help="Parallel summarization workers.",
-    )
     args = parser.parse_args()
 
     paths = sorted(
@@ -97,15 +90,14 @@ def main() -> None:
         return
 
     store = MemoryStore(db_path=Path(args.db))
-    try:
-        for path in paths:
-            print(f"{path}")
-            n = process_file(
-                path, store, args.model, verbose=args.verbose, workers=args.workers
-            )
-            print(f"  → {n} chunks saved")
-    finally:
-        store.close()
+    with Executor():
+        try:
+            for path in paths:
+                print(f"{path}")
+                n = process_file(path, store, args.model, verbose=args.verbose)
+                print(f"  → {n} chunks saved")
+        finally:
+            store.close()
 
 
 if __name__ == "__main__":

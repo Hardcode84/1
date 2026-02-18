@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 
 from mindloop.client import API_KEY, DEFAULT_MODEL
+from mindloop.pool import Executor
 from mindloop.recap import generate_recap, save_recap
-from mindloop.util import DEFAULT_WORKERS
 
 
 def _load_messages(path: Path) -> list[dict[str, object]]:
@@ -46,12 +46,6 @@ def main() -> None:
         default=None,
         help="Write recap to file instead of stdout.",
     )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=DEFAULT_WORKERS,
-        help="Parallel summarization workers.",
-    )
     args = parser.parse_args()
 
     if not args.logfile.exists():
@@ -67,13 +61,13 @@ def main() -> None:
         print("No messages found in log file.", file=sys.stderr)
         sys.exit(1)
 
-    recap = generate_recap(
-        messages,
-        model=args.model,
-        token_budget=args.budget,
-        log=print,
-        workers=args.workers,
-    )
+    with Executor():
+        recap = generate_recap(
+            messages,
+            model=args.model,
+            token_budget=args.budget,
+            log=print,
+        )
     if not recap:
         print("No recap generated (too few messages?).", file=sys.stderr)
         sys.exit(1)

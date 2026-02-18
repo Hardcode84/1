@@ -187,7 +187,7 @@ def test_extract_session_saves_facts(store: MemoryStore) -> None:
         _patch_embeddings(),
         patch("mindloop.extractor.chat", side_effect=_mock_chat_returning(facts_json)),
     ):
-        saved = extract_session(messages, store, model="test-model", workers=1)
+        saved = extract_session(messages, store, model="test-model")
 
     assert saved == 1
     assert store.count() == 1
@@ -215,7 +215,7 @@ def test_extract_session_context_prefix(store: MemoryStore) -> None:
         _patch_embeddings(),
         patch("mindloop.extractor.extract_facts", side_effect=_tracking_extract),
     ):
-        saved = extract_session(messages, store, model="test-model", workers=1)
+        saved = extract_session(messages, store, model="test-model")
 
     assert saved == 0
     # First chunk should have no context.
@@ -227,7 +227,7 @@ def test_extract_session_context_prefix(store: MemoryStore) -> None:
 
 def test_extract_session_empty_log(store: MemoryStore) -> None:
     """Empty messages returns 0 without crashing."""
-    saved = extract_session([], store, model="test-model", workers=1)
+    saved = extract_session([], store, model="test-model")
     assert saved == 0
 
 
@@ -313,7 +313,7 @@ def test_verify_facts_filters() -> None:
         return {"role": "assistant", "content": "yes"}
 
     with patch("mindloop.extractor.chat", side_effect=_selective_chat):
-        result = verify_facts(facts, _SAMPLE_MESSAGES, model="test", workers=1)
+        result = verify_facts(facts, _SAMPLE_MESSAGES, model="test")
 
     texts = {f["text"] for f in result}
     assert texts == {"fact A", "fact C"}

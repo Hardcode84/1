@@ -113,8 +113,8 @@ mindloop-extract logs/001_agent_20260210_120000.jsonl --dry-run -v
 # Save extracted facts into the memory database.
 mindloop-extract logs/001_agent_20260210_120000.jsonl --db memory.db
 
-# Custom model and parallelism.
-mindloop-extract logs/001_agent_20260210_120000.jsonl --model deepseek/deepseek-v3.2 --workers 8
+# Custom model.
+mindloop-extract logs/001_agent_20260210_120000.jsonl --model deepseek/deepseek-v3.2
 ```
 
 Extracts factual memories from a session log as a post-session safety net. Collapses tool calls, chunks the conversation, then uses an LLM to identify reusable facts from each chunk. Each fact is summarized and saved into the semantic database with automatic dedup and merge.

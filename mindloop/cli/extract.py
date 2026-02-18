@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 from mindloop.client import API_KEY, DEFAULT_EMBEDDING_MODEL, DEFAULT_MODEL
-from mindloop.util import DEFAULT_WORKERS
 
 
 def _load_messages(path: Path) -> list[dict[str, object]]:
@@ -38,12 +37,6 @@ def main() -> None:
         default=DEFAULT_MODEL,
         help="Model for extraction + summarization LLM calls.",
     )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=DEFAULT_WORKERS,
-        help="Parallel extraction workers.",
-    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Print each step.")
     parser.add_argument(
         "--dry-run",
@@ -67,42 +60,43 @@ def main() -> None:
 
     log = print if args.verbose else (lambda _msg: None)
 
-    if args.dry_run:
-        from mindloop.chunker import chunk_turns, compact_chunks, merge_chunks
-        from mindloop.client import get_embeddings
-        from mindloop.extractor import CONTEXT_CHARS, extract_facts
-        from mindloop.recap import collapse_messages
+    from mindloop.pool import Executor
 
-        turns = collapse_messages(messages)
-        chunks = compact_chunks(chunk_turns(turns))
-        if len(chunks) >= 2:
-            embeddings = get_embeddings(
-                [c.text for c in chunks], model=DEFAULT_EMBEDDING_MODEL
-            )
-            chunks = merge_chunks(chunks, embeddings, log=log)
+    with Executor():
+        if args.dry_run:
+            from mindloop.chunker import chunk_turns, compact_chunks, merge_chunks
+            from mindloop.client import get_embeddings
+            from mindloop.extractor import CONTEXT_CHARS, extract_facts
+            from mindloop.recap import collapse_messages
 
-        total = 0
-        for i, chunk in enumerate(chunks):
-            # Tail of previous chunk gives the LLM cross-boundary context.
-            context = chunks[i - 1].text[-CONTEXT_CHARS:] if i > 0 else None
-            facts = extract_facts(chunk.text, context=context, model=args.model)
-            for fact in facts:
-                summary = fact.get("summary", "")
-                print(f"  [{fact['abstract']}] {fact['text']}")
-                if summary:
-                    print(f"    Summary: {summary}")
-                print()
-            total += len(facts)
-        print(f"\nExtracted {total} facts from {len(chunks)} chunks.")
-    else:
-        from mindloop.extractor import extract_session
-        from mindloop.memory import MemoryStore
+            turns = collapse_messages(messages)
+            chunks = compact_chunks(chunk_turns(turns))
+            if len(chunks) >= 2:
+                embeddings = get_embeddings(
+                    [c.text for c in chunks], model=DEFAULT_EMBEDDING_MODEL
+                )
+                chunks = merge_chunks(chunks, embeddings, log=log)
 
-        store = MemoryStore(db_path=args.db)
-        saved = extract_session(
-            messages, store, model=args.model, log=log, workers=args.workers
-        )
-        print(f"Extracted {saved} facts from session.")
+            total = 0
+            for i, chunk in enumerate(chunks):
+                # Tail of previous chunk gives the LLM cross-boundary context.
+                context = chunks[i - 1].text[-CONTEXT_CHARS:] if i > 0 else None
+                facts = extract_facts(chunk.text, context=context, model=args.model)
+                for fact in facts:
+                    summary = fact.get("summary", "")
+                    print(f"  [{fact['abstract']}] {fact['text']}")
+                    if summary:
+                        print(f"    Summary: {summary}")
+                    print()
+                total += len(facts)
+            print(f"\nExtracted {total} facts from {len(chunks)} chunks.")
+        else:
+            from mindloop.extractor import extract_session
+            from mindloop.memory import MemoryStore
+
+            store = MemoryStore(db_path=args.db)
+            saved = extract_session(messages, store, model=args.model, log=log)
+            print(f"Extracted {saved} facts from session.")
 
 
 if __name__ == "__main__":

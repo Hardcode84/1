@@ -11,7 +11,7 @@ from typing import Any
 from mindloop.chunker import Turn, chunk_turns, compact_chunks, merge_chunks
 from mindloop.client import DEFAULT_EMBEDDING_MODEL, get_embeddings
 from mindloop.summarizer import ChunkSummary, summarize_chunks
-from mindloop.util import CHARS_PER_TOKEN, DEFAULT_WORKERS, noop
+from mindloop.util import CHARS_PER_TOKEN, noop
 
 
 # Tool call results that should be skipped entirely.
@@ -118,7 +118,6 @@ def generate_recap(
     model: str,
     token_budget: int = 1000,
     log: Callable[[str], None] = noop,
-    workers: int = DEFAULT_WORKERS,
 ) -> str:
     """Full recap pipeline: collapse, chunk, summarize, score, select."""
     log(f"Collapsing {len(messages)} messages...")
@@ -141,7 +140,7 @@ def generate_recap(
         log(f"Merged to {len(chunks)} chunks.")
 
     log(f"Summarizing {len(chunks)} chunks...")
-    summaries = summarize_chunks(chunks, model=model, log=log, workers=workers)
+    summaries = summarize_chunks(chunks, model=model, log=log)
     if not summaries:
         return ""
 

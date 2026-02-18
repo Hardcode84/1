@@ -19,7 +19,7 @@ from mindloop.client import (
     Embeddings,
     get_embeddings,
 )
-from mindloop.util import DEFAULT_WORKERS
+from mindloop.pool import Executor
 
 
 def print_chunks(
@@ -63,12 +63,6 @@ def main() -> None:
         action="store_true",
         help="Summarize each chunk via OpenRouter.",
     )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=DEFAULT_WORKERS,
-        help="Parallel summarization workers.",
-    )
     args = parser.parse_args()
 
     if not args.logfile.exists():
@@ -111,9 +105,8 @@ def main() -> None:
         from mindloop.summarizer import summarize_chunks
 
         print("=== Summaries ===\n")
-        summaries = summarize_chunks(
-            chunks, model=DEFAULT_MODEL, log=print, workers=args.workers
-        )
+        with Executor():
+            summaries = summarize_chunks(chunks, model=DEFAULT_MODEL, log=print)
         for i, summary in enumerate(summaries, 1):
             print(f"--- Chunk {i} ---")
             print(f"  Abstract: {summary.abstract}")
