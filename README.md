@@ -152,17 +152,24 @@ mindloop-symlink mysession remove shared
 
 Virtual symlinks let the agent read files from directories outside its workspace sandbox. They appear as `l`-type entries in `ls` and are read-only (writes and edits are blocked). Configuration is stored in `sessions/<name>/_symlinks.json` and persists across instances.
 
-### List sessions
+### Sessions
 
 ```bash
 # List all sessions with metadata.
 mindloop-sessions
+mindloop-sessions list
 
 # Custom sessions directory.
 mindloop-sessions --dir path/to/sessions
+
+# Delete a session (prompts for confirmation).
+mindloop-sessions delete myagent
+
+# Delete without confirmation.
+mindloop-sessions delete myagent -y
 ```
 
-Shows each session's name, instance count, date range, last exit status (clean/crashed/tokens/iterations), and whether notes exist.
+Shows each session's name, instance count, date range, last exit status (clean/crashed/tokens/iterations), and whether notes exist. Delete removes the entire session directory (logs, workspace, memory).
 
 ### Messaging
 

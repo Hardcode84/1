@@ -1,7 +1,8 @@
-"""List sessions and their metadata."""
+"""List and manage sessions."""
 
 import argparse
 import re
+import shutil
 from pathlib import Path
 
 from mindloop.cli.agent import _session_exit_reason
@@ -87,25 +88,61 @@ def _print_table(rows: list[dict[str, str]]) -> None:
         print(fmt.format(*(row[k] for k in headers)))
 
 
+def _delete_session(sessions_dir: Path, name: str) -> bool:
+    """Delete a session directory. Returns True on success."""
+    session_path = sessions_dir / name
+    if not session_path.is_dir():
+        print(f"Session not found: {name}")
+        return False
+    # Sanity check: must look like a session (has logs/).
+    if not (session_path / "logs").is_dir():
+        print(f"Not a valid session directory: {name}")
+        return False
+    shutil.rmtree(session_path)
+    print(f"Deleted session: {name}")
+    return True
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="List sessions and metadata.")
+    parser = argparse.ArgumentParser(description="List and manage sessions.")
     parser.add_argument(
         "--dir",
         default=str(_SESSIONS_DIR),
         help=f"Sessions directory (default: {_SESSIONS_DIR}).",
     )
-    args = parser.parse_args()
+    sub = parser.add_subparsers(dest="command")
 
+    sub.add_parser("list", help="List sessions (default).")
+
+    del_parser = sub.add_parser("delete", help="Delete a session.")
+    del_parser.add_argument("name", help="Session name to delete.")
+    del_parser.add_argument(
+        "-y", "--yes", action="store_true", help="Skip confirmation prompt."
+    )
+
+    args = parser.parse_args()
     sessions_dir = Path(args.dir)
+
+    if args.command == "delete":
+        if not sessions_dir.is_dir():
+            print(f"Sessions directory not found: {sessions_dir}")
+            return
+        if not args.yes:
+            reply = input(f"Delete session '{args.name}'? [y/N] ").strip().lower()
+            if reply not in ("y", "yes"):
+                print("Aborted.")
+                return
+        _delete_session(sessions_dir, args.name)
+        return
+
+    # Default: list.
     if not sessions_dir.is_dir():
         print(f"Sessions directory not found: {sessions_dir}")
         return
-
     rows = _gather_sessions(sessions_dir)
     if not rows:
         print("No sessions found.")
         return
-
     _print_table(rows)
 
 

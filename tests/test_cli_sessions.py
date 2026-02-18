@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mindloop.cli.sessions import _gather_sessions, main
+from mindloop.cli.sessions import _delete_session, _gather_sessions, main
 
 
 def _make_log(log_dir: Path, name: str, stop_content: str | None) -> None:
@@ -172,9 +172,62 @@ def test_main_prints_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -
         "demo",
         [("001_agent_20260213_120000.jsonl", "[stop] model finished (1k)")],
     )
-    with patch("sys.argv", ["mindloop-sessions", "--dir", str(tmp_path)]):
+    with patch("sys.argv", ["mindloop-sessions", "--dir", str(tmp_path), "list"]):
         main()
     captured = capsys.readouterr()
     assert "Session" in captured.out
     assert "demo" in captured.out
     assert "clean" in captured.out
+
+
+# --- Delete tests ---
+
+
+def test_delete_session(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Deleting a session removes its directory."""
+    _make_session(
+        tmp_path,
+        "doomed",
+        [("001_agent_20260213_120000.jsonl", "[stop] model finished (1k)")],
+    )
+    assert (tmp_path / "doomed").is_dir()
+    assert _delete_session(tmp_path, "doomed")
+    assert not (tmp_path / "doomed").exists()
+
+
+def test_delete_session_not_found(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Deleting a nonexistent session prints an error."""
+    assert not _delete_session(tmp_path, "ghost")
+    captured = capsys.readouterr()
+    assert "not found" in captured.out.lower()
+
+
+def test_delete_session_not_valid(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Deleting a directory without logs/ is rejected."""
+    (tmp_path / "not_a_session").mkdir()
+    assert not _delete_session(tmp_path, "not_a_session")
+    captured = capsys.readouterr()
+    assert "not a valid" in captured.out.lower()
+
+
+def test_main_delete_with_yes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Main delete subcommand with -y skips confirmation."""
+    _make_session(
+        tmp_path,
+        "byebye",
+        [("001_agent_20260213_120000.jsonl", "[stop] model finished (1k)")],
+    )
+    with patch(
+        "sys.argv",
+        ["mindloop-sessions", "--dir", str(tmp_path), "delete", "byebye", "-y"],
+    ):
+        main()
+    assert not (tmp_path / "byebye").exists()
+    captured = capsys.readouterr()
+    assert "Deleted" in captured.out
