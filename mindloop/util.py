@@ -3,8 +3,8 @@
 # Approximate characters per token for budget estimation.
 CHARS_PER_TOKEN = 4
 
-# Default thread pool size for parallel summarization.
-DEFAULT_WORKERS = 4
+# Default thread pool size for the global executor.
+DEFAULT_WORKERS = 8
 
 # Cosine-similarity threshold for dedup gating during extraction and rebuild.
 DEDUP_THRESHOLD = 0.7
