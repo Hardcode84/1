@@ -487,7 +487,7 @@ class MidSessionExtractor:
             return True
         return False
 
-    def _drain(self, wait: bool = False) -> None:
+    def _drain(self, wait: bool = False, timeout: int = 300) -> None:
         """Commit pending extraction results to memory and dispositions to file."""
         from mindloop.semantic_memory import save_memory
 
@@ -497,7 +497,7 @@ class MidSessionExtractor:
                 pass
             else:
                 try:
-                    facts = self._future.result(timeout=30)
+                    facts = self._future.result(timeout=timeout)
                     if facts:
                         saved = 0
                         for fact in facts:
@@ -531,7 +531,7 @@ class MidSessionExtractor:
                 pass
             else:
                 try:
-                    dispositions = self._disp_future.result(timeout=30)
+                    dispositions = self._disp_future.result(timeout=timeout)
                     if dispositions and self._dispositions_path:
                         append_dispositions(self._dispositions_path, dispositions)
                         self._log(f"\n[values] saved {len(dispositions)} dispositions")
