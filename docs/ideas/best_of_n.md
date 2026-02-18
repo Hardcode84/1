@@ -69,16 +69,77 @@ The technique is only as good as the selector. Options ranked by reliability:
 - Reasoning-action coherence: does the reasoning mention the tool it calls?
 - Context grounding: does the response reference retrieved chunks?
 
+### Coherence metrics (smooth, cheap, domain-neutral)
+
+Reuses the signals from [coherence detection](../design/coherence_detection.md) as continuous scoring inputs rather than binary degeneration guards.
+
+- **Compression ratio** (`zlib`): `compressed_size / original_size`. Ranges from ~0.1 (degenerate repetition) to ~0.5+ (information-dense). Higher = more informational content. Zero API calls.
+- **N-gram diversity**: `unique_ngrams / total_ngrams`, continuous 0-1. Higher = richer language. Catches phrase-level reuse that compression ratio may miss.
+- **Embedding drift**: cosine distance from recent context centroid. Inverted-U shape — too close means looping, too far means off-topic. Score as distance from a target band center.
+
+These bridge the gap between binary validity checks ("does the tool call parse?") and expensive judges ("is this good reasoning?"). They provide a smooth gradient for ranking candidates with no extra API calls (except embedding drift, which reuses existing infrastructure).
+
 ### Composite
 
-Best results combine signals:
+Best results combine signals. A smooth scoring function using coherence:
 
 ```
-score = w1 * format_valid
-      + w2 * self_consistency_rank
-      + w3 * log_prob_normalized
-      + w4 * length_penalty
+coherence = w1 * compression_ratio + w2 * ngram_diversity
+score = majority_cluster_membership * 10 + coherence
 ```
+
+Self-consistency (cluster membership) remains the dominant signal. Coherence breaks ties within clusters and filters garbage before voting.
+
+### Recommended pipeline
+
+1. **Filter**: discard candidates with compression ratio below a floor (clearly degenerate).
+2. **Cluster**: group by structured action (tool + args) for self-consistency vote.
+3. **Rank**: within the majority cluster, pick the candidate with highest coherence score.
+
+Each stage is cheap. The function degrades gracefully — even if coherence scoring adds no value on easy turns, it costs almost nothing. On hard turns where multiple candidates look plausible, it differentiates.
+
+## Recommended Scoring: Self-Consistency
+
+For domain-neutral general reasoning, **self-consistency** is the strongest choice.
+
+**Why it wins**: correct reasoning paths converge on the same answer more often than incorrect ones. This is a statistical property of the model's distribution, not a domain-specific heuristic. No verifier, no reward model, no logprobs needed.
+
+**Why alternatives are weaker here**:
+
+- **Log-probs**: high confidence != correct reasoning. Models are confidently wrong routinely. Measures fluency more than correctness.
+- **LLM-as-judge**: shares blind spots with the generator. If the model can't distinguish right from wrong, judging N wrong answers won't help.
+- **Reward models**: require domain-specific training data.
+
+**For agents**: vote on the structured action (tool + args), not the full reasoning text. Two samples that call `read("config.py")` with different reasoning are still in agreement. Clustering becomes trivial exact-match on the structured output.
+
+**Limitation**: degrades when the correct answer has low probability (very hard problems where the model almost never gets it right). No majority to find. But for the general case it's the best cost/quality tradeoff.
+
+## Diversity Strategy: Prompt Experts over Temperature
+
+### Temperature diversity is tempting but flawed
+
+The idea: low temperature exploits (reliable, consensus answers), high temperature explores (non-obvious solutions). AlphaCode used this successfully — but AlphaCode had a strong execution-based verifier (test cases).
+
+The problem for self-consistency: it assumes samples are comparable quality. High-temperature samples are noisier and pollute the vote. Weighting votes by temperature adds complexity and tuning.
+
+### Prompt diversity is stronger
+
+Same moderate temperature (0.7), different reasoning strategies per expert:
+
+- Expert A: "Think step by step."
+- Expert B: "First identify what could go wrong, then solve."
+- Expert C: "Work backwards from the desired outcome."
+- Expert D: "List your assumptions before reasoning."
+
+**Why this works better**:
+
+- Temperature only changes sampling noise — the model follows the same reasoning pattern with more randomness.
+- Prompt diversity changes *what the model attends to*. Different framings activate different knowledge and failure modes.
+- Errors become less correlated across experts, which is exactly what makes ensemble methods powerful.
+
+**For an agent loop**: vary the instruction for *how to decide the next action* — cautious vs. exploratory vs. goal-focused vs. diagnostic. Then majority-vote on the action.
+
+**Recipe**: uniform moderate temperature (0.7), diverse system prompts, self-consistency on structured output.
 
 ## Applicability to Mindloop
 
