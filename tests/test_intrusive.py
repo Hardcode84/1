@@ -1,4 +1,4 @@
-"""Tests for intrusive recall in MidSessionExtractor."""
+"""Tests for intrusive recall and cross-context critic in MidSessionExtractor."""
 
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -280,3 +280,104 @@ def test_on_reflect_empty_does_not_alter_nudge(mock_chat: MagicMock) -> None:
     assert len(reflect_msgs) == 1
     # Should not contain "memories" since on_reflect returned empty.
     assert "memories" not in reflect_msgs[0]["content"]
+
+
+# --- Cross-context critic tests ---
+
+
+def test_critic_review_empty_before_first_window() -> None:
+    """No prior window means empty string, no chat call."""
+    store = MagicMock()
+    ext = MidSessionExtractor(store, model="m", log=lambda _: None, agent_model="m")
+    with patch("mindloop.critic.chat") as mock_chat:
+        assert ext.critic_review() == ""
+        mock_chat.assert_not_called()
+
+
+@patch("mindloop.critic.chat")
+def test_critic_review_returns_concern(mock_chat: MagicMock) -> None:
+    """Critic concern is returned with [critic] prefix."""
+    mock_chat.return_value = {
+        "content": "The agent is reading the same file repeatedly."
+    }
+    ext = MidSessionExtractor(
+        MagicMock(), model="m", log=lambda _: None, agent_model="m"
+    )
+    ext._last_query = "Bot: Read config.py\nBot: Read config.py"
+    result = ext.critic_review()
+    assert result == "[critic] The agent is reading the same file repeatedly."
+
+
+@patch("mindloop.critic.chat")
+def test_critic_review_ok_returns_empty(mock_chat: MagicMock) -> None:
+    """Critic returning 'ok' means no injection."""
+    mock_chat.return_value = {"content": "ok"}
+    ext = MidSessionExtractor(
+        MagicMock(), model="m", log=lambda _: None, agent_model="m"
+    )
+    ext._last_query = "Bot: Making progress on the task."
+    assert ext.critic_review() == ""
+
+
+@patch("mindloop.critic.chat")
+@patch("mindloop.cli.agent.collapse_messages")
+def test_critic_review_uses_last_query(
+    mock_collapse: MagicMock, mock_chat: MagicMock
+) -> None:
+    """Critic receives the query text saved by intrusive_recall."""
+    store = MagicMock()
+    store.search.return_value = []
+    mock_chat.return_value = {"content": "ok"}
+
+    turn = MagicMock()
+    turn.role = "Bot"
+    turn.text = "working on feature X"
+    mock_collapse.return_value = [turn]
+
+    ext = MidSessionExtractor(store, model="m", log=lambda _: None, agent_model="m")
+    ext.on_extract([{"role": "assistant", "content": "hi"}])
+    ext.intrusive_recall()
+    ext.critic_review()
+
+    call_args = mock_chat.call_args
+    prompt_text = call_args[0][0][0]["content"]
+    assert "working on feature X" in prompt_text
+
+
+@patch("mindloop.agent._REFLECT_INTERVAL", 3)
+@patch("mindloop.agent.chat_best_of_n")
+def test_on_reflect_combines_intrusive_and_critic(mock_chat: MagicMock) -> None:
+    """Both intrusive recall and critic output appear in the reflection message."""
+    tool_resp = _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')])
+    mock_chat.side_effect = [
+        tool_resp,
+        tool_resp,
+        tool_resp,  # 3rd → reflection fires.
+        _make_done_response("c2", "done"),
+    ]
+    on_msg = MagicMock()
+
+    def fake_reflect() -> str:
+        return (
+            'These memories seem related to what you\'re doing:\n- "Remember X." (#1)'
+            "\n\n[critic] The agent appears stuck in a loop."
+        )
+
+    run_agent(
+        "prompt",
+        registry=_echo_registry(),
+        model="test-model",
+        on_message=on_msg,
+        on_reflect=fake_reflect,
+    )
+
+    reflect_msgs = [
+        c.args[0]
+        for c in on_msg.call_args_list
+        if c.args[0].get("role") == "system"
+        and "reflect" in c.args[0].get("content", "").lower()
+    ]
+    assert len(reflect_msgs) == 1
+    content = reflect_msgs[0]["content"]
+    assert "Remember X." in content
+    assert "[critic] The agent appears stuck in a loop." in content

@@ -25,6 +25,7 @@ summarizer.py      LLM-generated abstract + summary per chunk.
 client.py          OpenRouter API wrapper (chat, embeddings, streaming, retry).
 recap.py           Session recap: collapse tool calls, summarize, persist between instances.
 extractor.py       Post-session memory extraction: LLM-based fact extraction from logs.
+critic.py          Cross-context critic: fresh-context review of agent actions at reflection points.
 cli/               Ten entry points: agent, chat, chunk, build, query, dump, recap, sessions, message, extract.
 ```
 

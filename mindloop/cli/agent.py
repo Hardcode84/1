@@ -14,6 +14,7 @@ from typing import Any
 
 from mindloop.agent import run_agent
 from mindloop.client import API_KEY
+from mindloop.critic import critic_review
 from mindloop.memory import MemoryStore
 from mindloop.quotes import NudgePool, quote_of_the_day
 from mindloop.recap import collapse_messages, generate_recap, load_recap, save_recap
@@ -486,6 +487,7 @@ class MidSessionExtractor:
         self._future: Any = None  # Future[list[dict[str, str]]] | None
         self._disp_future: Any = None  # Future[list[dict[str, str]]] | None
         self._pending_texts: list[str] = []
+        self._last_query: str = ""
         self._seen_ids: set[int] = set()
         self._dispositions_path = dispositions_path
         self._agent_model = agent_model
@@ -599,8 +601,10 @@ class MidSessionExtractor:
     def intrusive_recall(self) -> str:
         """Query memory with accumulated window text. Resets buffer on use."""
         if not self._pending_texts:
+            self._last_query = ""
             return ""
         query = "\n".join(self._pending_texts)
+        self._last_query = query
         self._pending_texts.clear()
         results = self._store.search(
             query,
@@ -617,6 +621,10 @@ class MidSessionExtractor:
         self._seen_ids.update(r.id for r in hits)
         lines = [f'- "{r.chunk_summary.abstract}" (#{r.id})' for r in hits]
         return "These memories seem related to what you're doing:\n" + "\n".join(lines)
+
+    def critic_review(self) -> str:
+        """Fresh-context review of recent agent actions."""
+        return critic_review(self._last_query, self._model, self._log)
 
     def finish(self) -> None:
         """Wait for in-flight extraction to complete."""
@@ -717,6 +725,12 @@ def main() -> None:
         dispositions_path=disp_path,
     )
 
+    def _on_reflect() -> str:
+        intrusive = mid_extract.intrusive_recall()
+        critique = mid_extract.critic_review()
+        parts = [s for s in (intrusive, critique) if s]
+        return "\n\n".join(parts)
+
     from mindloop.pool import Executor
 
     with Executor():
@@ -735,7 +749,7 @@ def main() -> None:
                 nudge_extra=nudge_extra,
                 nudge_pool=nudge_pool,
                 on_extract=mid_extract.on_extract,
-                on_reflect=mid_extract.intrusive_recall,
+                on_reflect=_on_reflect,
                 n_experts=args.n_experts,
             )
         except KeyboardInterrupt:
