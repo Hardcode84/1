@@ -116,30 +116,68 @@ For domain-neutral general reasoning, **self-consistency** is the strongest choi
 
 ## Diversity Strategy: Prompt Experts over Temperature
 
-### Temperature diversity is tempting but flawed
+### Prompt diversity first, temperature diversity second
 
-The idea: low temperature exploits (reliable, consensus answers), high temperature explores (non-obvious solutions). AlphaCode used this successfully — but AlphaCode had a strong execution-based verifier (test cases).
+Temperature diversity alone is weak — it changes sampling noise without changing reasoning strategy. The model follows the same pattern with more randomness. Prompt diversity changes *what the model attends to*, decorrelating errors across experts.
 
-The problem for self-consistency: it assumes samples are comparable quality. High-temperature samples are noisier and pollute the vote. Weighting votes by temperature adds complexity and tuning.
-
-### Prompt diversity is stronger
-
-Same moderate temperature (0.7), different reasoning strategies per expert:
+**Primary axis — expert strategies** (injected into system prompt):
 
 - Expert A: "Think step by step."
 - Expert B: "First identify what could go wrong, then solve."
 - Expert C: "Work backwards from the desired outcome."
 - Expert D: "List your assumptions before reasoning."
 
-**Why this works better**:
+**Secondary axis — temperature tiers** when N > number of strategies:
 
-- Temperature only changes sampling noise — the model follows the same reasoning pattern with more randomness.
-- Prompt diversity changes *what the model attends to*. Different framings activate different knowledge and failure modes.
-- Errors become less correlated across experts, which is exactly what makes ensemble methods powerful.
+Strategies are cycled round-robin. Once all distinct strategies are assigned, additional slots reuse strategies at different temperatures. A moderate spread like `[0.5, 0.7, 0.9]`:
 
-**For an agent loop**: vary the instruction for *how to decide the next action* — cautious vs. exploratory vs. goal-focused vs. diagnostic. Then majority-vote on the action.
+- N=4, 4 strategies: A,B,C,D all at temp 0.7.
+- N=8, 4 strategies: A,B,C,D at 0.7, then A,B,C,D at 0.9.
+- N=12: add a third tier at 0.5.
 
-**Recipe**: uniform moderate temperature (0.7), diverse system prompts, self-consistency on structured output.
+This maximizes prompt diversity first (decorrelates errors), then adds temperature diversity (explores within each reasoning framing). The temperature spread stays moderate — different samples, not broken ones.
+
+## API Design
+
+```python
+def chat_best_of_n(
+    messages: list[Message],
+    model: str,
+    n: int = 1,
+    select_fn: Callable[[list[Response]], int] = majority_coherence,
+    **chat_kwargs,
+) -> Response:
+```
+
+### Behaviour
+
+- **`n=1`**: passthrough to `chat()`, zero overhead.
+- **`n>1`**: generates N candidates in parallel, calls `select_fn` on the list, returns the winner.
+- **Streaming disabled**: candidates are collected silently. Cannot stream a response before selection.
+- **Expert strategies** injected into system prompt (not user message) to maximize KV prefix cache sharing on the user message portion.
+- **Strategy assignment**: round-robin over predefined expert strategies. When N > number of strategies, additional slots reuse strategies at the next temperature tier (see Diversity Strategy above).
+
+### `select_fn` signature
+
+```python
+Callable[[list[Response]], int]
+```
+
+Takes all N candidates, returns the index of the winner. The function sees full responses (text, tool calls, metadata) and can implement any selection logic: self-consistency clustering, coherence scoring, domain-specific verification, or a combination.
+
+**Default implementation** (`majority_coherence`):
+
+1. Cluster candidates by structured action (tool name + args, exact match).
+2. Pick the largest cluster (self-consistency majority).
+3. Within that cluster, rank by coherence score (compression ratio + n-gram diversity).
+4. Return the index of the top-ranked candidate.
+
+### Practical considerations
+
+- **KV cache sharing**: expert strategy diverges only in the system prompt. User messages and conversation history are identical across all N requests, maximizing prefix cache hits.
+- **Diminishing returns**: gains are ~logarithmic. 1->4 helps a lot, 4->16 some, 16->64 less.
+- **Latency**: requests are parallel, so wall-clock time ~= single request (if provider handles concurrency).
+- **Cost**: N requests cost Nx tokens. Amortized by cache sharing and by only applying to high-stakes decisions.
 
 ## Applicability to Mindloop
 
@@ -147,24 +185,16 @@ Same moderate temperature (0.7), different reasoning strategies per expert:
 
 - **Tool selection**: sample N next-actions, majority-vote on which tool to call. Low cost, high impact on hard decisions.
 - **Memory recall ranking**: generate N recall queries, union the results, re-rank.
-- **Reflection quality**: sample N reflections, pick the most specific/actionable one (LLM-as-judge or length heuristic).
-
-### Practical considerations
-
-- **KV cache sharing**: OpenRouter caches prefixes for some models. All N requests share the cached prompt, paying only for divergent tokens.
-- **Temperature**: need `temperature > 0` for diversity. Sweet spot: 0.6-1.0. Too low = identical samples.
-- **Diminishing returns**: gains are ~logarithmic. 1->4 helps a lot, 4->16 some, 16->64 less.
-- **Latency**: requests are parallel, so wall-clock time = single request (if provider handles concurrency).
-- **Cost**: N requests cost Nx tokens. Amortized by cache sharing and by only applying to high-stakes decisions.
+- **Reflection quality**: sample N reflections, pick the most specific/actionable one.
 
 ### Proposed approach
 
 Selective best-of-N: not every turn, only when stakes are high.
 
-1. Normal turns: single sample (temperature=0 or low).
+1. Normal turns: single sample (temperature=0 or low), `n=1` passthrough.
 2. High-stakes triggers: unfamiliar task, contradictory context, tool call with side effects.
-3. On trigger: sample N=4 at temperature=0.7, select by self-consistency on action + validity check.
-4. Fallback: if no majority, escalate to LLM-as-judge tiebreaker.
+3. On trigger: `chat_best_of_n(..., n=4)` with default `majority_coherence` selector.
+4. Fallback: if no majority in selector, pick highest coherence score.
 
 ## Open Questions
 
@@ -172,3 +202,4 @@ Selective best-of-N: not every turn, only when stakes are high.
 - Should N be adaptive (start small, increase if no consensus)?
 - Is self-consistency on tool choice sufficient, or do we need to also compare arguments?
 - Cost/benefit threshold: at what per-turn cost does best-of-4 stop being worthwhile?
+- How many expert strategies before diminishing returns? 4? 6?
