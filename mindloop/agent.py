@@ -4,7 +4,7 @@ import json
 from collections.abc import Callable
 from datetime import datetime
 
-from mindloop.client import Message, Stats, chat
+from mindloop.client import Message, Stats, _ANTHROPIC_PREFIXES, chat
 from mindloop.quotes import NudgePool
 from mindloop.tools import Param, ToolRegistry, create_default_registry
 from mindloop.util import noop
@@ -319,5 +319,12 @@ def run_agent(
                     nudge_extra=combined_extra,
                     nudge_pool=nudge_pool,
                 )
+
+            # Anthropic via OpenRouter only returns reasoning when the last
+            # message is user-role. Inject a continue after tool results.
+            if model.startswith(_ANTHROPIC_PREFIXES):
+                cont: Message = {"role": "user", "content": _USER_UNAVAILABLE}
+                messages.append(cont)
+                on_message(cont)
 
     return _stop(f"max iterations reached ({max_iterations})")
