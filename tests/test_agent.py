@@ -44,7 +44,7 @@ def _echo_registry() -> ToolRegistry:
     return reg
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_tool_call_then_done(mock_chat: MagicMock) -> None:
     """Model calls a tool, gets result, then calls done."""
     mock_chat.side_effect = [
@@ -55,7 +55,7 @@ def test_tool_call_then_done(mock_chat: MagicMock) -> None:
     assert mock_chat.call_count == 2
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_nudge_injects_user_unavailable(mock_chat: MagicMock) -> None:
     """Text-only response triggers a user-unavailable nudge."""
     mock_chat.side_effect = [
@@ -70,7 +70,7 @@ def test_nudge_injects_user_unavailable(mock_chat: MagicMock) -> None:
     assert len(user_msgs) == 1
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_done_tool_terminates(mock_chat: MagicMock) -> None:
     """Calling the done tool terminates the loop."""
     mock_chat.side_effect = [
@@ -93,7 +93,7 @@ def test_done_tool_terminates(mock_chat: MagicMock) -> None:
     assert "model finished" in stop_msgs[0]["content"]
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_max_iterations_safety_valve(mock_chat: MagicMock) -> None:
     """Loop stops after max_iterations even if model keeps calling tools."""
     mock_chat.return_value = _make_tool_response(
@@ -103,7 +103,7 @@ def test_max_iterations_safety_valve(mock_chat: MagicMock) -> None:
     assert mock_chat.call_count == 3
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_multiple_tool_calls_in_single_response(mock_chat: MagicMock) -> None:
     """Model issues multiple tool calls in one response."""
     mock_chat.side_effect = [
@@ -129,7 +129,7 @@ def test_multiple_tool_calls_in_single_response(mock_chat: MagicMock) -> None:
     assert echo_msgs[1]["content"] == "echoed: b"
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_model_kwarg_passed_through(mock_chat: MagicMock) -> None:
     """Custom model parameter is forwarded to chat()."""
     mock_chat.side_effect = [
@@ -140,7 +140,7 @@ def test_model_kwarg_passed_through(mock_chat: MagicMock) -> None:
     assert kwargs["model"] == "test-model"
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_nudge_then_tool_call_continues(mock_chat: MagicMock) -> None:
     """After nudge, model can resume tool use instead of finishing."""
     mock_chat.side_effect = [
@@ -152,7 +152,7 @@ def test_nudge_then_tool_call_continues(mock_chat: MagicMock) -> None:
     assert mock_chat.call_count == 3
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_malformed_tool_call_arguments(mock_chat: MagicMock) -> None:
     """Malformed JSON arguments are reported to the model and sanitized."""
     bad_args = '{"path": "./"README.md"}'
@@ -173,7 +173,7 @@ def test_malformed_tool_call_arguments(mock_chat: MagicMock) -> None:
     assert assistant_msg["tool_calls"][0]["function"]["arguments"] == "{}"
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_empty_arguments_treated_as_empty_object(mock_chat: MagicMock) -> None:
     """Empty string arguments are normalised to {} and the tool executes."""
     mock_chat.side_effect = [
@@ -191,7 +191,7 @@ def test_empty_arguments_treated_as_empty_object(mock_chat: MagicMock) -> None:
     assert "malformed" not in tool_msg["content"]
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_ask_tool_returns_user_response(mock_chat: MagicMock) -> None:
     """Ask tool passes message to callback and returns user's response."""
     mock_chat.side_effect = [
@@ -209,7 +209,7 @@ def test_ask_tool_returns_user_response(mock_chat: MagicMock) -> None:
     assert tool_msg["content"] == "do nothing"
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_ask_tool_default_unavailable(mock_chat: MagicMock) -> None:
     """Without on_ask callback, ask tool returns unavailable message."""
     mock_chat.side_effect = [
@@ -223,7 +223,7 @@ def test_ask_tool_default_unavailable(mock_chat: MagicMock) -> None:
     assert "unavailable" in tool_msg["content"].lower()
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_on_confirm_denied(mock_chat: MagicMock) -> None:
     """Denied tool calls return an error to the model without executing."""
     mock_chat.side_effect = [
@@ -241,7 +241,7 @@ def test_on_confirm_denied(mock_chat: MagicMock) -> None:
     assert "denied" in tool_msg["content"]
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_on_confirm_approved(mock_chat: MagicMock) -> None:
     """Approved tool calls execute normally."""
     mock_chat.side_effect = [
@@ -260,7 +260,7 @@ def test_on_confirm_approved(mock_chat: MagicMock) -> None:
 
 
 @patch("mindloop.agent._REFLECT_INTERVAL", 3)
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_reflect_nudge_after_consecutive_tools(mock_chat: MagicMock) -> None:
     """System reflect message injected after N consecutive tool-only turns."""
     tool_resp = _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')])
@@ -286,7 +286,7 @@ def test_reflect_nudge_after_consecutive_tools(mock_chat: MagicMock) -> None:
 
 
 @patch("mindloop.agent._REFLECT_INTERVAL", 3)
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_reflect_survives_text_interruption(mock_chat: MagicMock) -> None:
     """Text response between tool batches does not prevent reflection."""
     tool_resp = _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')])
@@ -312,7 +312,7 @@ def test_reflect_survives_text_interruption(mock_chat: MagicMock) -> None:
     assert len(system_msgs) == 1
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_token_budget_stops_loop(mock_chat: MagicMock) -> None:
     """Loop stops when cumulative token usage exceeds max_tokens."""
     usage = {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
@@ -331,7 +331,7 @@ def test_token_budget_stops_loop(mock_chat: MagicMock) -> None:
     assert mock_chat.call_count == 2
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_token_budget_estimated_when_no_usage(mock_chat: MagicMock) -> None:
     """Token budget works via estimation when API returns no usage."""
     from mindloop.client import _estimate_tokens
@@ -354,7 +354,7 @@ def test_token_budget_estimated_when_no_usage(mock_chat: MagicMock) -> None:
     assert mock_chat.call_count == 2
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_initial_messages_seeded(mock_chat: MagicMock) -> None:
     """Initial messages are included in the first chat call."""
     mock_chat.side_effect = [
@@ -376,7 +376,7 @@ def test_initial_messages_seeded(mock_chat: MagicMock) -> None:
 
 
 @patch("mindloop.agent._REFLECT_INTERVAL", 3)
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_on_extract_fires_at_reflection(mock_chat: MagicMock) -> None:
     """on_extract is called at reflection points with the correct message slice."""
     tool_resp = _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')])
@@ -400,7 +400,7 @@ def test_on_extract_fires_at_reflection(mock_chat: MagicMock) -> None:
 
 
 @patch("mindloop.agent._REFLECT_INTERVAL", 2)
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_on_extract_checkpoint_advances(mock_chat: MagicMock) -> None:
     """Second extraction gets only messages since the previous checkpoint."""
     tool_resp = _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')])
@@ -429,7 +429,7 @@ def test_on_extract_checkpoint_advances(mock_chat: MagicMock) -> None:
     assert "reflect" in first_in_second["content"].lower()
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_on_extract_fires_on_text_nudge(mock_chat: MagicMock) -> None:
     """on_extract is called during text-only nudges too."""
     mock_chat.side_effect = [
@@ -446,7 +446,7 @@ def test_on_extract_fires_on_text_nudge(mock_chat: MagicMock) -> None:
     assert on_extract.call_count == 2
 
 
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_agent_passes_max_output_tokens(mock_chat: MagicMock) -> None:
     """run_agent passes _MAX_OUTPUT_TOKENS to chat()."""
     mock_chat.side_effect = [

@@ -260,6 +260,13 @@ def _parse_args() -> argparse.Namespace:
         metavar="JSONL",
         help="Resume from a JSONL log. With --session, auto-finds the latest log.",
     )
+    parser.add_argument(
+        "--n-experts",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Best-of-N sampling: generate N candidates per turn and select the best (default: 1).",
+    )
     args = parser.parse_args()
 
     # Validate flag combinations.
@@ -729,6 +736,7 @@ def main() -> None:
                 nudge_pool=nudge_pool,
                 on_extract=mid_extract.on_extract,
                 on_reflect=mid_extract.intrusive_recall,
+                n_experts=args.n_experts,
             )
         except KeyboardInterrupt:
             print("\n\nInterrupted.")

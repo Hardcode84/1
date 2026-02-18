@@ -214,7 +214,7 @@ def _make_done_response(call_id: str, summary: str) -> dict[str, Any]:
 
 
 @patch("mindloop.agent._REFLECT_INTERVAL", 3)
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_on_reflect_injects_into_nudge(mock_chat: MagicMock) -> None:
     """on_reflect output appears in the reflection system message."""
     tool_resp = _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')])
@@ -251,7 +251,7 @@ def test_on_reflect_injects_into_nudge(mock_chat: MagicMock) -> None:
 
 
 @patch("mindloop.agent._REFLECT_INTERVAL", 3)
-@patch("mindloop.agent.chat")
+@patch("mindloop.agent.chat_best_of_n")
 def test_on_reflect_empty_does_not_alter_nudge(mock_chat: MagicMock) -> None:
     """Empty on_reflect return does not change the reflection message."""
     tool_resp = _make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')])

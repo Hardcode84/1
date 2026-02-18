@@ -4,7 +4,8 @@ import json
 from collections.abc import Callable
 from datetime import datetime
 
-from mindloop.client import Message, Stats, _ANTHROPIC_PREFIXES, chat
+from mindloop.client import Message, Stats, _ANTHROPIC_PREFIXES
+from mindloop.voting import chat_best_of_n
 from mindloop.quotes import NudgePool
 from mindloop.tools import Param, ToolRegistry, create_default_registry
 from mindloop.util import noop
@@ -140,6 +141,7 @@ def run_agent(
     nudge_pool: NudgePool | None = None,
     on_extract: Callable[[list[Message]], None] | None = None,
     on_reflect: Callable[[], str] | None = None,
+    n_experts: int = 1,
 ) -> str:
     """Run the agent loop driven by system_prompt alone. Returns the final text."""
     if on_confirm is None:
@@ -224,9 +226,10 @@ def run_agent(
             return str(last)
 
         for _ in range(max_iterations):
-            response = chat(
+            response = chat_best_of_n(
                 messages,
                 model=model,
+                n=n_experts,
                 system_prompt=system_prompt,
                 tools=registry.definitions(),
                 stream=True,
