@@ -314,15 +314,24 @@ def _stream_request(
         delta = choices[0].get("delta", {})
 
         # Accumulate reasoning tokens.
+        # OpenRouter returns reasoning in two formats depending on provider:
+        #   - reasoning_details: list of {"text": ...} (DeepSeek, etc.)
+        #   - reasoning_content: plain string (Anthropic)
         degenerate = False
+        reasoning_texts: list[str] = []
         for detail in delta.get("reasoning_details", []):
             text = detail.get("text", "")
             if text:
-                if on_thinking is not None:
-                    on_thinking(text)
-                full_reasoning.append(text)
-                if reasoning_monitor.feed(text):
-                    degenerate = True
+                reasoning_texts.append(text)
+        rc = delta.get("reasoning_content", "")
+        if rc:
+            reasoning_texts.append(rc)
+        for text in reasoning_texts:
+            if on_thinking is not None:
+                on_thinking(text)
+            full_reasoning.append(text)
+            if reasoning_monitor.feed(text):
+                degenerate = True
         if degenerate:
             break
 
