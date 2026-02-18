@@ -18,7 +18,7 @@ def _noop_message(_msg: Message) -> None:
     pass
 
 
-DEFAULT_MAX_TOKENS = 200_000 * 5
+DEFAULT_MAX_TOKENS = 100_000
 _MAX_OUTPUT_TOKENS = 16_384
 _BUDGET_WARNING_THRESHOLDS = (0.5, 0.8)
 _REFLECT_INTERVAL = 5
@@ -153,7 +153,7 @@ def run_agent(
     with Stats() as stats:
 
         def total_tokens() -> int:
-            return stats.per_model[model].tokens
+            return stats.per_model[model].output_tokens
 
         def total_cost() -> float:
             return stats.counters.cost
@@ -166,7 +166,10 @@ def run_agent(
 
         def _status() -> str:
             now = datetime.now().isoformat(timespec="seconds")
-            lines = [f"time: {now}", f"tokens used: {total_tokens()} / {max_tokens}"]
+            lines = [
+                f"time: {now}",
+                f"output tokens used: {total_tokens()} / {max_tokens}",
+            ]
             if instance:
                 lines.append(f"instance: {instance}")
             return "\n".join(lines)
@@ -210,10 +213,10 @@ def run_agent(
             cost_str = f", ${total_cost():.4f}" if total_cost() else ""
             stop_msg: Message = {
                 "role": "system",
-                "content": f"[stop] {reason} ({total_tokens()} tokens{cost_str})",
+                "content": f"[stop] {reason} ({total_tokens()} out tokens{cost_str})",
             }
             on_message(stop_msg)
-            on_step(f"\n[stop] {reason} ({total_tokens()} tokens{cost_str})")
+            on_step(f"\n[stop] {reason} ({total_tokens()} out tokens{cost_str})")
             if registry.stats:
                 stats_text = json.dumps(registry.stats)
                 stats_msg: Message = {

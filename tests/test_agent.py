@@ -315,7 +315,7 @@ def test_reflect_survives_text_interruption(mock_chat: MagicMock) -> None:
 @patch("mindloop.agent.chat_best_of_n")
 def test_token_budget_stops_loop(mock_chat: MagicMock) -> None:
     """Loop stops when cumulative token usage exceeds max_tokens."""
-    usage = {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
+    usage = {"prompt_tokens": 100, "completion_tokens": 150, "total_tokens": 250}
     response_with_usage = {
         **_make_tool_response([_make_tool_call("c1", "echo", '{"text": "hi"}')]),
         "usage": usage,
@@ -327,7 +327,8 @@ def test_token_budget_stops_loop(mock_chat: MagicMock) -> None:
 
     mock_chat.side_effect = _chat_with_recording
     run_agent("prompt", registry=_echo_registry(), model="test-model", max_tokens=200)
-    # First call: 150 tokens (under 200), continues. Second call: 300 total (over 200), stops.
+    # Budget tracks output tokens. First call: 150 (under 200), continues.
+    # Second call: 300 total output (over 200), stops.
     assert mock_chat.call_count == 2
 
 
@@ -344,13 +345,13 @@ def test_token_budget_estimated_when_no_usage(mock_chat: MagicMock) -> None:
     def _chat_with_estimation(messages: Any, **kwargs: Any) -> dict[str, Any]:
         # No "usage" key — simulate the estimation that client.chat would do.
         est = _estimate_tokens(messages, response)
-        _record_usage("test-model", {"total_tokens": est})
+        _record_usage("test-model", est)
         return response
 
     mock_chat.side_effect = _chat_with_estimation
     run_agent("prompt", registry=_echo_registry(), model="test-model", max_tokens=150)
-    # First call: ~100 estimated (under 150). Second call: prompt grows, estimate
-    # exceeds 150. Loop stops.
+    # Budget tracks output tokens (~100 estimated per call from 400 chars).
+    # First call: ~100 (under 150). Second: ~200 total output (over 150). Stops.
     assert mock_chat.call_count == 2
 
 

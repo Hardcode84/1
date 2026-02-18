@@ -45,6 +45,8 @@ class Counters:
     """API usage snapshot."""
 
     tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
     cost: float = 0.0
 
 
@@ -55,22 +57,32 @@ _counters: defaultdict[str, Counters] = defaultdict(Counters)
 def _record_usage(model: str, usage: dict[str, Any]) -> None:
     """Accumulate token and cost from an API response."""
     tokens = int(usage.get("total_tokens", 0))
+    input_tokens = int(usage.get("prompt_tokens", 0))
+    output_tokens = int(usage.get("completion_tokens", 0))
     cost = usage.get("cost")
     with _counters_lock:
         c = _counters[model]
         c.tokens += tokens
+        c.input_tokens += input_tokens
+        c.output_tokens += output_tokens
         if cost is not None:
             c.cost += float(cost)
 
 
-def _estimate_tokens(messages: list[Message], response: Message) -> int:
-    """Estimate total tokens for a call from character counts."""
+def _estimate_tokens(messages: list[Message], response: Message) -> dict[str, int]:
+    """Estimate token counts for a call from character counts."""
     from mindloop.util import CHARS_PER_TOKEN
 
     prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
     response_chars = len(str(response.get("content", "")))
     response_chars += len(str(response.get("reasoning", "")))
-    return (prompt_chars + response_chars) // CHARS_PER_TOKEN
+    prompt_tokens = prompt_chars // CHARS_PER_TOKEN
+    completion_tokens = response_chars // CHARS_PER_TOKEN
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+    }
 
 
 class Stats:
@@ -86,7 +98,10 @@ class Stats:
 
     def __enter__(self) -> "Stats":
         with _counters_lock:
-            self._start = {m: Counters(c.tokens, c.cost) for m, c in _counters.items()}
+            self._start = {
+                m: Counters(c.tokens, c.input_tokens, c.output_tokens, c.cost)
+                for m, c in _counters.items()
+            }
         return self
 
     def __exit__(
@@ -104,10 +119,16 @@ class Stats:
             tok = sum(c.tokens for c in _counters.values()) - sum(
                 c.tokens for c in self._start.values()
             )
+            inp = sum(c.input_tokens for c in _counters.values()) - sum(
+                c.input_tokens for c in self._start.values()
+            )
+            out = sum(c.output_tokens for c in _counters.values()) - sum(
+                c.output_tokens for c in self._start.values()
+            )
             cst = sum(c.cost for c in _counters.values()) - sum(
                 c.cost for c in self._start.values()
             )
-        return Counters(tokens=tok, cost=cst)
+        return Counters(tokens=tok, input_tokens=inp, output_tokens=out, cost=cst)
 
     @property
     def per_model(self) -> defaultdict[str, Counters]:
@@ -118,6 +139,8 @@ class Stats:
                 start = self._start.get(model, Counters())
                 delta = Counters(
                     tokens=current.tokens - start.tokens,
+                    input_tokens=current.input_tokens - start.input_tokens,
+                    output_tokens=current.output_tokens - start.output_tokens,
                     cost=current.cost - start.cost,
                 )
                 if delta.tokens or delta.cost:
@@ -435,7 +458,7 @@ def chat(
         if "usage" in msg:
             _record_usage(model, msg["usage"])
         else:
-            _record_usage(model, {"total_tokens": _estimate_tokens(full_messages, msg)})
+            _record_usage(model, _estimate_tokens(full_messages, msg))
         return msg
 
     payload["stream"] = True
@@ -446,7 +469,7 @@ def chat(
     if "usage" in result:
         _record_usage(model, result["usage"])
     else:
-        _record_usage(model, {"total_tokens": _estimate_tokens(full_messages, result)})
+        _record_usage(model, _estimate_tokens(full_messages, result))
     return result
 
 
