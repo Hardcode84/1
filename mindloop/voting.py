@@ -77,7 +77,7 @@ def majority_coherence(responses: list[Message]) -> int:
     # Within cluster, rank by coherence on content/reasoning.
     def _score(idx: int) -> float:
         r = responses[idx]
-        text = r.get("content", "") + r.get("reasoning", "")
+        text = (r.get("content") or "") + (r.get("reasoning") or "")
         return coherence_score(text)
 
     return max(best_cluster, key=_score)
