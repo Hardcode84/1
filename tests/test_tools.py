@@ -570,3 +570,90 @@ def test_blocked_dirs_allows_other_paths(tmp_path: Path) -> None:
     reg = create_default_registry(blocked_dirs=[secret], root_dir=tmp_path)
     result = reg.execute("read", '{"path": "ok.txt"}')
     assert "visible" in result
+
+
+# --- virtual symlinks ---
+
+
+def test_symlink_read(tmp_path: Path) -> None:
+    """Reading a file through a virtual symlink works."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "data.txt").write_text("shared data")
+
+    reg = create_default_registry(root_dir=workspace, symlinks={"shared": external})
+    result = reg.execute("read", '{"path": "shared/data.txt"}')
+    assert result == "shared data"
+
+
+def test_symlink_ls(tmp_path: Path) -> None:
+    """Listing a virtual symlink directory works."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "a.txt").write_text("")
+    (external / "b.txt").write_text("")
+
+    reg = create_default_registry(root_dir=workspace, symlinks={"docs": external})
+    result = reg.execute("ls", '{"path": "docs"}')
+    assert "a.txt" in result
+    assert "b.txt" in result
+
+
+def test_symlink_visible_in_parent_ls(tmp_path: Path) -> None:
+    """Virtual symlinks appear as 'l' entries in their parent directory."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "real.txt").write_text("")
+    external = tmp_path / "external"
+    external.mkdir()
+
+    reg = create_default_registry(root_dir=workspace, symlinks={"shared": external})
+    result = reg.execute("ls", '{"path": "."}')
+    assert "f    real.txt" in result
+    assert "l    shared" in result
+
+
+def test_symlink_write_blocked(tmp_path: Path) -> None:
+    """Writing through a virtual symlink is blocked."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "data.txt").write_text("original")
+
+    reg = create_default_registry(root_dir=workspace, symlinks={"shared": external})
+    result = reg.execute("write", '{"path": "shared/data.txt", "content": "hacked"}')
+    assert "read-only symlink" in result
+    assert (external / "data.txt").read_text() == "original"
+
+
+def test_symlink_edit_blocked(tmp_path: Path) -> None:
+    """Editing through a virtual symlink is blocked."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "data.txt").write_text("original")
+
+    reg = create_default_registry(root_dir=workspace, symlinks={"shared": external})
+    result = reg.execute(
+        "edit",
+        '{"path": "shared/data.txt", "old_string": "original", "new_string": "changed"}',
+    )
+    assert "read-only symlink" in result
+
+
+def test_symlink_escape_blocked(tmp_path: Path) -> None:
+    """Traversal escaping a symlink target is blocked."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+
+    reg = create_default_registry(root_dir=workspace, symlinks={"shared": external})
+    result = reg.execute("read", '{"path": "shared/../../../etc/passwd"}')
+    assert "escapes" in result.lower() or "Error" in result

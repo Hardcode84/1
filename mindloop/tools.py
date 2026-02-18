@@ -55,12 +55,17 @@ class ToolRegistry:
         self,
         blocked_dirs: list[Path] | None = None,
         root_dir: Path | None = None,
+        symlinks: dict[str, Path] | None = None,
     ) -> None:
         self._tools: dict[str, ToolDef] = {}
         self.stats: dict[Any, Any] = {}
         self.blocked_dirs: list[Path] = [d.resolve() for d in (blocked_dirs or [])]
         self.root_dir: Path = (root_dir or _work_dir).resolve()
         self.write_blocked: dict[Path, str] = {}
+        # Virtual symlinks: workspace-relative prefix -> absolute target.
+        self.symlinks: dict[str, Path] = {
+            k: v.resolve() for k, v in (symlinks or {}).items()
+        }
 
     def add(
         self,
@@ -100,13 +105,32 @@ class ToolError(Exception):
     """Raised when a tool encounters an expected error."""
 
 
+def _resolve_symlink(path: str, symlinks: dict[str, Path]) -> Path | None:
+    """If *path* matches a virtual symlink prefix, remap and return resolved target."""
+    norm = Path(path).as_posix()
+    for prefix, target in symlinks.items():
+        if norm == prefix or norm.startswith(prefix + "/"):
+            remainder = norm[len(prefix) :].lstrip("/")
+            resolved = (target / remainder).resolve() if remainder else target
+            # Prevent ../../ escapes from the symlink target.
+            if not str(resolved).startswith(str(target)):
+                raise ToolError(f"{path} escapes the symlink target.")
+            return resolved
+    return None
+
+
 def _sanitize_path(
-    path: str, root_dir: Path, blocked_dirs: list[Path] | None = None
+    path: str,
+    root_dir: Path,
+    blocked_dirs: list[Path] | None = None,
+    symlinks: dict[str, Path] | None = None,
 ) -> Path:
-    """Resolve path and verify it stays within the root directory."""
-    resolved = (root_dir / path).resolve()
-    if not str(resolved).startswith(str(root_dir)):
-        raise ToolError(f"{path} is outside the working directory.")
+    """Resolve path and verify it stays within the root directory or a symlink."""
+    resolved = _resolve_symlink(path, symlinks or {})
+    if resolved is None:
+        resolved = (root_dir / path).resolve()
+        if not str(resolved).startswith(str(root_dir)):
+            raise ToolError(f"{path} is outside the working directory.")
     for blocked in blocked_dirs or ():
         if resolved == blocked or str(resolved).startswith(str(blocked) + "/"):
             raise ToolError(f"Access denied: {path}")
@@ -115,6 +139,9 @@ def _sanitize_path(
 
 def _check_write_blocked(reg: "ToolRegistry", p: Path, path: str) -> None:
     """Raise ToolError if *p* is write-blocked, including hint if available."""
+    # Virtual symlinks are read-only.
+    if not str(p).startswith(str(reg.root_dir)):
+        raise ToolError(f"Write access denied: {path} (read-only symlink)")
     hint = reg.write_blocked.get(p)
     if hint is not None:
         msg = f"Write access denied: {path}"
@@ -134,6 +161,23 @@ def _track_file(reg: "ToolRegistry", tool: str, path: str) -> None:
 _LS_DEFAULT_LIMIT = 50
 
 
+def _virtual_symlinks_in(path: str, symlinks: dict[str, Path]) -> list[str]:
+    """Return virtual symlink names that are direct children of *path*."""
+    norm = Path(path).as_posix().strip("/")
+    result: list[str] = []
+    for prefix in symlinks:
+        parts = Path(prefix).as_posix().strip("/").split("/")
+        if norm == "." or norm == "":
+            # Root listing: top-level symlink names.
+            if len(parts) == 1:
+                result.append(parts[0])
+        else:
+            # Subdirectory: symlinks whose parent matches.
+            if len(parts) > 1 and "/".join(parts[:-1]) == norm:
+                result.append(parts[-1])
+    return result
+
+
 def _ls(
     reg: "ToolRegistry", path: str, limit: int = _LS_DEFAULT_LIMIT, offset: int = 0
 ) -> str:
@@ -141,19 +185,25 @@ def _ls(
     if limit < 1:
         raise ToolError("limit must be >= 1.")
     _track_file(reg, "ls", path)
-    p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs)
+    p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs, reg.symlinks)
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
     if not p.is_dir():
         raise ToolError(f"{path} is not a directory.")
-    entries = sorted(p.iterdir())
-    total = len(entries)
-    if not entries:
+    # Build (type_char, name) tuples: real entries + virtual symlinks.
+    items: list[tuple[str, str]] = []
+    for e in sorted(p.iterdir()):
+        items.append(("d" if e.is_dir() else "f", e.name))
+    for name in _virtual_symlinks_in(path, reg.symlinks):
+        items.append(("l", name))
+    items.sort(key=lambda x: x[1])
+    total = len(items)
+    if not items:
         return "(empty directory)"
-    sliced = entries[offset : offset + limit] if offset >= 0 else entries[offset:]
+    sliced = items[offset : offset + limit] if offset >= 0 else items[offset:]
     lines = [f"Type Name  ({total} entries)"]
-    for e in sliced:
-        lines.append(f"{'d' if e.is_dir() else 'f'}    {e.name}")
+    for typ, name in sliced:
+        lines.append(f"{typ}    {name}")
     return "\n".join(lines)
 
 
@@ -187,7 +237,7 @@ def _edit(
 ) -> str:
     """Replace exact string occurrences in a file."""
     _track_file(reg, "edit", path)
-    p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs)
+    p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs, reg.symlinks)
     _check_write_blocked(reg, p, path)
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
@@ -219,7 +269,7 @@ def _write(
 ) -> str:
     """Create or overwrite a file with the given content."""
     _track_file(reg, "write", path)
-    p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs)
+    p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs, reg.symlinks)
     _check_write_blocked(reg, p, path)
     if p.exists() and not p.is_file():
         raise ToolError(f"{path} is not a file.")
@@ -239,8 +289,8 @@ def _mv(
 ) -> str:
     """Move or rename a file."""
     _track_file(reg, "mv", old_path)
-    src = _sanitize_path(old_path, reg.root_dir, reg.blocked_dirs)
-    dst = _sanitize_path(new_path, reg.root_dir, reg.blocked_dirs)
+    src = _sanitize_path(old_path, reg.root_dir, reg.blocked_dirs, reg.symlinks)
+    dst = _sanitize_path(new_path, reg.root_dir, reg.blocked_dirs, reg.symlinks)
     _check_write_blocked(reg, src, old_path)
     _check_write_blocked(reg, dst, new_path)
     if not src.exists():
@@ -263,7 +313,7 @@ def _read(
 ) -> str:
     """Read file contents with optional line offset, limit, and line truncation."""
     _track_file(reg, "read", path)
-    p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs)
+    p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs, reg.symlinks)
     if not p.exists():
         raise ToolError(f"{path} does not exist.")
     if not p.is_file():
@@ -290,9 +340,10 @@ def _read(
 def create_default_registry(
     blocked_dirs: list[Path] | None = None,
     root_dir: Path | None = None,
+    symlinks: dict[str, Path] | None = None,
 ) -> ToolRegistry:
     """Create a fresh registry populated with the built-in tools."""
-    reg = ToolRegistry(blocked_dirs=blocked_dirs, root_dir=root_dir)
+    reg = ToolRegistry(blocked_dirs=blocked_dirs, root_dir=root_dir, symlinks=symlinks)
     reg.add(
         name="ls",
         description="List files and directories. Paths are relative to the working directory.",
