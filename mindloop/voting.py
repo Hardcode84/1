@@ -105,7 +105,9 @@ def chat_best_of_n(
         ]
         pairs.append((strategy, min(base_temp * scale, 2.0)))
 
-    # Strip settings that don't apply to parallel candidates.
+    # Extract callbacks; strip settings that don't apply to parallel candidates.
+    on_token = chat_kwargs.get("on_token")
+    on_thinking = chat_kwargs.get("on_thinking")
     _strip = ("temperature", "stream", "on_token", "on_thinking")
     kwargs = {k: v for k, v in chat_kwargs.items() if k not in _strip}
 
@@ -129,4 +131,12 @@ def chat_best_of_n(
     responses: list[Message] = [f.result() for f in futures]
 
     winner = select_fn(responses)
-    return responses[winner]
+    result = responses[winner]
+
+    # Replay the winner's output through caller callbacks.
+    if on_thinking is not None and result.get("reasoning"):
+        on_thinking(result["reasoning"])
+    if on_token is not None and result.get("content"):
+        on_token(result["content"])
+
+    return result
