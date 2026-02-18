@@ -136,6 +136,56 @@ def extract_facts(
     return _parse_facts(raw) or []
 
 
+_VERIFY_PROMPT = """\
+You are verifying whether an extracted fact is directly supported by the
+source conversation below.
+
+Answer ONLY "yes" or "no".
+
+- "yes": the fact is explicitly stated or directly supported by the conversation.
+- "no": the fact is inferred, assumed, or not present in the conversation.\
+"""
+
+
+def verify_fact(
+    fact: dict[str, str],
+    messages: list[dict[str, Any]],
+    model: str = "",
+) -> bool:
+    """Check if a single fact is supported by the conversation."""
+    verify_msgs = list(messages) + [
+        {
+            "role": "user",
+            "content": f"Is this fact directly supported by the conversation"
+            f' above? Answer only "yes" or "no".\n\nFact: {fact["text"]}',
+        },
+    ]
+    msg = chat(
+        verify_msgs,
+        model=model,
+        system_prompt=_VERIFY_PROMPT,
+        stream=False,
+        **DETERMINISTIC_PARAMS,
+        cache_messages=False,
+    )
+    answer = str(msg.get("content", "")).strip().lower()
+    return answer.startswith("yes")  # Fail-closed: ambiguous = reject.
+
+
+def verify_facts(
+    facts: list[dict[str, str]],
+    messages: list[dict[str, Any]],
+    model: str = "",
+    workers: int = DEFAULT_WORKERS,
+) -> list[dict[str, str]]:
+    """Verify all facts in parallel, return only those confirmed."""
+    if not facts:
+        return []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(verify_fact, f, messages, model): f for f in facts}
+        return [futures[fut] for fut in as_completed(futures) if fut.result()]
+
+
 def extract_window(
     messages: list[dict[str, Any]],
     model: str = "",

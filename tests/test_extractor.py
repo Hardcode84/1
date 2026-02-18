@@ -10,7 +10,13 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from mindloop.extractor import extract_facts, extract_session, extract_window
+from mindloop.extractor import (
+    extract_facts,
+    extract_session,
+    extract_window,
+    verify_fact,
+    verify_facts,
+)
 from mindloop.memory import MemoryStore
 
 _EMB_A = np.array([1.0, 0.0], dtype=np.float32)
@@ -254,4 +260,66 @@ def test_extract_window_returns_facts() -> None:
 def test_extract_window_empty_messages() -> None:
     """Empty messages returns empty list without LLM call."""
     result = extract_window([], model="test-model")
+    assert result == []
+
+
+# --- verify_fact / verify_facts tests ---
+
+_SAMPLE_MESSAGES: list[dict[str, Any]] = [
+    {"role": "user", "content": "I prefer dark mode."},
+    {"role": "assistant", "content": "Noted, switching to dark mode."},
+]
+
+_SAMPLE_FACT: dict[str, str] = {
+    "text": "User prefers dark mode",
+    "abstract": "Dark mode preference",
+}
+
+
+def test_verify_fact_yes() -> None:
+    """Chat returning 'yes' means the fact is verified."""
+    with patch("mindloop.extractor.chat", side_effect=_mock_chat_returning("yes")):
+        assert verify_fact(_SAMPLE_FACT, _SAMPLE_MESSAGES, model="test") is True
+
+
+def test_verify_fact_no() -> None:
+    """Chat returning 'no' means the fact is rejected."""
+    with patch("mindloop.extractor.chat", side_effect=_mock_chat_returning("no")):
+        assert verify_fact(_SAMPLE_FACT, _SAMPLE_MESSAGES, model="test") is False
+
+
+def test_verify_fact_ambiguous() -> None:
+    """Ambiguous response is treated as rejection (fail-closed)."""
+    with patch(
+        "mindloop.extractor.chat", side_effect=_mock_chat_returning("I'm not sure")
+    ):
+        assert verify_fact(_SAMPLE_FACT, _SAMPLE_MESSAGES, model="test") is False
+
+
+def test_verify_facts_filters() -> None:
+    """verify_facts keeps only confirmed facts."""
+    facts = [
+        {"text": "fact A", "abstract": "A"},
+        {"text": "fact B", "abstract": "B"},
+        {"text": "fact C", "abstract": "C"},
+    ]
+
+    def _selective_chat(
+        messages: list[dict[str, Any]], **_kw: object
+    ) -> dict[str, str]:
+        content = messages[-1]["content"]
+        if "fact B" in content:
+            return {"role": "assistant", "content": "no"}
+        return {"role": "assistant", "content": "yes"}
+
+    with patch("mindloop.extractor.chat", side_effect=_selective_chat):
+        result = verify_facts(facts, _SAMPLE_MESSAGES, model="test", workers=1)
+
+    texts = {f["text"] for f in result}
+    assert texts == {"fact A", "fact C"}
+
+
+def test_verify_facts_empty() -> None:
+    """Empty facts list returns empty without LLM calls."""
+    result = verify_facts([], _SAMPLE_MESSAGES, model="test")
     assert result == []

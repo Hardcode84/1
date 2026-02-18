@@ -141,9 +141,11 @@ def test_intrusive_recall_accumulates_windows(mock_collapse: MagicMock) -> None:
 
 @patch("mindloop.cli.agent.collapse_messages")
 @patch("mindloop.semantic_memory.save_memory")
+@patch("mindloop.extractor.verify_facts", side_effect=lambda facts, *a, **kw: facts)
 @patch("mindloop.extractor.extract_window")
 def test_drain_excludes_saved_ids_from_recall(
     mock_extract: MagicMock,
+    mock_verify: MagicMock,
     mock_save: MagicMock,
     mock_collapse: MagicMock,
 ) -> None:

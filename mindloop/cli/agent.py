@@ -459,6 +459,7 @@ class MidSessionExtractor:
         model: str,
         log: Callable[[str], None],
         dispositions_path: Path | None = None,
+        agent_model: str = "",
     ) -> None:
         from concurrent.futures import ThreadPoolExecutor
 
@@ -471,6 +472,7 @@ class MidSessionExtractor:
         self._pending_texts: list[str] = []
         self._seen_ids: set[int] = set()
         self._dispositions_path = dispositions_path
+        self._agent_model = agent_model
 
     def _is_duplicate(self, text: str) -> bool:
         """Check if a similar memory already exists."""
@@ -537,10 +539,23 @@ class MidSessionExtractor:
                     self._log(f"\n[values] warning: {type(exc).__name__}: {exc}\n")
                 self._disp_future = None
 
+    def _extract_and_verify(
+        self, messages: list[dict[str, Any]]
+    ) -> list[dict[str, str]]:
+        """Extract facts then verify with the agent model."""
+        from mindloop.extractor import extract_window, verify_facts
+
+        facts = extract_window(messages, self._model)
+        if not facts:
+            return facts
+        verified = verify_facts(facts, messages, model=self._agent_model)
+        removed = len(facts) - len(verified)
+        if removed:
+            self._log(f"\n[verify] removed {removed}/{len(facts)} unverified facts")
+        return verified
+
     def on_extract(self, messages: list[dict[str, Any]]) -> None:
         """Callback for the agent loop. Drains previous, launches next."""
-        from mindloop.extractor import extract_window
-
         # Wait for previous extraction to commit before launching the next.
         # This ensures memories are available for recall within the session.
         self._drain(wait=True)
@@ -555,7 +570,7 @@ class MidSessionExtractor:
         self._log(
             f"\n[extract] launching mid-session extraction ({len(messages)} messages)"
         )
-        self._future = self._executor.submit(extract_window, messages, self._model)
+        self._future = self._executor.submit(self._extract_and_verify, messages)
         if self._dispositions_path:
             self._disp_future = self._executor.submit(
                 extract_dispositions_window, messages, self._model
@@ -675,7 +690,11 @@ def main() -> None:
     # Store dispositions outside workspace so the agent can't see raw data.
     disp_path = paths.root / "_dispositions.jsonl" if paths.root else None
     mid_extract = MidSessionExtractor(
-        mt.store, summarizer_model, _print_step, dispositions_path=disp_path
+        mt.store,
+        summarizer_model,
+        _print_step,
+        dispositions_path=disp_path,
+        agent_model=model,
     )
 
     try:
