@@ -14,6 +14,8 @@ from typing import Any
 import numpy as np
 import requests
 
+from mindloop.util import noop
+
 API_KEY: str = os.environ.get("OPENROUTER_API_KEY", "")
 BASE_URL: str = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL: str = "openrouter/free"
@@ -190,25 +192,26 @@ class _CoherenceMonitor:
 
 def _with_retry(
     func: Callable[..., Any],
-    on_error: Callable[[str], None],
+    on_error: Callable[[str], None] | None,
     *args: Any,
     **kwargs: Any,
 ) -> Any:
     """Call *func* with retries on transient network errors and KeyboardInterrupt."""
+    _on_error = on_error or noop
     for attempt in range(_MAX_RETRIES):
         try:
             return func(*args, **kwargs)
         except KeyboardInterrupt:
             if attempt == _MAX_RETRIES - 1:
                 raise
-            on_error("\n[interrupted, retrying...]")
+            _on_error("\n[interrupted, retrying...]")
         except requests.exceptions.HTTPError as exc:
             resp = exc.response
             if resp is not None and resp.status_code >= 500:
                 if attempt == _MAX_RETRIES - 1:
                     raise
                 wait = _RETRY_BACKOFF * (attempt + 1)
-                on_error(f"\n[server {resp.status_code}, retrying in {wait:.0f}s...]")
+                _on_error(f"\n[server {resp.status_code}, retrying in {wait:.0f}s...]")
                 time.sleep(wait)
             else:
                 raise  # 4xx errors are not retryable.
@@ -216,13 +219,9 @@ def _with_retry(
             if attempt == _MAX_RETRIES - 1:
                 raise
             wait = _RETRY_BACKOFF * (attempt + 1)
-            on_error(f"\n[connection error, retrying in {wait:.0f}s...]")
+            _on_error(f"\n[connection error, retrying in {wait:.0f}s...]")
             time.sleep(wait)
     return None  # Unreachable, satisfies type checker.
-
-
-def _default_on_token(token: str) -> None:
-    print(token, end="", flush=True)
 
 
 _ANTHROPIC_PREFIXES = ("anthropic/", "claude")
@@ -273,7 +272,7 @@ def _apply_cache_control(
 
 def _stream_request(
     payload: dict[str, Any],
-    on_token: Callable[[str], None],
+    on_token: Callable[[str], None] | None,
     on_thinking: Callable[[str], None] | None,
 ) -> Message:
     """Execute a streaming chat request and assemble the response."""
@@ -338,7 +337,8 @@ def _stream_request(
         # Accumulate content tokens.
         token = delta.get("content", "")
         if token:
-            on_token(token)
+            if on_token is not None:
+                on_token(token)
             full_reply.append(token)
             if content_monitor.feed(token):
                 break
@@ -377,8 +377,9 @@ def chat(
     system_prompt: str | None = None,
     tools: list[Tool] | None = None,
     stream: bool = True,
-    on_token: Callable[[str], None] = _default_on_token,
+    on_token: Callable[[str], None] | None = None,
     on_thinking: Callable[[str], None] | None = None,
+    on_error: Callable[[str], None] | None = None,
     temperature: float | None = None,
     seed: int | None = None,
     reasoning_effort: str | None = None,
@@ -430,7 +431,7 @@ def chat(
                 msg["usage"] = body["usage"]
             return msg
 
-        msg: Message = _with_retry(_non_streaming_request, on_token)
+        msg: Message = _with_retry(_non_streaming_request, on_error)
         if "usage" in msg:
             _record_usage(model, msg["usage"])
         else:
@@ -440,7 +441,7 @@ def chat(
     payload["stream"] = True
     payload["stream_options"] = {"include_usage": True}
     result: Message = _with_retry(
-        _stream_request, on_token, payload, on_token, on_thinking
+        _stream_request, on_error, payload, on_token, on_thinking
     )
     if "usage" in result:
         _record_usage(model, result["usage"])
@@ -479,7 +480,7 @@ def get_embeddings(texts: list[str], model: str) -> Embeddings:
             response.raise_for_status()
             return response.json()["data"]  # type: ignore[no-any-return]
 
-        data: list[dict[str, Any]] = _with_retry(_fetch_embeddings, _default_on_token)
+        data: list[dict[str, Any]] = _with_retry(_fetch_embeddings, None)
         # Sort by index to match input order within the batch.
         sorted_data = sorted(data, key=lambda x: x["index"])
         for (orig_idx, text), item in zip(uncached, sorted_data):

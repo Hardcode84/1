@@ -105,10 +105,9 @@ def chat_best_of_n(
         ]
         pairs.append((strategy, min(base_temp * scale, 2.0)))
 
-    # Strip caller's temperature and stream settings.
-    kwargs = {
-        k: v for k, v in chat_kwargs.items() if k not in ("temperature", "stream")
-    }
+    # Strip settings that don't apply to parallel candidates.
+    _strip = ("temperature", "stream", "on_token", "on_thinking")
+    kwargs = {k: v for k, v in chat_kwargs.items() if k not in _strip}
 
     # Launch parallel calls.
     base_prompt = kwargs.pop("system_prompt", None) or ""
