@@ -552,6 +552,8 @@ class MidSessionExtractor:
         removed = len(facts) - len(verified)
         if removed:
             self._log(f"\n[verify] removed {removed}/{len(facts)} unverified facts")
+        else:
+            self._log(f"\n[verify] all {len(facts)} facts confirmed")
         return verified
 
     def on_extract(self, messages: list[dict[str, Any]]) -> None:
