@@ -71,8 +71,10 @@ def test_ls_directory(tmp_path: Path) -> None:
 
     with patch("mindloop.tools._work_dir", tmp_path):
         result = create_default_registry().execute("ls", '{"path": "."}')
-    assert "f  a.txt" in result
-    assert "d  subdir" in result
+    assert "Type Name" in result
+    assert "f    a.txt" in result
+    assert "d    subdir" in result
+    assert "(2 entries)" in result
 
 
 def test_ls_nonexistent(tmp_path: Path) -> None:
@@ -92,6 +94,49 @@ def test_ls_empty_directory(tmp_path: Path) -> None:
     with patch("mindloop.tools._work_dir", tmp_path):
         result = create_default_registry().execute("ls", '{"path": "."}')
     assert result == "(empty directory)"
+
+
+def _make_ls_dir(tmp_path: Path, n: int = 5) -> None:
+    """Create files a.txt .. e.txt in tmp_path."""
+    for i in range(n):
+        (tmp_path / f"{chr(ord('a') + i)}.txt").write_text("")
+
+
+def test_ls_limit(tmp_path: Path) -> None:
+    _make_ls_dir(tmp_path)
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = create_default_registry().execute("ls", '{"path": ".", "limit": 2}')
+    assert "a.txt" in result
+    assert "b.txt" in result
+    assert "c.txt" not in result
+    assert "(5 entries)" in result
+
+
+def test_ls_offset(tmp_path: Path) -> None:
+    _make_ls_dir(tmp_path)
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = create_default_registry().execute(
+            "ls", '{"path": ".", "offset": 3, "limit": 10}'
+        )
+    assert "a.txt" not in result
+    assert "d.txt" in result
+    assert "e.txt" in result
+
+
+def test_ls_negative_offset(tmp_path: Path) -> None:
+    _make_ls_dir(tmp_path)
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = create_default_registry().execute("ls", '{"path": ".", "offset": -2}')
+    assert "c.txt" not in result
+    assert "d.txt" in result
+    assert "e.txt" in result
+
+
+def test_ls_invalid_limit(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("")
+    with patch("mindloop.tools._work_dir", tmp_path):
+        result = create_default_registry().execute("ls", '{"path": ".", "limit": 0}')
+    assert "limit must be >= 1" in result
 
 
 # --- built-in read ---

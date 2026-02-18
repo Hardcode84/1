@@ -131,8 +131,15 @@ def _track_file(reg: "ToolRegistry", tool: str, path: str) -> None:
 # --- Built-in tool implementations ---
 
 
-def _ls(reg: "ToolRegistry", path: str) -> str:
+_LS_DEFAULT_LIMIT = 50
+
+
+def _ls(
+    reg: "ToolRegistry", path: str, limit: int = _LS_DEFAULT_LIMIT, offset: int = 0
+) -> str:
     """List directory contents."""
+    if limit < 1:
+        raise ToolError("limit must be >= 1.")
     _track_file(reg, "ls", path)
     p = _sanitize_path(path, reg.root_dir, reg.blocked_dirs)
     if not p.exists():
@@ -140,8 +147,14 @@ def _ls(reg: "ToolRegistry", path: str) -> str:
     if not p.is_dir():
         raise ToolError(f"{path} is not a directory.")
     entries = sorted(p.iterdir())
-    lines = [f"{'d' if e.is_dir() else 'f'}  {e.name}" for e in entries]
-    return "\n".join(lines) if lines else "(empty directory)"
+    total = len(entries)
+    if not entries:
+        return "(empty directory)"
+    sliced = entries[offset : offset + limit] if offset >= 0 else entries[offset:]
+    lines = [f"Type Name  ({total} entries)"]
+    for e in sliced:
+        lines.append(f"{'d' if e.is_dir() else 'f'}    {e.name}")
+    return "\n".join(lines)
 
 
 _BINARY_CHECK_SIZE = 8192
@@ -286,7 +299,19 @@ def create_default_registry(
         params=[
             Param(
                 name="path", description="Relative path within the working directory."
-            )
+            ),
+            Param(
+                name="limit",
+                description=f"Max entries to return (default {_LS_DEFAULT_LIMIT}).",
+                type="integer",
+                required=False,
+            ),
+            Param(
+                name="offset",
+                description="Start index. Negative to see tail (e.g. -10 for last 10).",
+                type="integer",
+                required=False,
+            ),
         ],
         func=partial(_ls, reg),
     )
