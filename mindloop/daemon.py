@@ -78,10 +78,13 @@ def run_daemon(
         nxt = _next_time(schedule)
         log.info("Next run: %s", nxt.strftime("%Y-%m-%d %H:%M:%S"))
         wait_secs = (nxt - datetime.now()).total_seconds()
-        if wait_secs > 0 and shutdown.wait(timeout=wait_secs):
-            break
+        if wait_secs > 0:
+            log.debug("Sleeping %.1f seconds...", wait_secs)
+            if shutdown.wait(timeout=wait_secs):
+                break
         if shutdown.is_set():
             break
+        log.info("Triggering scheduled run.")
         _run_once(cmd, shutdown)
 
     log.info("Daemon shutting down.")
