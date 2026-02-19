@@ -3,7 +3,7 @@
 import argparse
 import logging
 
-from mindloop.daemon import run_daemon
+from mindloop.daemon import _DEFAULT_MAX_FAILURES, run_daemon
 
 
 def main() -> None:
@@ -26,6 +26,12 @@ def main() -> None:
         help="Run immediately on start, then follow schedule.",
     )
     parser.add_argument(
+        "--max-failures",
+        type=int,
+        default=_DEFAULT_MAX_FAILURES,
+        help=f"Stop after N consecutive failures (default: {_DEFAULT_MAX_FAILURES}).",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -46,4 +52,5 @@ def main() -> None:
         summarizer_model=args.summarizer_model,
         n_experts=args.n_experts,
         run_now=args.run_now,
+        max_failures=args.max_failures,
     )

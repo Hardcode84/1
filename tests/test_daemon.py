@@ -118,3 +118,47 @@ def test_daemon_shutdown_during_sleep() -> None:
 
     # No sessions should have run.
     assert runs == []
+
+
+def test_daemon_stops_after_max_failures() -> None:
+    """Daemon exits after consecutive failures hit the limit."""
+    calls: list[int] = []
+
+    def fake_run_once(cmd: list[str], shutdown: threading.Event) -> int:
+        calls.append(1)
+        return 1  # Always fail.
+
+    near = datetime.now() + timedelta(seconds=0.01)
+    with (
+        patch("mindloop.daemon._run_once", side_effect=fake_run_once),
+        patch("mindloop.daemon._next_time", return_value=near),
+        patch("mindloop.daemon.signal.signal"),
+    ):
+        run_daemon("test", "* * * * *", max_failures=3)
+
+    assert len(calls) == 3
+
+
+def test_daemon_resets_failures_on_success() -> None:
+    """A successful run resets the consecutive failure counter."""
+    codes = iter([1, 1, 0, 1, 1, 0])
+    calls: list[int] = []
+
+    def fake_run_once(cmd: list[str], shutdown: threading.Event) -> int:
+        code = next(codes, None)
+        if code is None:
+            shutdown.set()
+            return 0
+        calls.append(code)
+        return code
+
+    near = datetime.now() + timedelta(seconds=0.01)
+    with (
+        patch("mindloop.daemon._run_once", side_effect=fake_run_once),
+        patch("mindloop.daemon._next_time", return_value=near),
+        patch("mindloop.daemon.signal.signal"),
+    ):
+        run_daemon("test", "* * * * *", max_failures=3)
+
+    # 6 calls: fail, fail, success, fail, fail, success — never hits 3.
+    assert calls == [1, 1, 0, 1, 1, 0]

@@ -49,6 +49,9 @@ def _run_once(cmd: list[str], shutdown: threading.Event) -> int:
     return code
 
 
+_DEFAULT_MAX_FAILURES = 5
+
+
 def run_daemon(
     session: str,
     schedule: str,
@@ -57,6 +60,7 @@ def run_daemon(
     summarizer_model: str | None = None,
     n_experts: int = 1,
     run_now: bool = False,
+    max_failures: int = _DEFAULT_MAX_FAILURES,
 ) -> None:
     """Main daemon loop. Blocks until SIGINT/SIGTERM."""
     # Validate cron expression early.
@@ -70,11 +74,20 @@ def run_daemon(
     log.info("Daemon started for session '%s', schedule: '%s'", session, schedule)
     log.info("Command: %s", " ".join(cmd))
 
+    consecutive_failures = 0
+
     if run_now:
         log.info("Running immediately (--run-now)...")
-        _run_once(cmd, shutdown)
+        code = _run_once(cmd, shutdown)
+        if code != 0:
+            consecutive_failures += 1
+        else:
+            consecutive_failures = 0
 
     while not shutdown.is_set():
+        if consecutive_failures >= max_failures:
+            log.error("Stopping after %d consecutive failures.", consecutive_failures)
+            break
         nxt = _next_time(schedule)
         log.info("Next run: %s", nxt.strftime("%Y-%m-%d %H:%M:%S"))
         wait_secs = (nxt - datetime.now()).total_seconds()
@@ -85,6 +98,15 @@ def run_daemon(
         if shutdown.is_set():
             break
         log.info("Triggering scheduled run.")
-        _run_once(cmd, shutdown)
+        code = _run_once(cmd, shutdown)
+        if code != 0:
+            consecutive_failures += 1
+            log.warning(
+                "Consecutive failures: %d / %d.",
+                consecutive_failures,
+                max_failures,
+            )
+        else:
+            consecutive_failures = 0
 
     log.info("Daemon shutting down.")
