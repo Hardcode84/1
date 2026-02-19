@@ -21,9 +21,11 @@ mindloop-message = "mindloop.cli.message:main"
 mindloop-extract = "mindloop.cli.extract:main"
 mindloop-rebuild = "mindloop.cli.rebuild:main"
 mindloop-symlink = "mindloop.cli.symlink:main"
+mindloop-daemon = "mindloop.cli.daemon:main"
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov"]
+daemon = ["croniter"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

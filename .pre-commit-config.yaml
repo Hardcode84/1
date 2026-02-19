@@ -23,4 +23,4 @@ repos:
     rev: v1.14.1
     hooks:
       - id: mypy
-        additional_dependencies: [numpy, requests, types-requests]
+        additional_dependencies: [numpy, requests, types-requests, croniter, types-croniter]

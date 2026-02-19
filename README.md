@@ -152,6 +152,24 @@ mindloop-symlink mysession remove shared
 
 Virtual symlinks let the agent read files from directories outside its workspace sandbox. They appear as `l`-type entries in `ls` and are read-only (writes and edits are blocked). Configuration is stored in `sessions/<name>/_symlinks.json` and persists across instances.
 
+### Daemon
+
+```bash
+# Install daemon dependencies.
+pip install -e ".[daemon]"
+
+# Run session 'myagent' daily at 9am.
+mindloop-daemon --session myagent --schedule "0 9 * * *"
+
+# Run immediately on start, then follow schedule.
+mindloop-daemon --session myagent --schedule "*/30 * * * *" --run-now
+
+# Custom model and verbose logging.
+mindloop-daemon --session myagent --schedule "0 */6 * * *" --model deepseek/deepseek-v3.2 -v
+```
+
+Runs as a foreground process. The agent gets its recap, notes, memory, and messages from previous instances automatically. Use Ctrl+C to stop — the daemon waits for the current run to finish before exiting.
+
 ### Sessions
 
 ```bash
