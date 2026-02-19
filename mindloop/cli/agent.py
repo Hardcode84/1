@@ -421,8 +421,11 @@ def _build_system_prompt(
     # Append message count to system prompt.
     nudge_extra = ""
     if msg_tools is not None:
-        nudge_extra = msg_tools.new_message_note
-        system_prompt += f"\n\n# Messages\n{nudge_extra}"
+        note = msg_tools.new_message_note
+        system_prompt += f"\n\n# Messages\n{note}"
+        # Only nudge about messages when there are new ones.
+        if msg_tools.new_count > 0:
+            nudge_extra = note
 
     return system_prompt, nudge_extra
 
