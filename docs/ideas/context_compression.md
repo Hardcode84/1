@@ -97,6 +97,77 @@ From arXiv:2510.00615 (Oct 2025). Optimizes natural-language compression guideli
 
 Interesting but complex. Would require running tasks with both full and compressed context to generate training signal.
 
+## Cross-session: critic-pinned turns
+
+The recap system compresses a full session into ~500 tokens of narrative. This is good for big-picture continuity but loses exact details — error tracebacks, specific reasoning chains, code snippets that worked. Raw turns preserve what summaries can't.
+
+### The idea
+
+The critic model already reviews the agent's actions at reflection points with fresh context. Extend its output to also identify which turns contain information critical for the next session. At session end, collect all critic-pinned turns and write them to `_pinned_turns.json`. The next instance loads them alongside the recap.
+
+### Why the critic, not the agent or a post-hoc pass
+
+- **The agent is too deep in the weeds.** Everything feels important when you're doing it.
+- **A post-hoc pass sees everything at once** and has to guess what the next session will need.
+- **The critic has distance.** It reviews bounded windows with fresh context — the right vantage point to judge significance.
+- **Nearly free.** The critic call is already happening. Just extend the output format.
+
+### Implementation sketch
+
+Extend the critic prompt:
+
+```
+Does this window contain anything critical for the next session instance
+(key decisions, surprising errors, breakthroughs, unresolved problems)?
+If yes, explain briefly what should be preserved and why.
+```
+
+The critic returns its existing review text plus an optional `"pin_reason"` field:
+
+```json
+{"review": "The agent is ...", "pin_reason": "Found root cause of FTS5 rebuild bug."}
+```
+
+If `pin_reason` is present, the entire reflection window gets pinned. The windows are small (bounded by reflection interval), so pinning the whole window is cheap — no need to pick specific turns within it.
+
+We know the absolute message indices that map to each window since we built it. At session end:
+
+1. Collect all pinned windows, deduplicate overlapping ranges.
+2. Write pinned messages to `_pinned_turns.json` in the session root.
+3. Next instance injects them into the system prompt as a clearly delimited section:
+
+```
+# Pinned context from previous instance
+
+The following are raw conversation turns from your previous instance that
+the critic flagged as important. This is historical context, not your
+current session. Your current session starts after the system prompt.
+
+## Window pinned because: Found root cause of FTS5 rebuild bug.
+
+[assistant] I'll check the migration code...
+[tool:read] migration.py contents...
+[assistant] The issue is that rebuild() is never called after ALTER TABLE.
+
+## Window pinned because: User rejected approach B, wants approach A.
+
+[user] No, don't use the rename pattern...
+[assistant] Understood, I'll use ALTER TABLE ADD COLUMN instead.
+```
+
+This goes into the system prompt alongside the recap and notes — clearly marked as historical. The actual conversation starts empty.
+
+### Properties
+
+- No extra LLM call — piggybacks on the existing critic.
+- Progressive — pins accumulate at each reflection point, not a single post-hoc pass.
+- Naturally capped — the critic sees bounded windows and pins at most 3 per window.
+- Complements the recap — recap gives narrative, pinned turns give exact details.
+
+### Relation to pinned memories
+
+Pinned memories (see `pinned_memories.md`) preserve distilled *facts* in the semantic DB. Pinned turns preserve raw *conversation moments* in the log. They're complementary: a turn might lead to a pinned memory, but the raw turn carries details (exact error text, surrounding reasoning) the memory might not.
+
 ## Recommendation
 
 Start with **observation masking** (#1). It is the simplest, cheapest, and empirically strongest approach. Implementation is ~50 lines in the agent loop. Combine with the existing recap system for cross-session compression.
@@ -104,3 +175,5 @@ Start with **observation masking** (#1). It is the simplest, cheapest, and empir
 Add **structured compaction** (#2) at reflection points as a second phase if observation masking alone isn't enough.
 
 The agent-driven **focus** approach (#3) is worth exploring once the basics are in place — it aligns with the existing reflection/extraction architecture and lets the agent manage its own context.
+
+For cross-session transfer, **critic-pinned turns** are the most promising approach — zero extra cost, leverages the existing critic infrastructure, and preserves exact details that recaps lose.
