@@ -180,6 +180,12 @@ mindloop-sessions list
 # Custom sessions directory.
 mindloop-sessions --dir path/to/sessions
 
+# Initialize a new session (creates dirs, copies workspace template).
+mindloop-sessions init myagent
+
+# Initialize with a random name.
+mindloop-sessions init
+
 # Delete a session (prompts for confirmation).
 mindloop-sessions delete myagent
 
@@ -187,7 +193,7 @@ mindloop-sessions delete myagent
 mindloop-sessions delete myagent -y
 ```
 
-Shows each session's name, instance count, date range, last exit status (clean/crashed/tokens/iterations), and whether notes exist. Delete removes the entire session directory (logs, workspace, memory).
+Shows each session's name, instance count, date range, last exit status (clean/crashed/tokens/iterations), and whether notes exist. Init creates the full directory structure (logs, workspace, inbox, outbox) without starting the agent. Delete removes the entire session directory (logs, workspace, memory).
 
 ### Messaging
 

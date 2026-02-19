@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mindloop.cli.sessions import _delete_session, _gather_sessions, main
+from mindloop.cli.sessions import _delete_session, _gather_sessions, _init_session, main
 
 
 def _make_log(log_dir: Path, name: str, stop_content: str | None) -> None:
@@ -231,3 +231,74 @@ def test_main_delete_with_yes(
     assert not (tmp_path / "byebye").exists()
     captured = capsys.readouterr()
     assert "Deleted" in captured.out
+
+
+# --- Init tests ---
+
+
+def test_init_session(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Initializing a session creates the full directory structure."""
+    assert _init_session(tmp_path, "fresh")
+    root = tmp_path / "fresh"
+    assert (root / "logs").is_dir()
+    assert (root / "workspace").is_dir()
+    assert (root / "_inbox").is_dir()
+    assert (root / "_outbox").is_dir()
+    captured = capsys.readouterr()
+    assert "Initialized" in captured.out
+
+
+def test_init_session_already_exists(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Initializing an existing session is rejected."""
+    _make_session(
+        tmp_path,
+        "existing",
+        [("001_agent_20260213_120000.jsonl", "[stop] model finished (1k)")],
+    )
+    assert not _init_session(tmp_path, "existing")
+    captured = capsys.readouterr()
+    assert "already exists" in captured.out.lower()
+
+
+def test_init_copies_template(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Workspace template files are copied into the new workspace."""
+    template = tmp_path / "template"
+    template.mkdir()
+    (template / "welcome.md").write_text("hello")
+    with patch("mindloop.cli.sessions._TEMPLATE_DIR", template):
+        _init_session(tmp_path / "sessions", "templated")
+    ws = tmp_path / "sessions" / "templated" / "workspace"
+    assert (ws / "welcome.md").read_text() == "hello"
+
+
+def test_main_init(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Main init subcommand creates session."""
+    with patch(
+        "sys.argv",
+        ["mindloop-sessions", "--dir", str(tmp_path), "init", "newagent"],
+    ):
+        main()
+    assert (tmp_path / "newagent" / "logs").is_dir()
+    captured = capsys.readouterr()
+    assert "Initialized" in captured.out
+
+
+def test_main_init_random_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Init without a name generates a random session name."""
+    with patch(
+        "sys.argv",
+        ["mindloop-sessions", "--dir", str(tmp_path), "init"],
+    ):
+        main()
+    captured = capsys.readouterr()
+    assert "Initialized session:" in captured.out
+    # Exactly one session directory was created.
+    dirs = [d for d in tmp_path.iterdir() if d.is_dir()]
+    assert len(dirs) == 1
+    assert (dirs[0] / "logs").is_dir()

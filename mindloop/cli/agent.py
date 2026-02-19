@@ -5,7 +5,6 @@ import json
 import select
 import shutil
 import sys
-import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -34,7 +33,7 @@ from mindloop.tools import (
     add_message_tools,
     create_default_registry,
 )
-from mindloop.util import DEDUP_THRESHOLD, SKIP_PREFIXES
+from mindloop.util import DEDUP_THRESHOLD, SKIP_PREFIXES, generate_session_name
 
 _PROMPT_PATH = Path(__file__).resolve().parent.parent / "system_prompt.md"
 _NOTES_MAX_CHARS = 2000
@@ -644,9 +643,7 @@ def main() -> None:
     summarizer_model: str = args.summarizer_model
     session_name: str | None = args.session
     if args.new_session:
-        session_name = uuid.uuid4().hex[:8]
-        while (_SESSIONS_DIR / session_name).exists():
-            session_name = uuid.uuid4().hex[:8]
+        session_name = generate_session_name(_SESSIONS_DIR)
     paths = _setup_session(session_name, timestamp)
 
     if paths.instance:

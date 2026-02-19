@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from mindloop.cli.agent import _session_exit_reason
+from mindloop.util import generate_session_name
 
 _SESSIONS_DIR = Path("sessions")
 
@@ -88,6 +89,27 @@ def _print_table(rows: list[dict[str, str]]) -> None:
         print(fmt.format(*(row[k] for k in headers)))
 
 
+_TEMPLATE_DIR = Path("workspace_template")
+
+
+def _init_session(sessions_dir: Path, name: str) -> bool:
+    """Create the directory structure for a new session. Returns True on success."""
+    session_path = sessions_dir / name
+    if (session_path / "logs").is_dir():
+        print(f"Session already exists: {name}")
+        return False
+    log_dir = session_path / "logs"
+    workspace = session_path / "workspace"
+    log_dir.mkdir(parents=True)
+    workspace.mkdir()
+    if _TEMPLATE_DIR.is_dir():
+        shutil.copytree(_TEMPLATE_DIR, workspace, dirs_exist_ok=True)
+    (session_path / "_inbox").mkdir()
+    (session_path / "_outbox").mkdir()
+    print(f"Initialized session: {name}")
+    return True
+
+
 def _delete_session(sessions_dir: Path, name: str) -> bool:
     """Delete a session directory. Returns True on success."""
     session_path = sessions_dir / name
@@ -114,6 +136,11 @@ def main() -> None:
 
     sub.add_parser("list", help="List sessions (default).")
 
+    init_parser = sub.add_parser("init", help="Initialize a new session.")
+    init_parser.add_argument(
+        "name", nargs="?", default=None, help="Session name (random if omitted)."
+    )
+
     del_parser = sub.add_parser("delete", help="Delete a session.")
     del_parser.add_argument("name", help="Session name to delete.")
     del_parser.add_argument(
@@ -122,6 +149,11 @@ def main() -> None:
 
     args = parser.parse_args()
     sessions_dir = Path(args.dir)
+
+    if args.command == "init":
+        name = args.name or generate_session_name(sessions_dir)
+        _init_session(sessions_dir, name)
+        return
 
     if args.command == "delete":
         if not sessions_dir.is_dir():
