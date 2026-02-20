@@ -11,10 +11,34 @@ _DEFAULT_TIMEOUT = 30
 # System paths to bind read-only (skipped if they don't exist on the host).
 _SYSTEM_RO_BINDS = ["/usr", "/lib", "/lib64", "/bin", "/sbin", "/etc/alternatives"]
 
+# Cached result of the --unshare-net probe (None = not yet tested).
+_net_unshare_ok: bool | None = None
+
 
 def _bwrap_available() -> bool:
     """Return True if bwrap is on PATH."""
     return shutil.which("bwrap") is not None
+
+
+def _can_unshare_net() -> bool:
+    """Probe whether bwrap --unshare-net works on this host.
+
+    Caches the result after the first call.  Returns False when the loopback
+    setup fails (common inside containers or restricted environments).
+    """
+    global _net_unshare_ok  # noqa: PLW0603
+    if _net_unshare_ok is not None:
+        return _net_unshare_ok
+    try:
+        proc = subprocess.run(
+            ["bwrap", "--ro-bind", "/", "/", "--unshare-net", "--", "true"],
+            capture_output=True,
+            timeout=5,
+        )
+        _net_unshare_ok = proc.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        _net_unshare_ok = False
+    return _net_unshare_ok
 
 
 def run_sandboxed(
@@ -39,14 +63,16 @@ def run_sandboxed(
     # Read-only Python environment.
     cmd += ["--ro-bind", sys.prefix, sys.prefix]
 
-    # Writable workspace.
-    cmd += ["--bind", ws, ws]
-
-    # Minimal system.
+    # Minimal system (before workspace so --tmpfs /tmp doesn't mask it).
     cmd += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]
 
+    # Writable workspace (after --tmpfs so it overlays even under /tmp).
+    cmd += ["--bind", ws, ws]
+
     # Isolation.
-    cmd += ["--unshare-net", "--unshare-pid", "--die-with-parent"]
+    if _can_unshare_net():
+        cmd.append("--unshare-net")
+    cmd += ["--unshare-pid", "--die-with-parent"]
 
     # Working directory.
     cmd += ["--chdir", ws]

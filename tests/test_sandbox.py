@@ -5,13 +5,34 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 
+import mindloop.sandbox as sandbox_mod
 from mindloop.sandbox import (
     _DEFAULT_TIMEOUT,
     _OUTPUT_LIMIT,
     _bwrap_available,
+    _can_unshare_net,
     run_sandboxed,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_net_cache() -> None:
+    """Reset the cached --unshare-net probe between tests."""
+    sandbox_mod._net_unshare_ok = None
+
+
+@pytest.fixture()
+def _net_ok() -> None:
+    """Pretend --unshare-net works."""
+    sandbox_mod._net_unshare_ok = True
+
+
+@pytest.fixture()
+def _net_fail() -> None:
+    """Pretend --unshare-net fails."""
+    sandbox_mod._net_unshare_ok = False
 
 
 def test_bwrap_available() -> None:
@@ -26,6 +47,35 @@ def test_bwrap_not_available() -> None:
         assert _bwrap_available() is False
 
 
+# --- _can_unshare_net probe ---
+
+
+def test_can_unshare_net_success() -> None:
+    """Probe returns True when bwrap --unshare-net succeeds."""
+    ok = MagicMock(returncode=0)
+    with patch("mindloop.sandbox.subprocess.run", return_value=ok):
+        assert _can_unshare_net() is True
+
+
+def test_can_unshare_net_failure() -> None:
+    """Probe returns False when bwrap --unshare-net fails."""
+    fail = MagicMock(returncode=1)
+    with patch("mindloop.sandbox.subprocess.run", return_value=fail):
+        assert _can_unshare_net() is False
+
+
+def test_can_unshare_net_cached() -> None:
+    """Probe result is cached after the first call."""
+    ok = MagicMock(returncode=0)
+    with patch("mindloop.sandbox.subprocess.run", return_value=ok) as mock_run:
+        _can_unshare_net()
+        _can_unshare_net()
+    mock_run.assert_called_once()
+
+
+# --- run_sandboxed ---
+
+
 def _make_result(stdout: str = "", stderr: str = "", returncode: int = 0) -> MagicMock:
     result = MagicMock()
     result.stdout = stdout
@@ -34,6 +84,7 @@ def _make_result(stdout: str = "", stderr: str = "", returncode: int = 0) -> Mag
     return result
 
 
+@pytest.mark.usefixtures("_net_ok")
 def test_run_success(tmp_path: Path) -> None:
     """Successful command returns stdout."""
     result = _make_result(stdout="hello\n")
@@ -45,6 +96,7 @@ def test_run_success(tmp_path: Path) -> None:
     assert cmd[-3:] == ["sh", "-c", "echo hello"]
 
 
+@pytest.mark.usefixtures("_net_ok")
 def test_run_failure(tmp_path: Path) -> None:
     """Non-zero exit code is reported."""
     result = _make_result(stdout="oops\n", returncode=1)
@@ -54,6 +106,7 @@ def test_run_failure(tmp_path: Path) -> None:
     assert "oops" in out
 
 
+@pytest.mark.usefixtures("_net_ok")
 def test_run_stderr(tmp_path: Path) -> None:
     """Stderr is included under a header."""
     result = _make_result(stdout="ok\n", stderr="warn\n", returncode=0)
@@ -63,6 +116,7 @@ def test_run_stderr(tmp_path: Path) -> None:
     assert "warn" in out
 
 
+@pytest.mark.usefixtures("_net_ok")
 def test_run_timeout(tmp_path: Path) -> None:
     """TimeoutExpired produces a timed-out message."""
     with patch(
@@ -73,6 +127,7 @@ def test_run_timeout(tmp_path: Path) -> None:
     assert "[timed out after 10s]" in out
 
 
+@pytest.mark.usefixtures("_net_ok")
 def test_output_truncation(tmp_path: Path) -> None:
     """Output longer than _OUTPUT_LIMIT is truncated."""
     long_output = "x" * (_OUTPUT_LIMIT + 1000)
@@ -82,6 +137,7 @@ def test_output_truncation(tmp_path: Path) -> None:
     assert len(out) == _OUTPUT_LIMIT
 
 
+@pytest.mark.usefixtures("_net_ok")
 def test_symlinks_as_ro_bind(tmp_path: Path) -> None:
     """Virtual symlinks become --ro-bind args."""
     target = Path("/some/target")
@@ -98,6 +154,7 @@ def test_symlinks_as_ro_bind(tmp_path: Path) -> None:
     assert (str(target.resolve()), mount_point) in ro_binds
 
 
+@pytest.mark.usefixtures("_net_ok")
 def test_env_file_injection(tmp_path: Path) -> None:
     """A .env file in the workspace injects --setenv args."""
     env_file = tmp_path / ".env"
@@ -116,6 +173,7 @@ def test_env_file_injection(tmp_path: Path) -> None:
     assert "#" not in "".join(keys)
 
 
+@pytest.mark.usefixtures("_net_ok")
 def test_python_prefix_bound(tmp_path: Path) -> None:
     """sys.prefix is bound read-only."""
     result = _make_result()
@@ -128,6 +186,7 @@ def test_python_prefix_bound(tmp_path: Path) -> None:
     assert (sys.prefix, sys.prefix) in ro_binds
 
 
+@pytest.mark.usefixtures("_net_ok")
 def test_workspace_is_writable_bind(tmp_path: Path) -> None:
     """Workspace is mounted with --bind (writable), not --ro-bind."""
     result = _make_result()
@@ -145,9 +204,30 @@ def test_workspace_is_writable_bind(tmp_path: Path) -> None:
     assert (ws, ws) not in ro_binds
 
 
+@pytest.mark.usefixtures("_net_ok")
 def test_default_timeout(tmp_path: Path) -> None:
     """Default timeout is passed to subprocess.run."""
     result = _make_result()
     with patch("mindloop.sandbox.subprocess.run", return_value=result) as mock_run:
         run_sandboxed("echo hi", tmp_path)
     assert mock_run.call_args[1]["timeout"] == _DEFAULT_TIMEOUT
+
+
+@pytest.mark.usefixtures("_net_ok")
+def test_unshare_net_included(tmp_path: Path) -> None:
+    """--unshare-net is in the command when the probe succeeds."""
+    result = _make_result()
+    with patch("mindloop.sandbox.subprocess.run", return_value=result) as mock_run:
+        run_sandboxed("ls", tmp_path)
+    cmd = mock_run.call_args[0][0]
+    assert "--unshare-net" in cmd
+
+
+@pytest.mark.usefixtures("_net_fail")
+def test_unshare_net_omitted(tmp_path: Path) -> None:
+    """--unshare-net is omitted when the probe fails."""
+    result = _make_result()
+    with patch("mindloop.sandbox.subprocess.run", return_value=result) as mock_run:
+        run_sandboxed("ls", tmp_path)
+    cmd = mock_run.call_args[0][0]
+    assert "--unshare-net" not in cmd
