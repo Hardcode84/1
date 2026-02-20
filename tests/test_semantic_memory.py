@@ -85,7 +85,7 @@ def test_save_merges_similar_chunk(store: MemoryStore) -> None:
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
         row_id = save_memory(
-            store, "new fact", "abs", "sum", model="test-model", max_neighbor_score=1.0
+            store, "new fact", "abs", "sum", model="test-model", neighbor_margin=2.0
         )
 
     # Old chunk deactivated, incoming leaf preserved, merged chunk active.
@@ -110,7 +110,7 @@ def test_save_cascading_merges(store: MemoryStore) -> None:
         patch("mindloop.semantic_memory.merge_texts", side_effect=_counting_merge),
     ):
         save_memory(
-            store, "new fact", "abs", "sum", model="test-model", max_neighbor_score=1.0
+            store, "new fact", "abs", "sum", model="test-model", neighbor_margin=2.0
         )
 
     # Both old chunks deactivated, incoming leaf + intermediate + final.
@@ -139,8 +139,8 @@ def test_save_stops_at_max_rounds(store: MemoryStore) -> None:
     assert merge_count <= 3
 
 
-def test_save_aborts_merge_when_too_generic(store: MemoryStore) -> None:
-    """Neighbor score exceeds threshold → merge aborted, edge recorded."""
+def test_save_aborts_merge_when_density_increases(store: MemoryStore) -> None:
+    """Density increase exceeds margin → merge aborted, edge recorded."""
     # Multiple chunks so neighbors remain after absorbing one.
     for _ in range(3):
         store.save(_summary("similar"))
@@ -153,17 +153,17 @@ def test_save_aborts_merge_when_too_generic(store: MemoryStore) -> None:
         merge_count += 1
         return mr
 
-    # Uniform embeddings → faithfulness passes (sim=1.0).
-    # max_neighbor_score=0.0 → any positive neighbor score rejects.
+    # Uniform embeddings → candidate_ns == merged_ns == 1.0, increase = 0.
+    # Negative margin forces rejection (0.0 > -0.01).
     with (
         _patch_embeddings(_EMB_A),
         patch("mindloop.semantic_memory.merge_texts", side_effect=_counting_merge),
     ):
         save_memory(
-            store, "new", "abs", "sum", model="test-model", max_neighbor_score=0.0
+            store, "new", "abs", "sum", model="test-model", neighbor_margin=-0.01
         )
 
-    # Merge attempted, but neighbor score too high → aborted.
+    # Merge attempted, but density check failed → aborted.
     assert merge_count == 1
     # All original chunks still active + incoming leaf activated.
     assert store.count() == 4
@@ -183,7 +183,7 @@ def test_save_records_sources_on_merge(store: MemoryStore) -> None:
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
         new_id = save_memory(
-            store, "new", "abs", "sum", model="test-model", max_neighbor_score=1.0
+            store, "new", "abs", "sum", model="test-model", neighbor_margin=2.0
         )
 
     # source_a=incoming leaf, source_b=absorbed chunk.
@@ -214,7 +214,7 @@ def test_save_records_tree_on_cascade(store: MemoryStore) -> None:
         patch("mindloop.semantic_memory.merge_texts", return_value=mr),
     ):
         final_id = save_memory(
-            store, "new", "abs", "sum", model="test-model", max_neighbor_score=1.0
+            store, "new", "abs", "sum", model="test-model", neighbor_margin=2.0
         )
 
     # Final node points to first merge + one absorbed chunk.
@@ -290,10 +290,10 @@ def test_save_deduplicates_exact_text(store: MemoryStore) -> None:
 
 
 def test_neighbor_score_excludes_absorbed_chunk(store: MemoryStore) -> None:
-    """Absorbed chunk is deactivated before neighbor score check.
+    """Absorbed chunk is deactivated before density check.
 
-    The absorbed chunk should not inflate the neighbor score that would
-    otherwise block the merge.
+    Both candidate and merged neighbor scores are computed against the same
+    ambient set (excluding the absorbed chunk).
     """
     # Two similar chunks — one will be absorbed during merge.
     store.save(_summary("similar A"))
@@ -312,7 +312,7 @@ def test_neighbor_score_excludes_absorbed_chunk(store: MemoryStore) -> None:
             "abs",
             "sum",
             model="test-model",
-            max_neighbor_score=1.0,
+            neighbor_margin=2.0,
         )
 
     # Merge should have happened.
@@ -336,7 +336,7 @@ def test_save_borderline_calls_should_merge(store: MemoryStore) -> None:
             "abs",
             "sum",
             model="test-model",
-            max_neighbor_score=1.0,
+            neighbor_margin=2.0,
             sim_high=2.0,
             sim_low=0.5,
         )
@@ -404,7 +404,7 @@ def test_save_logs_progress(store: MemoryStore) -> None:
             "abs",
             "sum",
             model="test-model",
-            max_neighbor_score=1.0,
+            neighbor_margin=2.0,
             log=logged.append,
         )
 
@@ -495,9 +495,7 @@ def test_save_cascade_stops_on_original_drift(store: MemoryStore) -> None:
         patch("mindloop.memory.get_embeddings", side_effect=_emb),
         patch("mindloop.semantic_memory.merge_texts", side_effect=_merge),
     ):
-        save_memory(
-            store, "new", "abs", "sum", model="test-model", max_neighbor_score=1.0
-        )
+        save_memory(store, "new", "abs", "sum", model="test-model", neighbor_margin=2.0)
 
     # Round-2 merge aborted → only first merge happened.
     assert merge_count == 2
@@ -529,7 +527,7 @@ def test_save_inherits_edges_on_merge(store: MemoryStore) -> None:
             "abs",
             "sum",
             model="test-model",
-            max_neighbor_score=1.0,
+            neighbor_margin=2.0,
             max_rounds=1,
         )
 

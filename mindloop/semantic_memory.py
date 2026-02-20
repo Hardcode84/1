@@ -12,7 +12,7 @@ from mindloop.util import noop
 _DEFAULT_TOP_K = 5
 _DEFAULT_MAX_ROUNDS = 10
 _DEFAULT_MIN_FAITHFULNESS = 0.7
-_DEFAULT_MAX_NEIGHBOR_SCORE = 0.6
+_DEFAULT_NEIGHBOR_MARGIN = 0.05
 _DEFAULT_NEIGHBOR_K = 3
 _DEFAULT_SIM_HIGH = 0.9
 _DEFAULT_SIM_LOW = 0.2
@@ -27,7 +27,7 @@ def save_memory(
     top_k: int = _DEFAULT_TOP_K,
     max_rounds: int = _DEFAULT_MAX_ROUNDS,
     min_faithfulness: float = _DEFAULT_MIN_FAITHFULNESS,
-    max_neighbor_score: float = _DEFAULT_MAX_NEIGHBOR_SCORE,
+    neighbor_margin: float = _DEFAULT_NEIGHBOR_MARGIN,
     neighbor_k: int = _DEFAULT_NEIGHBOR_K,
     prefer: str = "equal",
     log: Callable[[str], None] = noop,
@@ -110,13 +110,16 @@ def save_memory(
                     store.add_edge(last_id, result.id, "related_to", score=sim)
                     break
 
-                # Check 2: neighbor score (deactivate absorbed chunk first).
+                # Check 2: relative density (deactivate absorbed chunk first).
                 store.deactivate([result.id])
-                ns = store.neighbor_score(mr.text, top_k=neighbor_k)
-                if ns > max_neighbor_score:
+                candidate_ns = store.neighbor_score(existing_text, top_k=neighbor_k)
+                merged_ns = store.neighbor_score(mr.text, top_k=neighbor_k)
+                density_increase = merged_ns - candidate_ns
+                if density_increase > neighbor_margin:
                     log(
-                        f"[memory]   Neighbor score {ns:.3f}"
-                        f" > {max_neighbor_score} → aborting merge."
+                        f"[memory]   Density increase {density_increase:.3f}"
+                        f" ({candidate_ns:.3f} → {merged_ns:.3f})"
+                        f" > margin {neighbor_margin} → aborting merge."
                     )
                     store.activate([result.id])
                     store.add_edge(last_id, result.id, "related_to", score=sim)
