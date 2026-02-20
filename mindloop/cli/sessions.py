@@ -5,7 +5,7 @@ import re
 import shutil
 from pathlib import Path
 
-from mindloop.cli.agent import _session_exit_reason
+from mindloop.cli.agent import _session_exit_reason, _write_default_symlinks
 from mindloop.util import generate_session_name
 
 _SESSIONS_DIR = Path("sessions")
@@ -106,6 +106,7 @@ def _init_session(sessions_dir: Path, name: str) -> bool:
         shutil.copytree(_TEMPLATE_DIR, workspace, dirs_exist_ok=True)
     (session_path / "_inbox").mkdir()
     (session_path / "_outbox").mkdir()
+    _write_default_symlinks(session_path)
     print(f"Initialized session: {name}")
     return True
 

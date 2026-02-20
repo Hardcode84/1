@@ -198,6 +198,27 @@ class SessionPaths:
 
 _SYMLINKS_FILE = "_symlinks.json"
 
+# Default symlinks created for every new session (relative to CWD).
+_DEFAULT_SYMLINK_DIRS = ["docs", "mindloop"]
+
+
+def _write_default_symlinks(session_root: Path) -> None:
+    """Write default ``_symlinks.json`` for a fresh session.
+
+    Only writes if the file does not already exist and the target directories
+    are present in the current working directory.
+    """
+    path = session_root / _SYMLINKS_FILE
+    if path.exists():
+        return
+    data: dict[str, str] = {}
+    for name in _DEFAULT_SYMLINK_DIRS:
+        target = Path(name).resolve()
+        if target.is_dir():
+            data[name] = str(target)
+    if data:
+        path.write_text(json.dumps(data, indent=2) + "\n")
+
 
 def _load_symlinks(session_root: Path) -> dict[str, Path] | None:
     """Load virtual symlinks from session config file."""
@@ -219,6 +240,8 @@ def _setup_session(session: str | None, timestamp: str) -> SessionPaths:
         workspace.mkdir(exist_ok=True)
         if fresh and _TEMPLATE_DIR.is_dir():
             shutil.copytree(_TEMPLATE_DIR, workspace, dirs_exist_ok=True)
+        if fresh:
+            _write_default_symlinks(root)
         instance = len(list(log_dir.glob("*_agent_*.jsonl"))) + 1
         return SessionPaths(
             log_dir=log_dir,
