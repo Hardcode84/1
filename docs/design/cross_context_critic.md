@@ -142,11 +142,11 @@ Both fire at the same reflection point via the `_on_reflect` wrapper. Order matt
 
 ### Pinned turns
 
-When the critic flags a window as worth preserving, `MidSessionExtractor` accumulates it with the collapsed text and pin reason. At session end, accumulated pins are written to `_pinned_turns.json` via `save_pinned_turns()`, which selects the most recent windows within a 500-token budget.
+When the critic flags a window as worth preserving, `MidSessionExtractor` accumulates it with the collapsed text and pin reason. At session end, accumulated pins are written to `_pinned_turns.json` in the session root via `save_pinned_turns()`, which selects the most recent windows within a 500-token budget.
 
 On next startup, `_build_system_prompt()` loads pinned turns and injects them under a `# Pinned context from previous session` heading. This preserves exact reasoning chains, error text, and decisions that the narrative recap would lose.
 
-The file is overwritten each session (previous instance's pins are replaced). Pinned turns are write-blocked in the agent's sandbox.
+The file lives in session root (alongside `_dispositions.jsonl`), outside the workspace sandbox — the agent cannot read or tamper with it. Overwritten each session.
 
 ## Parameters
 

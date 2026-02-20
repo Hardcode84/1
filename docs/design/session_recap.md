@@ -97,7 +97,7 @@ If cross-session recall becomes valuable (recalling what happened N sessions ago
 Alongside the narrative recap, the system persists **pinned turns** — exact message windows flagged by the cross-context critic as worth preserving. These carry reasoning chains, error text, and decisions that the summarized recap loses.
 
 - **Source**: the critic's second output line (pin reason) at each reflection point.
-- **Storage**: `_pinned_turns.json` in workspace, written at session end via `save_pinned_turns()`.
+- **Storage**: `_pinned_turns.json` in session root (outside workspace sandbox), written at session end via `save_pinned_turns()`.
 - **Budget**: 500 tokens max. Most recent windows are preferred when the budget is exceeded.
 - **Loading**: `_build_system_prompt()` injects pinned turns under `# Pinned context from previous session`, after the recap and before notes.
 
