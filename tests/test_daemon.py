@@ -12,19 +12,21 @@ from mindloop.daemon import _build_cmd, _next_time, _run_once, run_daemon
 
 def test_build_cmd_minimal() -> None:
     """Base command with only session name."""
-    cmd = _build_cmd("mysession", None, None, 1)
+    cmd = _build_cmd("mysession", None, None, 1, None)
     assert cmd == [sys.executable, "-m", "mindloop.cli.agent", "--session", "mysession"]
 
 
 def test_build_cmd_full() -> None:
     """All flags included when options are set."""
-    cmd = _build_cmd("s1", "deepseek/deepseek-v3.2", "meta-llama/llama-3", 4)
+    cmd = _build_cmd("s1", "deepseek/deepseek-v3.2", "meta-llama/llama-3", 4, 50000)
     assert "--model" in cmd
     assert "deepseek/deepseek-v3.2" in cmd
     assert "--summarizer-model" in cmd
     assert "meta-llama/llama-3" in cmd
     assert "--n-experts" in cmd
     assert "4" in cmd
+    assert "--max-tokens" in cmd
+    assert "50000" in cmd
 
 
 def test_next_time() -> None:

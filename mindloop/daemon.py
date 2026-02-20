@@ -17,6 +17,7 @@ def _build_cmd(
     model: str | None,
     summarizer_model: str | None,
     n_experts: int,
+    max_tokens: int | None,
 ) -> list[str]:
     """Build the mindloop-agent command."""
     cmd = [sys.executable, "-m", "mindloop.cli.agent", "--session", session]
@@ -26,6 +27,8 @@ def _build_cmd(
         cmd += ["--summarizer-model", summarizer_model]
     if n_experts > 1:
         cmd += ["--n-experts", str(n_experts)]
+    if max_tokens is not None:
+        cmd += ["--max-tokens", str(max_tokens)]
     return cmd
 
 
@@ -59,6 +62,7 @@ def run_daemon(
     model: str | None = None,
     summarizer_model: str | None = None,
     n_experts: int = 1,
+    max_tokens: int | None = None,
     run_now: bool = False,
     max_failures: int = _DEFAULT_MAX_FAILURES,
 ) -> None:
@@ -70,7 +74,7 @@ def run_daemon(
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: shutdown.set())
 
-    cmd = _build_cmd(session, model, summarizer_model, n_experts)
+    cmd = _build_cmd(session, model, summarizer_model, n_experts, max_tokens)
     log.info("Daemon started for session '%s', schedule: '%s'", session, schedule)
     log.info("Command: %s", " ".join(cmd))
 

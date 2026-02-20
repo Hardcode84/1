@@ -21,6 +21,9 @@ def main() -> None:
     parser.add_argument("--summarizer-model", default=None, help="Summarizer model.")
     parser.add_argument("--n-experts", type=int, default=1, help="Best-of-N.")
     parser.add_argument(
+        "--max-tokens", type=int, default=None, help="Output token budget per session."
+    )
+    parser.add_argument(
         "--run-now",
         action="store_true",
         help="Run immediately on start, then follow schedule.",
@@ -51,6 +54,7 @@ def main() -> None:
         model=args.model,
         summarizer_model=args.summarizer_model,
         n_experts=args.n_experts,
+        max_tokens=args.max_tokens,
         run_now=args.run_now,
         max_failures=args.max_failures,
     )

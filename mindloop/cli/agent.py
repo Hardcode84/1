@@ -11,7 +11,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 
-from mindloop.agent import run_agent
+from mindloop.agent import DEFAULT_MAX_TOKENS, run_agent
 from mindloop.client import API_KEY
 from mindloop.critic import critic_review as _critic_review
 from mindloop.memory import MemoryStore
@@ -266,6 +266,13 @@ def _parse_args() -> argparse.Namespace:
         const=True,
         metavar="JSONL",
         help="Resume from a JSONL log. With --session, auto-finds the latest log.",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=DEFAULT_MAX_TOKENS,
+        metavar="N",
+        help=f"Output token budget for the session (default: {DEFAULT_MAX_TOKENS}).",
     )
     parser.add_argument(
         "--n-experts",
@@ -775,6 +782,7 @@ def main() -> None:
                 registry=registry,
                 on_step=_print_step,
                 model=model,
+                max_tokens=args.max_tokens,
                 on_thinking=_print_thinking,
                 on_message=logger,
                 on_confirm=confirm,
