@@ -5,6 +5,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from mindloop.client import Message, Stats, _ANTHROPIC_PREFIXES
+from mindloop.recap import _collapse_tool_call
 from mindloop.voting import chat_best_of_n
 from mindloop.quotes import NudgePool
 from mindloop.tools import Param, ToolRegistry, create_default_registry
@@ -123,6 +124,50 @@ def _maybe_reflect(
     on_step(f"\n[reflect] {reflect_text}")
 
 
+_KEEP_RECENT = 10  # Number of recent messages to keep verbatim.
+
+
+def _collapse_old_results(
+    messages: list[Message], keep_recent: int = _KEEP_RECENT
+) -> list[Message]:
+    """Replace old tool results with short summaries."""
+    if len(messages) <= keep_recent:
+        return messages
+    cutoff = len(messages) - keep_recent
+
+    # Index tool_calls by id for name lookup.
+    call_index: dict[str, dict[str, str]] = {}
+    for msg in messages[:cutoff]:
+        for tc in msg.get("tool_calls", []):
+            func = tc.get("function", {})
+            call_index[tc["id"]] = {
+                "name": func.get("name", ""),
+                "arguments": func.get("arguments", "{}"),
+            }
+
+    collapsed: list[Message] = []
+    for i, msg in enumerate(messages):
+        if i >= cutoff or msg.get("role") != "tool":
+            collapsed.append(msg)
+            continue
+        # Collapse this tool result.
+        call_id = msg.get("tool_call_id", "")
+        call = call_index.get(call_id)
+        if call is None:
+            collapsed.append(msg)
+            continue
+        try:
+            args = json.loads(call["arguments"])
+        except (json.JSONDecodeError, TypeError):
+            args = {}
+        content = msg.get("content", "")
+        summary = _collapse_tool_call(call["name"], args, content)
+        if summary is None:
+            summary = f"[{call['name']}: omitted]"
+        collapsed.append({**msg, "content": summary})
+    return collapsed
+
+
 def run_agent(
     system_prompt: str,
     model: str,
@@ -230,7 +275,7 @@ def run_agent(
 
         for _ in range(max_iterations):
             response = chat_best_of_n(
-                messages,
+                _collapse_old_results(messages),
                 model=model,
                 n=n_experts,
                 system_prompt=system_prompt,

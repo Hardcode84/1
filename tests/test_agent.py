@@ -3,7 +3,13 @@
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from mindloop.agent import _MAX_OUTPUT_TOKENS, _USER_UNAVAILABLE, run_agent
+from mindloop.agent import (
+    _KEEP_RECENT,
+    _MAX_OUTPUT_TOKENS,
+    _USER_UNAVAILABLE,
+    _collapse_old_results,
+    run_agent,
+)
 from mindloop.client import _record_usage
 from mindloop.tools import Param, ToolRegistry
 
@@ -456,3 +462,69 @@ def test_agent_passes_max_output_tokens(mock_chat: MagicMock) -> None:
     run_agent("prompt", registry=_echo_registry(), model="test-model")
     _, kwargs = mock_chat.call_args
     assert kwargs["max_tokens"] == _MAX_OUTPUT_TOKENS
+
+
+# -- _collapse_old_results tests --
+
+
+def test_collapse_old_results_short_list() -> None:
+    """Messages shorter than keep_recent are returned as-is."""
+    msgs: list[dict[str, Any]] = [
+        {"role": "user", "content": "hi"},
+        {"role": "tool", "tool_call_id": "c1", "content": "big output"},
+    ]
+    result = _collapse_old_results(msgs, keep_recent=_KEEP_RECENT)
+    assert result is msgs  # Identity — no copy needed.
+
+
+def test_collapse_old_results_replaces_old_tools() -> None:
+    """Old tool results get collapsed; recent ones stay verbatim."""
+    assistant = _make_tool_response(
+        [_make_tool_call("c1", "read", '{"path": "foo.py"}')]
+    )
+    tool_msg: dict[str, Any] = {
+        "role": "tool",
+        "tool_call_id": "c1",
+        "content": "line1\nline2\nline3",
+    }
+    # Pad with enough filler to push the tool result before the cutoff.
+    filler = [{"role": "user", "content": f"msg{i}"} for i in range(12)]
+    messages = [assistant, tool_msg] + filler
+
+    result = _collapse_old_results(messages, keep_recent=10)
+    # The tool message (index 1) should be collapsed.
+    collapsed_tool = result[1]
+    assert "Read foo.py" in collapsed_tool["content"]
+    assert "3 lines" in collapsed_tool["content"]
+    # Filler messages are untouched.
+    assert result[-1]["content"] == "msg11"
+
+
+def test_collapse_old_results_preserves_non_tool() -> None:
+    """Assistant, user, and system messages are never modified."""
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": "system prompt"},
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "response"},
+    ] + [{"role": "user", "content": f"m{i}"} for i in range(12)]
+
+    result = _collapse_old_results(messages, keep_recent=10)
+    # First three messages are before cutoff but not tool-role.
+    assert result[0]["content"] == "system prompt"
+    assert result[1]["content"] == "hello"
+    assert result[2]["content"] == "response"
+
+
+def test_collapse_old_results_unknown_call_id() -> None:
+    """Tool result with no matching call passes through unchanged."""
+    tool_msg: dict[str, Any] = {
+        "role": "tool",
+        "tool_call_id": "orphan",
+        "content": "some result",
+    }
+    filler = [{"role": "user", "content": f"m{i}"} for i in range(12)]
+    messages = [tool_msg] + filler
+
+    result = _collapse_old_results(messages, keep_recent=10)
+    # The orphan tool message should pass through unchanged.
+    assert result[0]["content"] == "some result"
