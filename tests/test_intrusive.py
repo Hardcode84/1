@@ -298,7 +298,7 @@ def test_critic_review_empty_before_first_window() -> None:
 def test_critic_review_returns_concern(mock_chat: MagicMock) -> None:
     """Critic concern is returned with [critic] prefix."""
     mock_chat.return_value = {
-        "content": "The agent is reading the same file repeatedly."
+        "content": "The agent is reading the same file repeatedly.\nno_pin"
     }
     ext = MidSessionExtractor(
         MagicMock(), model="m", log=lambda _: None, agent_model="m"
@@ -311,7 +311,7 @@ def test_critic_review_returns_concern(mock_chat: MagicMock) -> None:
 @patch("mindloop.critic.chat")
 def test_critic_review_ok_returns_empty(mock_chat: MagicMock) -> None:
     """Critic returning 'ok' means no injection."""
-    mock_chat.return_value = {"content": "ok"}
+    mock_chat.return_value = {"content": "ok\nno_pin"}
     ext = MidSessionExtractor(
         MagicMock(), model="m", log=lambda _: None, agent_model="m"
     )
@@ -327,7 +327,7 @@ def test_critic_review_uses_last_query(
     """Critic receives the query text saved by intrusive_recall."""
     store = MagicMock()
     store.search.return_value = []
-    mock_chat.return_value = {"content": "ok"}
+    mock_chat.return_value = {"content": "ok\nno_pin"}
 
     turn = MagicMock()
     turn.role = "Bot"
@@ -342,6 +342,45 @@ def test_critic_review_uses_last_query(
     call_args = mock_chat.call_args
     prompt_text = call_args[0][0][0]["content"]
     assert "working on feature X" in prompt_text
+
+
+@patch("mindloop.critic.chat")
+def test_critic_review_accumulates_pinned_window(mock_chat: MagicMock) -> None:
+    """Pin reason causes window to be accumulated."""
+    mock_chat.return_value = {"content": "ok\nKey decision about retry logic."}
+    ext = MidSessionExtractor(
+        MagicMock(), model="m", log=lambda _: None, agent_model="m"
+    )
+    ext._last_query = "Bot: decided to retry with backoff"
+    ext.critic_review()
+    assert len(ext.pinned_windows) == 1
+    assert ext.pinned_windows[0]["reason"] == "Key decision about retry logic."
+    assert ext.pinned_windows[0]["text"] == "Bot: decided to retry with backoff"
+
+
+@patch("mindloop.critic.chat")
+def test_critic_review_no_pin_does_not_accumulate(mock_chat: MagicMock) -> None:
+    """no_pin response does not accumulate a pinned window."""
+    mock_chat.return_value = {"content": "ok\nno_pin"}
+    ext = MidSessionExtractor(
+        MagicMock(), model="m", log=lambda _: None, agent_model="m"
+    )
+    ext._last_query = "Bot: routine work"
+    ext.critic_review()
+    assert ext.pinned_windows == []
+
+
+@patch("mindloop.critic.chat")
+def test_critic_review_empty_query_skips_pin(mock_chat: MagicMock) -> None:
+    """Empty _last_query skips pin even with a pin reason."""
+    mock_chat.return_value = {"content": "ok\nImportant discovery."}
+    ext = MidSessionExtractor(
+        MagicMock(), model="m", log=lambda _: None, agent_model="m"
+    )
+    # _last_query is empty — critic_review returns early without chat call.
+    ext._last_query = ""
+    ext.critic_review()
+    assert ext.pinned_windows == []
 
 
 @patch("mindloop.agent._REFLECT_INTERVAL", 3)

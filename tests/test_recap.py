@@ -8,7 +8,16 @@ import numpy as np
 
 from mindloop.chunker import Chunk
 from mindloop.client import Embeddings
-from mindloop.recap import collapse_messages, generate_recap, load_recap, save_recap
+from mindloop.recap import (
+    _PINNED_TURNS_MAX_TOKENS,
+    collapse_messages,
+    generate_recap,
+    load_pinned_turns,
+    load_recap,
+    save_pinned_turns,
+    save_recap,
+)
+from mindloop.util import CHARS_PER_TOKEN
 from mindloop.summarizer import ChunkSummary
 
 
@@ -243,3 +252,50 @@ def test_load_recap_empty_file(tmp_path: Path) -> None:
     path = tmp_path / "_recap.md"
     path.write_text("")
     assert load_recap(path) is None
+
+
+# --- save_pinned_turns / load_pinned_turns ---
+
+
+def test_pinned_turns_roundtrip(tmp_path: Path) -> None:
+    """Save and load roundtrip preserves data."""
+    path = tmp_path / "_pinned_turns.json"
+    windows = [
+        {"text": "Bot decided to retry.", "reason": "Key decision."},
+        {"text": "Error in API call.", "reason": "Surprising error."},
+    ]
+    save_pinned_turns(path, windows)
+    loaded = load_pinned_turns(path)
+    assert loaded == windows
+
+
+def test_pinned_turns_budget_cap(tmp_path: Path) -> None:
+    """Large windows are capped by token budget, keeping most recent."""
+    path = tmp_path / "_pinned_turns.json"
+    budget_chars = _PINNED_TURNS_MAX_TOKENS * CHARS_PER_TOKEN
+    # Create windows that individually fit but collectively exceed the budget.
+    chunk_size = budget_chars // 2
+    windows = [
+        {"text": "a" * chunk_size, "reason": "first"},
+        {"text": "b" * chunk_size, "reason": "second"},
+        {"text": "c" * chunk_size, "reason": "third"},
+    ]
+    save_pinned_turns(path, windows)
+    loaded = load_pinned_turns(path)
+    assert loaded is not None
+    # Should keep at most 2 (budget allows ~2 chunks), preferring the most recent.
+    assert len(loaded) <= 2
+    # The last window should always be present (most recent).
+    assert loaded[-1]["reason"] == "third"
+
+
+def test_pinned_turns_missing_file(tmp_path: Path) -> None:
+    """Missing file returns None."""
+    assert load_pinned_turns(tmp_path / "nope.json") is None
+
+
+def test_pinned_turns_empty_array(tmp_path: Path) -> None:
+    """Empty list saves as [] and loads as None."""
+    path = tmp_path / "_pinned_turns.json"
+    save_pinned_turns(path, [])
+    assert load_pinned_turns(path) is None

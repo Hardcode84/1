@@ -186,3 +186,38 @@ def save_recap(path: Path, recap: str) -> None:
     """Write recap text to a file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(recap)
+
+
+# --- Pinned turns I/O ---
+
+_PINNED_TURNS_MAX_TOKENS = 500
+
+
+def save_pinned_turns(path: Path, windows: list[dict[str, str]]) -> None:
+    """Select most recent windows within token budget, then write JSON."""
+    budget_chars = _PINNED_TURNS_MAX_TOKENS * CHARS_PER_TOKEN
+    selected: list[dict[str, str]] = []
+    used = 0
+    # Walk backwards to prefer the most recent windows.
+    for w in reversed(windows):
+        size = len(w.get("text", "")) + len(w.get("reason", ""))
+        if used + size > budget_chars and selected:
+            break
+        selected.append(w)
+        used += size
+    selected.reverse()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(selected, ensure_ascii=False))
+
+
+def load_pinned_turns(path: Path) -> list[dict[str, str]] | None:
+    """Read pinned turns JSON. Returns None if missing, empty, or corrupt."""
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, list) or not data:
+        return None
+    return data
