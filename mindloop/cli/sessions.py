@@ -92,7 +92,9 @@ def _print_table(rows: list[dict[str, str]]) -> None:
 _TEMPLATE_DIR = Path("workspace_template")
 
 
-def _init_session(sessions_dir: Path, name: str) -> bool:
+def _init_session(
+    sessions_dir: Path, name: str, *, default_symlinks: bool = True
+) -> bool:
     """Create the directory structure for a new session. Returns True on success."""
     session_path = sessions_dir / name
     if (session_path / "logs").is_dir():
@@ -106,7 +108,8 @@ def _init_session(sessions_dir: Path, name: str) -> bool:
         shutil.copytree(_TEMPLATE_DIR, workspace, dirs_exist_ok=True)
     (session_path / "_inbox").mkdir()
     (session_path / "_outbox").mkdir()
-    _write_default_symlinks(session_path)
+    if default_symlinks:
+        _write_default_symlinks(session_path)
     print(f"Initialized session: {name}")
     return True
 
@@ -141,6 +144,11 @@ def main() -> None:
     init_parser.add_argument(
         "name", nargs="?", default=None, help="Session name (random if omitted)."
     )
+    init_parser.add_argument(
+        "--no-default-symlinks",
+        action="store_true",
+        help="Skip creating default virtual symlinks (docs, mindloop).",
+    )
 
     del_parser = sub.add_parser("delete", help="Delete a session.")
     del_parser.add_argument("name", help="Session name to delete.")
@@ -153,7 +161,7 @@ def main() -> None:
 
     if args.command == "init":
         name = args.name or generate_session_name(sessions_dir)
-        _init_session(sessions_dir, name)
+        _init_session(sessions_dir, name, default_symlinks=not args.no_default_symlinks)
         return
 
     if args.command == "delete":

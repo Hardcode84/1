@@ -229,7 +229,9 @@ def _load_symlinks(session_root: Path) -> dict[str, Path] | None:
     return {name: Path(target) for name, target in data.items()}
 
 
-def _setup_session(session: str | None, timestamp: str) -> SessionPaths:
+def _setup_session(
+    session: str | None, timestamp: str, *, default_symlinks: bool = True
+) -> SessionPaths:
     """Resolve log, memory, and workspace paths."""
     if session:
         root = _SESSIONS_DIR / session
@@ -240,7 +242,7 @@ def _setup_session(session: str | None, timestamp: str) -> SessionPaths:
         workspace.mkdir(exist_ok=True)
         if fresh and _TEMPLATE_DIR.is_dir():
             shutil.copytree(_TEMPLATE_DIR, workspace, dirs_exist_ok=True)
-        if fresh:
+        if fresh and default_symlinks:
             _write_default_symlinks(root)
         instance = len(list(log_dir.glob("*_agent_*.jsonl"))) + 1
         return SessionPaths(
@@ -308,6 +310,11 @@ def _parse_args() -> argparse.Namespace:
         "--allow-exec",
         action="store_true",
         help="Enable the sandboxed 'run' tool for shell command execution.",
+    )
+    parser.add_argument(
+        "--no-default-symlinks",
+        action="store_true",
+        help="Skip creating default virtual symlinks (docs, mindloop) for new sessions.",
     )
     args = parser.parse_args()
 
@@ -749,7 +756,9 @@ def main() -> None:
     session_name: str | None = args.session
     if args.new_session:
         session_name = generate_session_name(_SESSIONS_DIR)
-    paths = _setup_session(session_name, timestamp)
+    paths = _setup_session(
+        session_name, timestamp, default_symlinks=not args.no_default_symlinks
+    )
 
     if paths.instance:
         log_prefix = f"{paths.instance:03d}_agent_{timestamp}"
