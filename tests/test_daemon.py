@@ -18,7 +18,9 @@ def test_build_cmd_minimal() -> None:
 
 def test_build_cmd_full() -> None:
     """All flags included when options are set."""
-    cmd = _build_cmd("s1", "deepseek/deepseek-v3.2", "meta-llama/llama-3", 4, 50000)
+    cmd = _build_cmd(
+        "s1", "deepseek/deepseek-v3.2", "meta-llama/llama-3", 4, 50000, allow_exec=True
+    )
     assert "--model" in cmd
     assert "deepseek/deepseek-v3.2" in cmd
     assert "--summarizer-model" in cmd
@@ -27,6 +29,13 @@ def test_build_cmd_full() -> None:
     assert "4" in cmd
     assert "--max-tokens" in cmd
     assert "50000" in cmd
+    assert "--allow-exec" in cmd
+
+
+def test_build_cmd_no_allow_exec() -> None:
+    """--allow-exec is absent when not requested."""
+    cmd = _build_cmd("s1", None, None, 1, None)
+    assert "--allow-exec" not in cmd
 
 
 def test_next_time() -> None:

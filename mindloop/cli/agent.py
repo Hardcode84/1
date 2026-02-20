@@ -281,6 +281,11 @@ def _parse_args() -> argparse.Namespace:
         metavar="N",
         help="Best-of-N sampling: generate N candidates per turn and select the best (default: 1).",
     )
+    parser.add_argument(
+        "--allow-exec",
+        action="store_true",
+        help="Enable the sandboxed 'run' tool for shell command execution.",
+    )
     args = parser.parse_args()
 
     # Validate flag combinations.
@@ -330,6 +335,38 @@ def _register_note_tool(registry: ToolRegistry, workspace: Path) -> Path:
         func=_note_to_self,
     )
     return notes_path
+
+
+def _register_run_tool(
+    registry: ToolRegistry,
+    workspace: Path,
+    symlinks: dict[str, Path] | None,
+) -> None:
+    """Register the sandboxed ``run`` tool if bwrap is available."""
+    from mindloop.sandbox import _bwrap_available, run_sandboxed
+
+    if not _bwrap_available():
+        print("Warning: bwrap not found on PATH, 'run' tool disabled.")
+        return
+
+    def _run(command: str, timeout: int = 30) -> str:
+        return run_sandboxed(command, workspace, symlinks, timeout)
+
+    registry.add(
+        name="run",
+        description="Execute a shell command in a sandboxed environment. "
+        "Only the workspace directory is writable. Network is disabled.",
+        params=[
+            Param(name="command", description="Shell command to execute."),
+            Param(
+                name="timeout",
+                description="Max seconds (default: 30).",
+                type="integer",
+                required=False,
+            ),
+        ],
+        func=_run,
+    )
 
 
 def _register_message_tools(
@@ -710,6 +747,9 @@ def main() -> None:
         notes_path = _register_note_tool(registry, paths.workspace)
 
     msg_tools = _register_message_tools(registry, paths, timestamp)
+
+    if args.allow_exec and paths.workspace:
+        _register_run_tool(registry, paths.workspace, symlinks)
 
     # Handle --resume: explicit path or auto-find latest in session.
     initial_messages: list[dict[str, Any]] | None = None

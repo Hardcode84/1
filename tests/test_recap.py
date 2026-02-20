@@ -87,6 +87,8 @@ def test_collapse_tool_calls() -> None:
         _tool_result("c8", "do X"),
         _tool_call("c9", "done", '{"summary": "all done"}'),
         _tool_result("c9", ""),
+        _tool_call("c10", "run", '{"command": "python test.py"}'),
+        _tool_result("c10", "OK\n"),
     ]
     turns = collapse_messages(msgs)
     texts = [t.text for t in turns]
@@ -100,6 +102,7 @@ def test_collapse_tool_calls() -> None:
     assert any("Remembered" in t and "a fact" in t for t in texts)
     assert any("Asked user" in t and "what next?" in t for t in texts)
     assert any("Finished" in t and "all done" in t for t in texts)
+    assert any("Ran `python test.py`" in t for t in texts)
 
 
 def test_collapse_skips_status() -> None:

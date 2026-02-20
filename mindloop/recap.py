@@ -53,6 +53,10 @@ def _collapse_tool_call(name: str, args: dict[str, str], result: str) -> str | N
         # Trim long results for compactness.
         short = result[:120] + "..." if len(result) > 120 else result
         return f"Asked user: '{message}'. Response: '{short}'."
+    if name == "run":
+        command = args.get("command", "?")
+        short = result[:120] + "..." if len(result) > 120 else result
+        return f"Ran `{command}`: {short}"
     if name == "done":
         summary = args.get("summary", result)
         return f"Finished: '{summary}'."

@@ -24,6 +24,11 @@ def main() -> None:
         "--max-tokens", type=int, default=None, help="Output token budget per session."
     )
     parser.add_argument(
+        "--allow-exec",
+        action="store_true",
+        help="Enable the sandboxed 'run' tool for agent sessions.",
+    )
+    parser.add_argument(
         "--run-now",
         action="store_true",
         help="Run immediately on start, then follow schedule.",
@@ -55,6 +60,7 @@ def main() -> None:
         summarizer_model=args.summarizer_model,
         n_experts=args.n_experts,
         max_tokens=args.max_tokens,
+        allow_exec=args.allow_exec,
         run_now=args.run_now,
         max_failures=args.max_failures,
     )
