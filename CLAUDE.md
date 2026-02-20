@@ -23,9 +23,9 @@ merge_llm.py       LLM-based merge decisions (three-tier: auto/LLM/never by simi
 chunker.py         Parse JSONL/markdown into chunks, compact, merge by similarity.
 summarizer.py      LLM-generated abstract + summary per chunk.
 client.py          OpenRouter API wrapper (chat, embeddings, streaming, retry).
-recap.py           Session recap: collapse tool calls, summarize, persist between instances.
+recap.py           Session recap: collapse tool calls, summarize, persist between instances. Pinned turns I/O.
 extractor.py       Post-session memory extraction: LLM-based fact extraction from logs.
-critic.py          Cross-context critic: fresh-context review of agent actions at reflection points.
+critic.py          Cross-context critic: fresh-context review + pinned turn flagging at reflection points.
 daemon.py          Session daemon: cron-scheduled autonomous agent runs.
 cli/               Entry points: agent, chat, chunk, build, query, dump, recap, sessions, message, extract, daemon.
 ```

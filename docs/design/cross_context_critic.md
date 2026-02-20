@@ -61,14 +61,19 @@ You're reviewing an autonomous agent's recent actions.
 The agent sets its own goals — your job is to check
 whether it's reasoning well, not whether its goals are correct.
 
-Recent activity:
-{collapsed_turns}
+Respond with exactly two lines:
 
-Respond with ONLY one of:
+Line 1 — review:
 - "ok" if the agent is making meaningful progress
 - A single sentence describing the concern if you see:
   circular actions, lost thread, stagnation, or
   the agent doubling down on a failing approach
+
+Line 2 — pin:
+- "no_pin" if this window is routine
+- A short reason to preserve this window if it contains:
+  a key decision with rationale, a surprising error or discovery,
+  a breakthrough, or an unresolved problem that needs follow-up
 ```
 
 Key properties:
@@ -76,6 +81,7 @@ Key properties:
 - **Adversarial framing.** "Your job is to find problems" — not helpful-assistant mode.
 - **Forced brevity.** "ok" or one sentence. Prevents the critic from generating lengthy agreement.
 - **Structured failure modes.** Enumerated so the critic knows what to look for.
+- **Zero-cost pinning.** The pin decision piggybacks on the existing critic call — no extra LLM invocation.
 
 ### Model
 
@@ -86,11 +92,11 @@ The summarizer model — already configured via `--summarizer-model`, already ch
 Standalone function in `mindloop/critic.py`:
 
 ```python
-def critic_review(activity: str, model: str, log: Callable) -> str:
+def critic_review(activity: str, model: str, log: Callable) -> CriticResult:
     """Review recent agent actions with fresh context."""
 ```
 
-`MidSessionExtractor` has a thin wrapper that passes `self._last_query`, `self._model`, and `self._log`. Runs synchronously — a single cheap LLM call, not worth threading. Returns empty string or a formatted concern.
+`MidSessionExtractor` has a thin wrapper that passes `self._last_query`, `self._model`, and `self._log`. Runs synchronously — a single cheap LLM call, not worth threading. Returns a `CriticResult`; the wrapper extracts `.concern` for injection and accumulates the window if `.pin_reason` is non-empty.
 
 ### How it's wired
 
@@ -109,15 +115,23 @@ The combined output flows through `nudge_extra` into `_maybe_reflect()`, which i
 
 ### Output format
 
-When the critic returns "ok", `critic_review()` returns empty string (no injection).
+The critic responds with exactly two lines:
 
-When the critic returns a concern, it's formatted as:
+1. **Review line**: "ok" or a single-sentence concern.
+2. **Pin line**: "no_pin" or a short reason to preserve this window.
 
+Parsed into a `CriticResult` dataclass:
+
+```python
+@dataclass
+class CriticResult:
+    concern: str    # Empty if ok, "[critic] ..." if concern.
+    pin_reason: str # Empty if routine, reason string if worth pinning.
 ```
-[critic] The agent appears to be reading the same file repeatedly without making changes.
-```
 
-The `[critic]` prefix distinguishes it from intrusive recall and other nudge content. The agent sees it as external feedback, not its own thought.
+When the concern is empty, nothing is injected into the agent's context. When present, the `[critic]` prefix distinguishes it from intrusive recall.
+
+Parsing is graceful: single-line responses are treated as no-pin, empty responses produce both fields empty.
 
 ### Interaction with intrusive recall
 
@@ -126,13 +140,22 @@ Both fire at the same reflection point via the `_on_reflect` wrapper. Order matt
 1. `intrusive_recall()` runs first, consumes `_pending_texts`, saves the joined query to `self._last_query`.
 2. `critic_review()` reads `self._last_query` set by step 1.
 
+### Pinned turns
+
+When the critic flags a window as worth preserving, `MidSessionExtractor` accumulates it with the collapsed text and pin reason. At session end, accumulated pins are written to `_pinned_turns.json` via `save_pinned_turns()`, which selects the most recent windows within a 500-token budget.
+
+On next startup, `_build_system_prompt()` loads pinned turns and injects them under a `# Pinned context from previous session` heading. This preserves exact reasoning chains, error text, and decisions that the narrative recap would lose.
+
+The file is overwritten each session (previous instance's pins are replaced). Pinned turns are write-blocked in the agent's sandbox.
+
 ## Parameters
 
 | Constant | Value | Purpose |
 |---|---|---|
-| `_CRITIC_MAX_TOKENS` | `100` | Cap on critic response length. |
+| `_CRITIC_MAX_TOKENS` | `150` | Cap on critic response length (two lines). |
+| `_PINNED_TURNS_MAX_TOKENS` | `500` | Budget for pinned turns persisted to disk. |
 
-No threshold tuning needed — the prompt forces binary output ("ok" or concern).
+No threshold tuning needed — the prompt forces structured two-line output.
 
 ## Cost
 
@@ -157,6 +180,7 @@ Negligible compared to the agent's own token usage.
 - **Accumulated context.** Track critic history across reflection points — "you flagged stagnation last time, has the agent changed approach?" Currently each review is independent.
 - **Critic-as-tool.** Let the agent invoke the critic voluntarily ("am I on track?") in addition to the periodic automatic review.
 - **Disposition learning.** Feed critic outputs into the disposition extraction pipeline — if certain failure modes recur, they become part of the agent's self-understanding.
+- **Pinned turn chaining.** Currently pins are overwritten each session. Cross-session pinning could accumulate important context across multiple instances, with decay or relevance filtering.
 
 ## Related
 
