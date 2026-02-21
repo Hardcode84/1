@@ -45,6 +45,7 @@ class LineageNode:
 
 
 _RRF_K = 60
+_SEARCH_MODES = {"hybrid", "cosine", "bm25"}
 
 
 def faithfulness(
@@ -201,10 +202,11 @@ def _init_db(conn: sqlite3.Connection) -> None:
 def _fts_escape(query: str) -> str:
     """Escape a raw query string for safe use in FTS5 MATCH."""
     # Double-quote each token so special chars are treated as literals.
+    # Inner double quotes are doubled per FTS5 quoting rules.
     tokens = query.split()
     if not tokens:
         return '""'
-    return " OR ".join(f'"{t}"' for t in tokens)
+    return " OR ".join(f'"{t.replace(chr(34), chr(34)+chr(34))}"' for t in tokens)
 
 
 def _mmr_select(
@@ -450,25 +452,77 @@ class MemoryStore:
         """Save multiple chunk summaries."""
         return [self.save(summary) for summary in summaries]
 
+    def _bm25_ranked(self, query: str, original_only: bool, top_k: int) -> list[int]:
+        """Return chunk ids ranked by BM25 score only."""
+        fts_query = _fts_escape(query)
+        if original_only:
+            sql = (
+                "SELECT c.id FROM chunks_fts f "
+                "JOIN chunks c ON c.id = f.rowid "
+                "WHERE chunks_fts MATCH ? "
+                "AND c.source_a IS NULL AND c.source_b IS NULL "
+                "ORDER BY f.rank LIMIT ?"
+            )
+        else:
+            sql = (
+                "SELECT c.id FROM chunks_fts f "
+                "JOIN chunks c ON c.id = f.rowid "
+                "WHERE chunks_fts MATCH ? AND c.active = 1 "
+                "ORDER BY f.rank LIMIT ?"
+            )
+        return [r[0] for r in self.conn.execute(sql, (fts_query, top_k)).fetchall()]
+
+    def _build_results(
+        self,
+        top_ids: list[int],
+        meta_by_id: dict[int, tuple[str, str, str, str, int | None, int | None]],
+        scores: dict[int, float],
+        cosine_scores: dict[int, float],
+    ) -> list[SearchResult]:
+        """Build SearchResult list from ranked ids."""
+        results = []
+        for cid in top_ids:
+            text, abstract, summary, time_range, src_a, src_b = meta_by_id[cid]
+            chunk = Chunk(turns=[Turn(timestamp=datetime.min, role="", text=text)])
+            cs = ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
+            results.append(
+                SearchResult(
+                    id=cid,
+                    chunk_summary=cs,
+                    score=scores[cid],
+                    cosine_score=cosine_scores.get(cid, 0.0),
+                    source_a=src_a,
+                    source_b=src_b,
+                )
+            )
+        return results
+
     def search(
         self,
         query: str,
         top_k: int = 5,
         original_only: bool = False,
         diversity: float = 0.0,
+        mode: str = "hybrid",
     ) -> list[SearchResult]:
-        """Find the most relevant chunks via hybrid embedding + BM25 search.
+        """Find the most relevant chunks via embedding and/or BM25 search.
 
-        Combines cosine similarity (embeddings) and BM25 (FTS5) using
-        Reciprocal Rank Fusion.  When *original_only* is True, search only
-        leaf chunks (those not produced by merging) regardless of active
-        status.  Otherwise search active chunks only.
+        *mode* controls the retrieval strategy:
+        - ``"hybrid"`` (default): cosine + BM25 combined via RRF.
+        - ``"cosine"``: cosine similarity only, no BM25.
+        - ``"bm25"``: BM25 keyword matching only, no embeddings.
 
-        *diversity* (0.0–1.0) controls MMR reranking.  0.0 = pure relevance,
-        1.0 = maximum inter-result diversity.  Results stay query-relevant
-        but are pushed apart from each other.
+        When *original_only* is True, search only leaf chunks (those not
+        produced by merging) regardless of active status.  Otherwise search
+        active chunks only.
+
+        *diversity* (0.0–1.0) controls MMR reranking (hybrid/cosine modes
+        only).
         """
-        query_emb: Embedding = get_embeddings([query], model=DEFAULT_EMBEDDING_MODEL)[0]
+        if mode not in _SEARCH_MODES:
+            raise ValueError(
+                f"Invalid search mode {mode!r}, expected one of {_SEARCH_MODES}"
+            )
 
         if original_only:
             where = "WHERE source_a IS NULL AND source_b IS NULL"
@@ -492,7 +546,20 @@ class MemoryStore:
 
         ids = list(meta_by_id.keys())
 
-        # --- Embedding ranks ---
+        # --- BM25-only mode ---
+        if mode == "bm25":
+            bm25_ids = self._bm25_ranked(query, original_only, top_k)
+            # Only include ids that passed the WHERE filter.
+            valid = set(ids)
+            bm25_ids = [cid for cid in bm25_ids if cid in valid][:top_k]
+            scores = {
+                cid: 1.0 - i / max(len(bm25_ids), 1) for i, cid in enumerate(bm25_ids)
+            }
+            cosine_zero: dict[int, float] = {cid: 0.0 for cid in bm25_ids}
+            return self._build_results(bm25_ids, meta_by_id, scores, cosine_zero)
+
+        # --- Embedding computation (cosine and hybrid modes) ---
+        query_emb: Embedding = get_embeddings([query], model=DEFAULT_EMBEDDING_MODEL)[0]
         chunk_embeddings = get_embeddings(
             [texts_by_id[cid] for cid in ids], model=DEFAULT_EMBEDDING_MODEL
         )
@@ -505,34 +572,37 @@ class MemoryStore:
             ids[i]: float(cos_scores[i]) for i in range(len(ids))
         }
         emb_order = np.argsort(cos_scores)[::-1]
+
+        # --- Cosine-only mode ---
+        if mode == "cosine":
+            top_ids = [ids[idx] for idx in emb_order[:top_k]]
+            return self._build_results(top_ids, meta_by_id, cosine_by_id, cosine_by_id)
+
+        # --- Hybrid mode: RRF ---
         emb_rank: dict[int, int] = {
             ids[idx]: rank for rank, idx in enumerate(emb_order)
         }
 
-        # --- BM25 ranks via FTS5 ---
         bm25_rank: dict[int, int] = {}
-        try:
-            fts_query = _fts_escape(query)
-            if original_only:
-                fts_join = (
-                    "SELECT c.id, f.rank FROM chunks_fts f "
-                    "JOIN chunks c ON c.id = f.rowid "
-                    "WHERE chunks_fts MATCH ? "
-                    "AND c.source_a IS NULL AND c.source_b IS NULL "
-                    "ORDER BY f.rank"
-                )
-            else:
-                fts_join = (
-                    "SELECT c.id, f.rank FROM chunks_fts f "
-                    "JOIN chunks c ON c.id = f.rowid "
-                    "WHERE chunks_fts MATCH ? AND c.active = 1 "
-                    "ORDER BY f.rank"
-                )
-            fts_rows = self.conn.execute(fts_join, (fts_query,)).fetchall()
-            for rank, (cid, _bm25_score) in enumerate(fts_rows):
-                bm25_rank[cid] = rank
-        except sqlite3.OperationalError:
-            pass  # FTS5 unavailable or query parse error — fall back to embedding only.
+        fts_query = _fts_escape(query)
+        if original_only:
+            fts_join = (
+                "SELECT c.id, f.rank FROM chunks_fts f "
+                "JOIN chunks c ON c.id = f.rowid "
+                "WHERE chunks_fts MATCH ? "
+                "AND c.source_a IS NULL AND c.source_b IS NULL "
+                "ORDER BY f.rank"
+            )
+        else:
+            fts_join = (
+                "SELECT c.id, f.rank FROM chunks_fts f "
+                "JOIN chunks c ON c.id = f.rowid "
+                "WHERE chunks_fts MATCH ? AND c.active = 1 "
+                "ORDER BY f.rank"
+            )
+        fts_rows = self.conn.execute(fts_join, (fts_query,)).fetchall()
+        for rank, (cid, _bm25_score) in enumerate(fts_rows):
+            bm25_rank[cid] = rank
 
         # --- Reciprocal Rank Fusion ---
         all_ids = set(emb_rank) | set(bm25_rank)
@@ -553,23 +623,7 @@ class MemoryStore:
                 :top_k
             ]
 
-        results = []
-        for cid in top_ids:
-            text, abstract, summary, time_range, src_a, src_b = meta_by_id[cid]
-            chunk = Chunk(turns=[Turn(timestamp=datetime.min, role="", text=text)])
-            cs = ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
-            results.append(
-                SearchResult(
-                    id=cid,
-                    chunk_summary=cs,
-                    score=rrf_scores[cid],
-                    cosine_score=cosine_by_id[cid],
-                    source_a=src_a,
-                    source_b=src_b,
-                )
-            )
-
-        return results
+        return self._build_results(top_ids, meta_by_id, rrf_scores, cosine_by_id)
 
     def neighbor_score(self, text: str, top_k: int = 3) -> float:
         """Mean cosine similarity of the top-k neighbors for *text*.

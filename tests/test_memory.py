@@ -678,6 +678,63 @@ def test_inherit_edges_rescores(store: MemoryStore) -> None:
     assert edges[0][2] == pytest.approx(0.0, abs=0.01)
 
 
+# --- search modes ---
+
+
+def test_search_cosine_mode(store: MemoryStore) -> None:
+    """Cosine mode ranks by cosine similarity only, ignoring BM25."""
+    store.save(_summary("about cats", abstract="cats"))
+    store.save(_summary("about dogs", abstract="dogs"))
+
+    emb_map = {
+        "You: about cats": np.array([1.0, 0.0], dtype=np.float32),
+        "You: about dogs": np.array([0.0, 1.0], dtype=np.float32),
+    }
+    query_emb = np.array([0.9, 0.1], dtype=np.float32)
+
+    def _get_emb(texts: list[str], **_kw: object) -> np.ndarray:
+        return np.stack([emb_map.get(t, query_emb) for t in texts])
+
+    with patch("mindloop.memory.get_embeddings", side_effect=_get_emb):
+        results = store.search("cats", top_k=2, mode="cosine")
+
+    assert results[0].chunk_summary.abstract == "cats"
+    # In cosine mode, score equals cosine_score.
+    assert results[0].score == pytest.approx(results[0].cosine_score)
+
+
+def test_search_bm25_mode(store: MemoryStore) -> None:
+    """BM25 mode ranks by keyword match, no embeddings computed."""
+    store.save(_summary("the gfx942 architecture", abstract="gfx"))
+    store.save(_summary("general compiler info", abstract="compiler"))
+
+    with patch("mindloop.memory.get_embeddings") as mock_emb:
+        results = store.search("gfx942", top_k=2, mode="bm25")
+
+    # No embeddings should be computed.
+    mock_emb.assert_not_called()
+    assert len(results) >= 1
+    assert results[0].chunk_summary.abstract == "gfx"
+    # Cosine score is 0.0 in bm25 mode.
+    assert results[0].cosine_score == 0.0
+
+
+def test_search_hybrid_default(store: MemoryStore) -> None:
+    """Default mode is hybrid — same behavior as before."""
+    store.save(_summary("about cats", abstract="cats"))
+
+    with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
+        results = store.search("cats", top_k=1)
+
+    assert len(results) == 1
+
+
+def test_search_invalid_mode(store: MemoryStore) -> None:
+    """Invalid mode raises ValueError."""
+    with pytest.raises(ValueError, match="Invalid search mode"):
+        store.search("query", mode="invalid")
+
+
 def test_inherit_edges_no_targets(store: MemoryStore) -> None:
     """No external edges → no embedding call needed."""
     id_a = store.save(_summary("a"))

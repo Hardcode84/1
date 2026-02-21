@@ -14,6 +14,18 @@ Hybrid search via Reciprocal Rank Fusion (K=60):
 - Embedding cosine similarity (dense retrieval). Chunk texts are embedded on the fly via `get_embeddings()`, which caches per-session by `(model, text)`.
 - FTS5 BM25 keyword matching (sparse retrieval).
 
+### Search modes
+
+`search()` accepts a `mode` parameter with three values:
+
+- `"hybrid"` (default): cosine + BM25 combined via RRF. Best for general recall.
+- `"cosine"`: cosine similarity only, skips BM25 entirely. Catches paraphrases that use different vocabulary.
+- `"bm25"`: BM25 keyword matching only, skips embedding computation. Fastest when keyword overlap is expected.
+
+### Dual-search merge
+
+The merge loop in `save_memory()` runs two searches per round — hybrid and cosine-only — and unions the results. This prevents paraphrases with different vocabulary from bypassing the merge gate: BM25 scores near zero would drag down RRF rank, but cosine-only search finds them by embedding similarity alone. The second search is effectively free because `get_embeddings()` caches per-session by `(model, text)`.
+
 ## Merge decisions (`merge_llm.py`)
 
 Three-tier similarity thresholds:

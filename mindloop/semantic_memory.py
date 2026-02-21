@@ -4,7 +4,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from mindloop.chunker import Chunk, Turn
-from mindloop.memory import MemoryStore, leaf_faithfulness
+from mindloop.memory import MemoryStore, SearchResult, leaf_faithfulness
 from mindloop.merge_llm import MergeResult, merge_texts, should_merge
 from mindloop.summarizer import ChunkSummary
 from mindloop.util import noop
@@ -57,7 +57,15 @@ def save_memory(
         incoming_leaves = [stored_text]
 
         for round_idx in range(max_rounds):
-            results = store.search(text, top_k=top_k)
+            # Union hybrid + cosine-only results to catch paraphrases.
+            hybrid = store.search(text, top_k=top_k)
+            cosine = store.search(text, top_k=top_k, mode="cosine")
+            seen: set[int] = set()
+            results: list[SearchResult] = []
+            for r in hybrid + cosine:
+                if r.id not in seen:
+                    seen.add(r.id)
+                    results.append(r)
             log(f"[memory] Round {round_idx + 1}: {len(results)} candidates.")
 
             merged = False

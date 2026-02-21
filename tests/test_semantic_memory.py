@@ -508,6 +508,49 @@ def test_save_cascade_stops_on_original_drift(store: MemoryStore) -> None:
     assert edges[0][0] == "related_to"
 
 
+def test_save_merges_paraphrase_via_cosine_search(store: MemoryStore) -> None:
+    """Cosine-only pass surfaces paraphrases that hybrid search misses.
+
+    When an existing chunk uses completely different vocabulary but means
+    the same thing, BM25 scores near zero drag down the RRF rank.  The
+    cosine-only pass finds the match by embedding similarity alone.
+    """
+    # Existing chunk with specific vocabulary.
+    store.save(_summary("practice restraint in all actions", abstract="restraint"))
+
+    mr = MergeResult(text="merged restraint", abstract="merged_abs", summary="sum")
+
+    # Paraphrase: high cosine similarity, zero keyword overlap.
+    # The stored text will be "You: practice restraint in all actions".
+    _existing_emb = np.array([0.95, 0.31], dtype=np.float32)
+    _new_emb = np.array([1.0, 0.0], dtype=np.float32)
+
+    def _emb(texts: list[str], **_kw: object) -> np.ndarray:
+        vecs = []
+        for t in texts:
+            if "restraint" in t:
+                vecs.append(_existing_emb)
+            else:
+                vecs.append(_new_emb)
+        return np.stack(vecs)
+
+    with (
+        patch("mindloop.memory.get_embeddings", side_effect=_emb),
+        patch("mindloop.semantic_memory.merge_texts", return_value=mr),
+    ):
+        save_memory(
+            store,
+            "exercise self-control always",
+            "abs",
+            "sum",
+            model="test-model",
+            neighbor_margin=2.0,
+        )
+
+    # Merge should have happened — only 1 active chunk.
+    assert store.count() == 1
+
+
 def test_save_inherits_edges_on_merge(store: MemoryStore) -> None:
     """Edges from absorbed chunks are inherited onto the merged chunk."""
     id_a = store.save(_summary("fact A"))
