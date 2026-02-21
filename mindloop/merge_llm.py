@@ -5,18 +5,19 @@ from dataclasses import dataclass
 from mindloop.client import DETERMINISTIC_PARAMS, Message, chat
 
 _SYSTEM_PROMPT = """\
-You decide whether two consecutive text chunks belong to the same topic \
-and should be merged into one.
+You decide whether two memories are redundant and should be merged into one.
 
 Answer "yes" if:
-- They discuss the same subject or continue the same line of thought.
-- One provides context, detail, or follow-up for the other.
-- Splitting them would break a coherent narrative.
+- They express the same core insight, lesson, or conclusion.
+- One is a restatement or paraphrase of the other, even with different wording.
+- They describe the same principle applied in different situations.
+- Keeping both adds no information that a single merged version would lose.
 
 Answer "no" if:
-- There is a clear topic shift between them.
-- They are self-contained and cover distinct subjects.
-- Merging would make the result unfocused.
+- They contain genuinely different facts, data, or conclusions.
+- Each carries specific details the other lacks that cannot be combined \
+without loss.
+- They concern unrelated subjects.
 
 Reply with a single word: yes or no."""
 
