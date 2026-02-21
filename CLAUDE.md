@@ -45,6 +45,17 @@ pre-commit run --all-files    # black + ruff + mypy strict
 - One-shot LLM calls use `cache_messages=False` (cache system prompt only).
 - Filesystem sandboxing via `root_dir` + `blocked_dirs` on registry.
 
+## Scripts
+
+```bash
+# Analyze a session memory.db for redundancy, structural issues, contradictions.
+python scripts/analyze_memory.py sessions/<id>/memory.db
+
+# Dry-run should_merge prompt on previously-rejected pairs in a session db.
+python scripts/test_merge_prompt.py sessions/<id>/memory.db --model <model>
+python scripts/test_merge_prompt.py DB --cluster 77,122,140  # restrict to specific chunk IDs
+```
+
 ## Design docs
 
 - `docs/design/` — current architecture.
