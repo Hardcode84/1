@@ -579,7 +579,7 @@ def test_save_episodic_dedup_against_core(store: MemoryStore) -> None:
     store.save(_summary("practice restraint", abstract="restraint"), tier="core")
 
     # Episodic save with near-identical meaning — uniform embeddings give
-    # cosine=1.0 which exceeds sim_high, triggering core dedup.
+    # cosine=1.0 which exceeds _CORE_DEDUP_THRESHOLD, triggering early bail.
     with _patch_embeddings(_EMB_A):
         result_id = save_memory(
             store,
@@ -589,9 +589,8 @@ def test_save_episodic_dedup_against_core(store: MemoryStore) -> None:
             model="test-model",
         )
 
-    # Should return the core chunk's id.
+    # Should return the core chunk's id without creating anything.
     assert result_id == 1
-    # Episodic leaf should remain inactive (never activated).
     assert store.count() == 1
 
 

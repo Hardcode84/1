@@ -16,6 +16,7 @@ _DEFAULT_NEIGHBOR_MARGIN = 0.05
 _DEFAULT_NEIGHBOR_K = 3
 _DEFAULT_SIM_HIGH = 0.9
 _DEFAULT_SIM_LOW = 0.2
+_CORE_DEDUP_THRESHOLD = 0.8
 
 
 def save_memory(
@@ -49,6 +50,17 @@ def save_memory(
     if existing is not None:
         log("[memory] Exact duplicate found, skipping.")
         return existing
+
+    # Episodic memories that restate a core memory are redundant — check
+    # early before entering the merge loop.
+    if tier != "core":
+        core_hits = store.search(text, top_k=1, tier="core", mode="cosine")
+        if core_hits and core_hits[0].cosine_score >= _CORE_DEDUP_THRESHOLD:
+            log(
+                f"[memory] Restates core #{core_hits[0].id}"
+                f" (sim={core_hits[0].cosine_score:.3f}), skipping."
+            )
+            return core_hits[0].id
 
     # Determine search tier: core merges with core, episodic with episodic.
     search_tier = tier or "episodic"
@@ -160,16 +172,6 @@ def save_memory(
             if not merged:
                 log("[memory] Fixed point reached.")
                 break
-
-        # Episodic memories that restate a core memory are redundant.
-        if tier != "core":
-            core_hits = store.search(text, top_k=1, tier="core", mode="cosine")
-            if core_hits and core_hits[0].cosine_score >= sim_high:
-                log(
-                    f"[memory] Restates core #{core_hits[0].id}"
-                    f" (sim={core_hits[0].cosine_score:.3f}), skipping."
-                )
-                return core_hits[0].id
 
         # Activate whichever node ended up final (leaf or last merge).
         store.activate([last_id])

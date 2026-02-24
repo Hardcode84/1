@@ -560,13 +560,16 @@ def _distill_session_values(paths: SessionPaths, model: str) -> None:
         print(f"Warning: values distillation failed: {exc}")
 
 
+_CORE_DEDUP_THRESHOLD = 0.8
+
+
 def _save_core_principles(
     paths: SessionPaths, model: str, store: "MemoryStore"
 ) -> None:
     """Extract core principles from dispositions and save as core memories.
 
-    Saves directly (no merge loop) because the LLM extraction already
-    deduplicates.  This avoids expensive API calls at session teardown.
+    Checks each principle against existing core chunks via cosine similarity
+    before saving.  No merge loop — avoids expensive LLM calls at teardown.
     """
     if not paths.root:
         return
@@ -576,12 +579,19 @@ def _save_core_principles(
     try:
         principles = extract_core_principles(disp_path, model=model)
         saved = 0
+        skipped = 0
         for p in principles:
             chunk = Chunk(
                 turns=[Turn(timestamp=datetime.now(), role="memory", text=p["text"])]
             )
             # Skip if identical text already exists.
             if store.find_exact(chunk.text) is not None:
+                skipped += 1
+                continue
+            # Skip if a semantically similar core chunk already exists.
+            hits = store.search(p["text"], top_k=1, tier="core", mode="cosine")
+            if hits and hits[0].cosine_score >= _CORE_DEDUP_THRESHOLD:
+                skipped += 1
                 continue
             cs = ChunkSummary(
                 chunk=chunk,
@@ -590,8 +600,8 @@ def _save_core_principles(
             )
             store.save(cs, tier="core")
             saved += 1
-        if saved:
-            print(f"Saved {saved} core principles.")
+        if saved or skipped:
+            print(f"Core principles: {saved} saved, {skipped} duplicates skipped.")
     except Exception as exc:
         print(f"Warning: core principles extraction failed: {exc}")
 
