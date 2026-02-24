@@ -12,9 +12,11 @@ from collections.abc import Callable
 from typing import Any
 
 from mindloop.agent import DEFAULT_MAX_TOKENS, run_agent
+from mindloop.chunker import Chunk, Turn
 from mindloop.client import API_KEY
 from mindloop.critic import critic_review as _critic_review
 from mindloop.memory import MemoryStore
+from mindloop.summarizer import ChunkSummary
 from mindloop.quotes import NudgePool, quote_of_the_day
 from mindloop.recap import (
     collapse_messages,
@@ -561,27 +563,35 @@ def _distill_session_values(paths: SessionPaths, model: str) -> None:
 def _save_core_principles(
     paths: SessionPaths, model: str, store: "MemoryStore"
 ) -> None:
-    """Extract core principles from dispositions and save as core memories."""
+    """Extract core principles from dispositions and save as core memories.
+
+    Saves directly (no merge loop) because the LLM extraction already
+    deduplicates.  This avoids expensive API calls at session teardown.
+    """
     if not paths.root:
         return
     disp_path = paths.root / "_dispositions.jsonl"
     if not disp_path.is_file():
         return
     try:
-        from mindloop.semantic_memory import save_memory
-
         principles = extract_core_principles(disp_path, model=model)
+        saved = 0
         for p in principles:
-            save_memory(
-                store,
-                p["text"],
-                p["abstract"],
-                p.get("summary", p["abstract"]),
-                model=model,
-                tier="core",
+            chunk = Chunk(
+                turns=[Turn(timestamp=datetime.now(), role="memory", text=p["text"])]
             )
-        if principles:
-            print(f"Saved {len(principles)} core principles.")
+            # Skip if identical text already exists.
+            if store.find_exact(chunk.text) is not None:
+                continue
+            cs = ChunkSummary(
+                chunk=chunk,
+                abstract=p["abstract"],
+                summary=p.get("summary", p["abstract"]),
+            )
+            store.save(cs, tier="core")
+            saved += 1
+        if saved:
+            print(f"Saved {saved} core principles.")
     except Exception as exc:
         print(f"Warning: core principles extraction failed: {exc}")
 
