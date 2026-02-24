@@ -89,6 +89,17 @@ class MemoryTools:
         )
         return f"Saved as #{row_id}."
 
+    def promote_memory(self, chunk_id: int) -> str:
+        """Promote a memory to core tier."""
+        self._track("promote_memory")
+        row = self._store.conn.execute(
+            "SELECT id FROM chunks WHERE id = ?", (chunk_id,)
+        ).fetchone()
+        if row is None:
+            return f"Chunk #{chunk_id} not found."
+        self._store.set_tier(chunk_id, "core")
+        return f"Promoted #{chunk_id} to core."
+
     def recall(
         self,
         query: str,
@@ -106,11 +117,18 @@ class MemoryTools:
         result_ids = [r.id for r in results]
         stats = self._store.merge_stats(result_ids)
         edge_counts = self._store.edge_counts(result_ids)
+        # Fetch tiers for display.
+        tiers = {cid: self._store.get_tier(cid) for cid in result_ids}
         lines = []
         for rank, r in enumerate(results, 1):
             cs = r.chunk_summary
             depth, sources = stats.get(r.id, (0, 1))
-            meta = f"score={r.score:.2f}"
+            tier = tiers.get(r.id)
+            meta = (
+                f"core, score={r.score:.2f}"
+                if tier == "core"
+                else f"score={r.score:.2f}"
+            )
             if depth > 0:
                 meta += f", depth={depth}, sources={sources}"
             n_edges = edge_counts.get(r.id, 0)
@@ -125,15 +143,18 @@ class MemoryTools:
         """Get full text and merge lineage for a chunk."""
         self._track("recall_detail")
         row = self._store.conn.execute(
-            "SELECT text, abstract, summary, active FROM chunks WHERE id = ?",
+            "SELECT text, abstract, summary, active, tier FROM chunks WHERE id = ?",
             (chunk_id,),
         ).fetchone()
         if row is None:
             return f"Chunk #{chunk_id} not found."
 
-        text, abstract, summary, active = row
+        text, abstract, summary, active, tier = row
+        status = "active" if active else "inactive"
+        if tier == "core":
+            status = f"core, {status}"
         parts = [
-            f"#{chunk_id} ({'active' if active else 'inactive'})",
+            f"#{chunk_id} ({status})",
             f"Abstract: {abstract}",
             f"Summary: {summary}",
             f"Text:\n{text}",

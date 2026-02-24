@@ -9,6 +9,7 @@ from mindloop.values import (
     _MIN_DISPOSITIONS,
     append_dispositions,
     distill_values,
+    extract_core_principles,
     extract_dispositions,
     extract_dispositions_window,
     load_values,
@@ -206,3 +207,49 @@ def test_distill_values_missing_file(tmp_path: Path) -> None:
     """Missing dispositions file returns empty string."""
     result = distill_values(tmp_path / "nope.jsonl", model="test")
     assert result == ""
+
+
+# --- extract_core_principles ---
+
+
+@patch("mindloop.values.chat")
+def test_extract_core_principles(mock_chat: MagicMock, tmp_path: Path) -> None:
+    """Core principles extracted from sufficient dispositions."""
+    path = tmp_path / "_dispositions.jsonl"
+    dispositions = [
+        {"text": f"Disposition {i}.", "abstract": f"Abstract {i}."}
+        for i in range(_MIN_DISPOSITIONS + 1)
+    ]
+    with open(path, "w") as f:
+        for d in dispositions:
+            f.write(json.dumps(d) + "\n")
+
+    principles = [
+        {"text": "I practice restraint.", "abstract": "Restraint."},
+        {"text": "I investigate before acting.", "abstract": "Investigation."},
+    ]
+    mock_chat.return_value = _mock_chat_response(json.dumps(principles))
+
+    result = extract_core_principles(path, model="test")
+    assert len(result) == 2
+    assert result[0]["text"] == "I practice restraint."
+    mock_chat.assert_called_once()
+
+
+@patch("mindloop.values.chat")
+def test_extract_core_principles_too_few(mock_chat: MagicMock, tmp_path: Path) -> None:
+    """Too few dispositions returns empty list without LLM call."""
+    path = tmp_path / "_dispositions.jsonl"
+    with open(path, "w") as f:
+        for i in range(_MIN_DISPOSITIONS - 1):
+            f.write(json.dumps({"text": f"D{i}.", "abstract": f"A{i}."}) + "\n")
+
+    result = extract_core_principles(path, model="test")
+    assert result == []
+    mock_chat.assert_not_called()
+
+
+def test_extract_core_principles_missing_file(tmp_path: Path) -> None:
+    """Missing file returns empty list."""
+    result = extract_core_principles(tmp_path / "nope.jsonl", model="test")
+    assert result == []

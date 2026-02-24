@@ -548,6 +548,22 @@ def add_memory_tools(
         ],
         func=mt.recall_detail,
     )
+    registry.add(
+        name="promote_memory",
+        description=(
+            "Promote a memory to core tier. Core memories persist across "
+            "sessions and are always surfaced. Use for durable principles "
+            "and values worth preserving."
+        ),
+        params=[
+            Param(
+                name="chunk_id",
+                description="The chunk id to promote.",
+                type="integer",
+            ),
+        ],
+        func=mt.promote_memory,
+    )
     return mt
 
 

@@ -35,10 +35,16 @@ def test_intrusive_recall_empty_before_first_window() -> None:
 def test_intrusive_recall_surfaces_matches(mock_collapse: MagicMock) -> None:
     """After on_extract, intrusive_recall returns formatted matches."""
     store = MagicMock()
-    store.search.return_value = [
-        _make_search_result(42, "Cats like fish.", 0.7),
-        _make_search_result(57, "Dogs like bones.", 0.6),
-    ]
+
+    def _tier_search(query: str, **kwargs: Any) -> list[SearchResult]:
+        if kwargs.get("tier") == "core":
+            return []  # No core memories.
+        return [
+            _make_search_result(42, "Cats like fish.", 0.7),
+            _make_search_result(57, "Dogs like bones.", 0.6),
+        ]
+
+    store.search.side_effect = _tier_search
 
     ext = MidSessionExtractor(store, model="m", log=lambda _: None, agent_model="m")
 
@@ -62,9 +68,13 @@ def test_intrusive_recall_surfaces_matches(mock_collapse: MagicMock) -> None:
 def test_intrusive_recall_cooldown(mock_collapse: MagicMock) -> None:
     """Second call returns empty because IDs are in the seen set."""
     store = MagicMock()
-    store.search.return_value = [
-        _make_search_result(42, "Cats like fish.", 0.7),
-    ]
+
+    def _tier_search(query: str, **kwargs: Any) -> list[SearchResult]:
+        if kwargs.get("tier") == "core":
+            return []
+        return [_make_search_result(42, "Cats like fish.", 0.7)]
+
+    store.search.side_effect = _tier_search
 
     ext = MidSessionExtractor(store, model="m", log=lambda _: None, agent_model="m")
 
@@ -87,10 +97,16 @@ def test_intrusive_recall_cooldown(mock_collapse: MagicMock) -> None:
 def test_intrusive_recall_filters_low_score(mock_collapse: MagicMock) -> None:
     """Results below the minimum cosine score are excluded."""
     store = MagicMock()
-    store.search.return_value = [
-        _make_search_result(10, "Low score.", _INTRUSIVE_MIN_SCORE - 0.01),
-        _make_search_result(11, "High score.", _INTRUSIVE_MIN_SCORE + 0.1),
-    ]
+
+    def _tier_search(query: str, **kwargs: Any) -> list[SearchResult]:
+        if kwargs.get("tier") == "core":
+            return []
+        return [
+            _make_search_result(10, "Low score.", _INTRUSIVE_MIN_SCORE - 0.01),
+            _make_search_result(11, "High score.", _INTRUSIVE_MIN_SCORE + 0.1),
+        ]
+
+    store.search.side_effect = _tier_search
 
     ext = MidSessionExtractor(store, model="m", log=lambda _: None, agent_model="m")
 
@@ -109,9 +125,13 @@ def test_intrusive_recall_filters_low_score(mock_collapse: MagicMock) -> None:
 def test_intrusive_recall_accumulates_windows(mock_collapse: MagicMock) -> None:
     """Multiple on_extract calls accumulate text until intrusive_recall consumes it."""
     store = MagicMock()
-    store.search.return_value = [
-        _make_search_result(10, "Accumulated fact.", 0.8),
-    ]
+
+    def _tier_search(query: str, **kwargs: Any) -> list[SearchResult]:
+        if kwargs.get("tier") == "core":
+            return []
+        return [_make_search_result(10, "Accumulated fact.", 0.8)]
+
+    store.search.side_effect = _tier_search
 
     ext = MidSessionExtractor(store, model="m", log=lambda _: None, agent_model="m")
 
@@ -151,10 +171,19 @@ def test_drain_excludes_saved_ids_from_recall(
 ) -> None:
     """Chunks saved by _drain are pre-seeded into _seen_ids."""
     store = MagicMock()
-    store.search.side_effect = [
-        [],  # _is_duplicate check.
-        [_make_search_result(99, "Just saved.", 0.9)],  # intrusive_recall query.
-    ]
+    call_count = 0
+
+    def _drain_search(query: str, **kwargs: Any) -> list[SearchResult]:
+        nonlocal call_count
+        call_count += 1
+        tier = kwargs.get("tier")
+        if call_count == 1:
+            return []  # _is_duplicate check.
+        if tier == "core":
+            return []  # Core search in intrusive_recall.
+        return [_make_search_result(99, "Just saved.", 0.9)]
+
+    store.search.side_effect = _drain_search
     mock_extract.return_value = [
         {"text": "fact", "abstract": "abs", "summary": "sum"},
     ]

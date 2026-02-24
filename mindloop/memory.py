@@ -165,6 +165,12 @@ def _init_db(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             pass  # Column already exists.
 
+    # Migrate: add tier column for core memory tier.
+    try:
+        conn.execute("ALTER TABLE chunks ADD COLUMN tier TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists.
+
     # FTS5 full-text index for BM25 keyword search.
     conn.execute(
         """
@@ -207,6 +213,20 @@ def _fts_escape(query: str) -> str:
     if not tokens:
         return '""'
     return " OR ".join(f'"{t.replace(chr(34), chr(34)+chr(34))}"' for t in tokens)
+
+
+def _tier_clause(tier: str | None) -> str:
+    """Return a SQL AND clause for tier filtering.
+
+    - ``"core"``: only core tier.
+    - ``"episodic"``: only NULL (legacy) or episodic tier.
+    - ``None``: no filter (all tiers).
+    """
+    if tier == "core":
+        return " AND c.tier = 'core'"
+    if tier == "episodic":
+        return " AND (c.tier IS NULL OR c.tier = 'episodic')"
+    return ""
 
 
 def _mmr_select(
@@ -419,12 +439,13 @@ class MemoryStore:
         chunk_summary: ChunkSummary,
         source_a: int | None = None,
         source_b: int | None = None,
+        tier: str | None = None,
     ) -> int:
         """Save a chunk summary. Returns the row id."""
         cursor = self.conn.execute(
             "INSERT INTO chunks "
-            "(text, abstract, summary, time_range, source_a, source_b) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "(text, abstract, summary, time_range, source_a, source_b, tier) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 chunk_summary.chunk.text,
                 chunk_summary.abstract,
@@ -432,6 +453,7 @@ class MemoryStore:
                 chunk_summary.chunk.time_range,
                 source_a,
                 source_b,
+                tier,
             ),
         )
         row_id = cursor.lastrowid or 0
@@ -452,7 +474,9 @@ class MemoryStore:
         """Save multiple chunk summaries."""
         return [self.save(summary) for summary in summaries]
 
-    def _bm25_ranked(self, query: str, original_only: bool, top_k: int) -> list[int]:
+    def _bm25_ranked(
+        self, query: str, original_only: bool, top_k: int, tier: str | None = None
+    ) -> list[int]:
         """Return chunk ids ranked by BM25 score only."""
         fts_query = _fts_escape(query)
         if original_only:
@@ -460,17 +484,19 @@ class MemoryStore:
                 "SELECT c.id FROM chunks_fts f "
                 "JOIN chunks c ON c.id = f.rowid "
                 "WHERE chunks_fts MATCH ? "
-                "AND c.source_a IS NULL AND c.source_b IS NULL "
-                "ORDER BY f.rank LIMIT ?"
+                "AND c.source_a IS NULL AND c.source_b IS NULL"
             )
         else:
             sql = (
                 "SELECT c.id FROM chunks_fts f "
                 "JOIN chunks c ON c.id = f.rowid "
-                "WHERE chunks_fts MATCH ? AND c.active = 1 "
-                "ORDER BY f.rank LIMIT ?"
+                "WHERE chunks_fts MATCH ? AND c.active = 1"
             )
-        return [r[0] for r in self.conn.execute(sql, (fts_query, top_k)).fetchall()]
+        params: list[object] = [fts_query]
+        sql += _tier_clause(tier)
+        sql += " ORDER BY f.rank LIMIT ?"
+        params.append(top_k)
+        return [r[0] for r in self.conn.execute(sql, params).fetchall()]
 
     def _build_results(
         self,
@@ -504,6 +530,7 @@ class MemoryStore:
         original_only: bool = False,
         diversity: float = 0.0,
         mode: str = "hybrid",
+        tier: str | None = None,
     ) -> list[SearchResult]:
         """Find the most relevant chunks via embedding and/or BM25 search.
 
@@ -518,6 +545,9 @@ class MemoryStore:
 
         *diversity* (0.0–1.0) controls MMR reranking (hybrid/cosine modes
         only).
+
+        *tier* filters by memory tier: ``"core"`` for core only,
+        ``"episodic"`` for episodic only, ``None`` for all.
         """
         if mode not in _SEARCH_MODES:
             raise ValueError(
@@ -525,13 +555,17 @@ class MemoryStore:
             )
 
         if original_only:
-            where = "WHERE source_a IS NULL AND source_b IS NULL"
+            where = "WHERE c.source_a IS NULL AND c.source_b IS NULL"
         else:
-            where = "WHERE active = 1"
+            where = "WHERE c.active = 1"
+
+        # Apply tier filter using chunks aliased as c.
+        tier_sql = _tier_clause(tier)
 
         rows = self.conn.execute(
-            "SELECT id, text, abstract, summary, time_range, "
-            f"source_a, source_b FROM chunks {where}"
+            "SELECT c.id, c.text, c.abstract, c.summary, c.time_range, "
+            "c.source_a, c.source_b FROM chunks c "
+            f"{where}{tier_sql}"
         ).fetchall()
 
         if not rows:
@@ -548,7 +582,7 @@ class MemoryStore:
 
         # --- BM25-only mode ---
         if mode == "bm25":
-            bm25_ids = self._bm25_ranked(query, original_only, top_k)
+            bm25_ids = self._bm25_ranked(query, original_only, top_k, tier=tier)
             # Only include ids that passed the WHERE filter.
             valid = set(ids)
             bm25_ids = [cid for cid in bm25_ids if cid in valid][:top_k]
@@ -590,16 +624,15 @@ class MemoryStore:
                 "SELECT c.id, f.rank FROM chunks_fts f "
                 "JOIN chunks c ON c.id = f.rowid "
                 "WHERE chunks_fts MATCH ? "
-                "AND c.source_a IS NULL AND c.source_b IS NULL "
-                "ORDER BY f.rank"
+                "AND c.source_a IS NULL AND c.source_b IS NULL"
             )
         else:
             fts_join = (
                 "SELECT c.id, f.rank FROM chunks_fts f "
                 "JOIN chunks c ON c.id = f.rowid "
-                "WHERE chunks_fts MATCH ? AND c.active = 1 "
-                "ORDER BY f.rank"
+                "WHERE chunks_fts MATCH ? AND c.active = 1"
             )
+        fts_join += _tier_clause(tier) + " ORDER BY f.rank"
         fts_rows = self.conn.execute(fts_join, (fts_query,)).fetchall()
         for rank, (cid, _bm25_score) in enumerate(fts_rows):
             bm25_rank[cid] = rank
@@ -651,6 +684,18 @@ class MemoryStore:
             [(cid,) for cid in chunk_ids],
         )
         self._auto_commit()
+
+    def set_tier(self, chunk_id: int, tier: str | None) -> None:
+        """Change the tier of a chunk (e.g. promote to ``'core'``)."""
+        self.conn.execute("UPDATE chunks SET tier = ? WHERE id = ?", (tier, chunk_id))
+        self._auto_commit()
+
+    def get_tier(self, chunk_id: int) -> str | None:
+        """Return the tier of a chunk, or None if not set."""
+        row = self.conn.execute(
+            "SELECT tier FROM chunks WHERE id = ?", (chunk_id,)
+        ).fetchone()
+        return row[0] if row else None
 
     def count(self, active_only: bool = True) -> int:
         """Return the number of stored chunks."""

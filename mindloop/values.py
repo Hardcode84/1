@@ -40,6 +40,20 @@ Most windows will have zero dispositions — that's fine, return [].
 Return ONLY valid JSON, no markdown fences or commentary.\
 """
 
+_PRINCIPLES_PROMPT = """\
+You identify the most distinct, durable principles from an agent's \
+self-observations.
+
+Each principle must be:
+- A standalone statement, not a narrative.
+- Written as the agent ("I ...").
+- A genuine pattern supported by multiple observations, not a one-off.
+
+Return a JSON array of {"text": "...", "abstract": "..."} objects.
+3-8 principles maximum. Return [] if no clear patterns emerge.
+Return ONLY valid JSON.\
+"""
+
 _DISTILL_PROMPT = """\
 You are distilling an AI agent's accumulated self-observations into a \
 self-understanding.
@@ -200,3 +214,68 @@ def load_values(path: Path) -> str | None:
         content = path.read_text().strip()
         return content or None
     return None
+
+
+def extract_core_principles(raw_path: Path, model: str) -> list[dict[str, str]]:
+    """Extract durable core principles from accumulated dispositions.
+
+    Reads *raw_path* (JSONL), deduplicates by abstract, sends to LLM.
+    Returns a list of ``{"text": ..., "abstract": ...}`` dicts.
+    Returns ``[]`` if too few dispositions or no clear patterns.
+    """
+    if not raw_path.is_file():
+        return []
+
+    # Read and deduplicate by abstract (same logic as distill_values).
+    seen: set[str] = set()
+    abstracts: list[str] = []
+    for line in raw_path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        abstract = entry.get("abstract", "")
+        if abstract and abstract not in seen:
+            seen.add(abstract)
+            abstracts.append(abstract)
+
+    if len(abstracts) < _MIN_DISPOSITIONS:
+        return []
+
+    user_content = "\n".join(f"- {a}" for a in abstracts)
+    messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
+    msg = chat(
+        messages,
+        model=model,
+        system_prompt=_PRINCIPLES_PROMPT,
+        stream=False,
+        **DETERMINISTIC_PARAMS,
+        cache_messages=False,
+    )
+    raw = str(msg.get("content", ""))
+    result = _parse_dispositions(raw)
+    if result is not None:
+        return result
+
+    # Retry once with correction prompt.
+    messages.append({"role": "assistant", "content": raw})
+    messages.append(
+        {
+            "role": "user",
+            "content": "Your response was not valid JSON. "
+            "Return ONLY a JSON array, no markdown fences or extra text.",
+        }
+    )
+    msg = chat(
+        messages,
+        model=model,
+        system_prompt=_PRINCIPLES_PROMPT,
+        stream=False,
+        **DETERMINISTIC_PARAMS,
+        cache_messages=False,
+    )
+    raw = str(msg.get("content", ""))
+    return _parse_dispositions(raw) or []

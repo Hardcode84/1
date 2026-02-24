@@ -53,6 +53,42 @@ The old `specificity()` computed `1 - neighbor_count / total_count` using a fixe
 
 `neighbor_score()` replaces both with a single `search()` call that already exists in the hot path. It reuses the hybrid cosine + BM25 RRF pipeline, so the score reflects both semantic and keyword similarity. Taking the mean of top-k results (default k=3) gives a smooth, continuous signal. Rather than comparing against an absolute threshold (which breaks in dense clusters), the merge gate compares the merged text's neighbor score against the candidate's — only the *increase* matters. A margin of 0.05 means merging is only rejected when the result is notably more generic than the input it replaced, regardless of how dense the surrounding cluster already was.
 
+## Core tier
+
+A separate memory tier for durable agent principles and values, auto-populated from the values pipeline.
+
+### What it is
+
+Core memories are stable behavioral patterns distilled from accumulated dispositions across sessions. They live in the same `chunks` table with `tier = 'core'` (episodic memories have `tier IS NULL`). `_values.md` remains the narrative identity statement in the system prompt; core memories are the structured, searchable counterpart in the DB.
+
+### Separate merge pools
+
+Core memories only merge with other core memories. Episodic memories only merge with episodic. The merge loop filters searches with `tier=search_tier` — core saves search `tier="core"`, episodic saves search `tier="episodic"`. This prevents episodic restatements from merging with (and diluting) stable principles.
+
+### Core dedup
+
+After the merge loop completes for a non-core memory, `save_memory()` checks the new text against core memories via cosine-only search. If the best core hit exceeds `sim_high` (default 0.9), the episodic save is skipped entirely — it's a restatement of something already captured as a core principle. This is the key mechanism that prevents "I practiced restraint" from accumulating as 10+ redundant episodic chunks when "practice restraint" already exists as core.
+
+### Auto-population
+
+At session end: `extract_core_principles()` reads `_dispositions.jsonl`, deduplicates by abstract, asks the LLM to identify 3–8 durable principles, and saves each via `save_memory(tier="core")`. The merge loop handles dedup within the core pool.
+
+### Intrusive recall
+
+Core memories are surfaced in a distinct section during reflection nudges, queried separately from episodic memories via cosine-only search. Format:
+
+```
+Core memories:
+- "Practice restraint" (#42)
+
+These also seem related:
+- "Instance 5 found that..." (#89)
+```
+
+### Agent escape hatch
+
+The `promote_memory` tool lets the agent manually promote any memory to core tier. Registered with description explaining that core memories persist across sessions and are always surfaced.
+
 ## Deduplication
 
 Exact-text duplicates are detected via `find_exact()` before saving. The stored text form (including role prefix) is used for comparison.

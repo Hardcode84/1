@@ -19,9 +19,7 @@ def main() -> None:
         description="Test merge prompt on previously-rejected pairs."
     )
     parser.add_argument("db", help="Path to memory.db")
-    parser.add_argument(
-        "--cluster", help="Comma-separated chunk IDs to restrict to"
-    )
+    parser.add_argument("--cluster", help="Comma-separated chunk IDs to restrict to")
     parser.add_argument(
         "--model",
         default="anthropic/claude-haiku",

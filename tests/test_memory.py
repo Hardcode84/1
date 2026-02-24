@@ -735,6 +735,74 @@ def test_search_invalid_mode(store: MemoryStore) -> None:
         store.search("query", mode="invalid")
 
 
+# --- tier ---
+
+
+def test_save_with_tier(store: MemoryStore) -> None:
+    """Tier column is persisted on save."""
+    row_id = store.save(_summary("core fact"), tier="core")
+    tier = store.conn.execute(
+        "SELECT tier FROM chunks WHERE id = ?", (row_id,)
+    ).fetchone()[0]
+    assert tier == "core"
+
+
+def test_save_without_tier_is_null(store: MemoryStore) -> None:
+    """Default tier is NULL (episodic)."""
+    row_id = store.save(_summary("episodic fact"))
+    tier = store.conn.execute(
+        "SELECT tier FROM chunks WHERE id = ?", (row_id,)
+    ).fetchone()[0]
+    assert tier is None
+
+
+def test_search_tier_core(store: MemoryStore) -> None:
+    """tier='core' returns only core chunks."""
+    store.save(_summary("core one", abstract="core"), tier="core")
+    store.save(_summary("episodic one", abstract="episodic"))
+
+    with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
+        results = store.search("query", tier="core")
+    abstracts = [r.chunk_summary.abstract for r in results]
+    assert "core" in abstracts
+    assert "episodic" not in abstracts
+
+
+def test_search_tier_episodic(store: MemoryStore) -> None:
+    """tier='episodic' returns NULL and episodic chunks, not core."""
+    store.save(_summary("core one", abstract="core"), tier="core")
+    store.save(_summary("episodic one", abstract="episodic"))
+
+    with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
+        results = store.search("query", tier="episodic")
+    abstracts = [r.chunk_summary.abstract for r in results]
+    assert "episodic" in abstracts
+    assert "core" not in abstracts
+
+
+def test_search_tier_none_returns_all(store: MemoryStore) -> None:
+    """Default (tier=None) returns all tiers."""
+    store.save(_summary("core one", abstract="core"), tier="core")
+    store.save(_summary("episodic one", abstract="episodic"))
+
+    with patch("mindloop.memory.get_embeddings", side_effect=_emb_for(_E1)):
+        results = store.search("query", tier=None)
+    abstracts = {r.chunk_summary.abstract for r in results}
+    assert abstracts == {"core", "episodic"}
+
+
+def test_set_tier(store: MemoryStore) -> None:
+    """set_tier changes tier of existing chunk."""
+    row_id = store.save(_summary("fact"))
+    assert store.get_tier(row_id) is None
+
+    store.set_tier(row_id, "core")
+    assert store.get_tier(row_id) == "core"
+
+    store.set_tier(row_id, None)
+    assert store.get_tier(row_id) is None
+
+
 def test_inherit_edges_no_targets(store: MemoryStore) -> None:
     """No external edges → no embedding call needed."""
     id_a = store.save(_summary("a"))

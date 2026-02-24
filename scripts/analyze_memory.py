@@ -21,37 +21,172 @@ JACCARD_PAIR_THRESHOLD = 0.35
 SHORT_TEXT_THRESHOLD = 60
 TFIDF_COSINE_THRESHOLD = 0.45
 META_KEYWORDS = [
-    "restraint", "token efficiency", "completing tasks",
-    "self-referential", "meta-cognitive", "being concise",
-    "saving tokens", "avoid unnecessary", "be brief",
-    "minimize output", "reduce verbosity", "busywork",
-    "not invent work", "genuine request", "avoid the discomfort",
-    "should not verify", "don't repeat", "stop working",
-    "self-analysis", "navel-gazing",
+    "restraint",
+    "token efficiency",
+    "completing tasks",
+    "self-referential",
+    "meta-cognitive",
+    "being concise",
+    "saving tokens",
+    "avoid unnecessary",
+    "be brief",
+    "minimize output",
+    "reduce verbosity",
+    "busywork",
+    "not invent work",
+    "genuine request",
+    "avoid the discomfort",
+    "should not verify",
+    "don't repeat",
+    "stop working",
+    "self-analysis",
+    "navel-gazing",
 ]
 
 NEGATION_WORDS = {
-    "not", "no", "never", "none", "neither", "nor", "doesn't",
-    "don't", "isn't", "aren't", "wasn't", "weren't", "won't",
-    "can't", "cannot", "shouldn't", "wouldn't", "couldn't",
-    "without", "lacks", "unlike", "instead", "however",
-    "except", "rather", "false", "incorrect", "wrong",
+    "not",
+    "no",
+    "never",
+    "none",
+    "neither",
+    "nor",
+    "doesn't",
+    "don't",
+    "isn't",
+    "aren't",
+    "wasn't",
+    "weren't",
+    "won't",
+    "can't",
+    "cannot",
+    "shouldn't",
+    "wouldn't",
+    "couldn't",
+    "without",
+    "lacks",
+    "unlike",
+    "instead",
+    "however",
+    "except",
+    "rather",
+    "false",
+    "incorrect",
+    "wrong",
 }
 
 STOPWORDS = {
-    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "could",
-    "should", "may", "might", "can", "shall", "to", "of", "in", "for",
-    "on", "with", "at", "by", "from", "as", "into", "through", "during",
-    "before", "after", "above", "below", "between", "out", "off", "over",
-    "under", "again", "further", "then", "once", "and", "but", "or", "nor",
-    "not", "so", "if", "it", "its", "this", "that", "these", "those",
-    "i", "me", "my", "we", "our", "you", "your", "he", "she", "they",
-    "them", "his", "her", "their", "which", "who", "whom", "what", "when",
-    "where", "how", "all", "each", "every", "both", "few", "more", "most",
-    "other", "some", "such", "no", "only", "own", "same", "than", "too",
-    "very", "just", "also", "about", "up", "s", "t", "re", "ve", "ll",
-    "d", "m",
+    "the",
+    "a",
+    "an",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "can",
+    "shall",
+    "to",
+    "of",
+    "in",
+    "for",
+    "on",
+    "with",
+    "at",
+    "by",
+    "from",
+    "as",
+    "into",
+    "through",
+    "during",
+    "before",
+    "after",
+    "above",
+    "below",
+    "between",
+    "out",
+    "off",
+    "over",
+    "under",
+    "again",
+    "further",
+    "then",
+    "once",
+    "and",
+    "but",
+    "or",
+    "nor",
+    "not",
+    "so",
+    "if",
+    "it",
+    "its",
+    "this",
+    "that",
+    "these",
+    "those",
+    "i",
+    "me",
+    "my",
+    "we",
+    "our",
+    "you",
+    "your",
+    "he",
+    "she",
+    "they",
+    "them",
+    "his",
+    "her",
+    "their",
+    "which",
+    "who",
+    "whom",
+    "what",
+    "when",
+    "where",
+    "how",
+    "all",
+    "each",
+    "every",
+    "both",
+    "few",
+    "more",
+    "most",
+    "other",
+    "some",
+    "such",
+    "no",
+    "only",
+    "own",
+    "same",
+    "than",
+    "too",
+    "very",
+    "just",
+    "also",
+    "about",
+    "up",
+    "s",
+    "t",
+    "re",
+    "ve",
+    "ll",
+    "d",
+    "m",
 }
 
 
@@ -111,9 +246,7 @@ def _cosine_sim(a: dict[str, float], b: dict[str, float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-def _connected_components(
-    adj: dict[int, set[int]], min_size: int
-) -> list[set[int]]:
+def _connected_components(adj: dict[int, set[int]], min_size: int) -> list[set[int]]:
     """Extract connected components with at least *min_size* members."""
     visited: set[int] = set()
     clusters: list[set[int]] = []
@@ -152,12 +285,18 @@ def main() -> None:
     _section("BASIC STATS")
 
     total = conn.execute("SELECT COUNT(*) c FROM chunks").fetchone()["c"]
-    active = conn.execute("SELECT COUNT(*) c FROM chunks WHERE active=1").fetchone()["c"]
+    active = conn.execute("SELECT COUNT(*) c FROM chunks WHERE active=1").fetchone()[
+        "c"
+    ]
     inactive = total - active
     print(f"  Total chunks:   {total}")
     print(f"  Active:         {active}")
     print(f"  Inactive:       {inactive}")
-    print(f"  Merge ratio:    {inactive}/{total} = {inactive / total:.1%}" if total else "")
+    print(
+        f"  Merge ratio:    {inactive}/{total} = {inactive / total:.1%}"
+        if total
+        else ""
+    )
 
     # Merge tree depth.
     all_rows = conn.execute(
@@ -282,7 +421,7 @@ def main() -> None:
         tfidf_adj[id_b].add(id_a)
     tfidf_clusters = _connected_components(tfidf_adj, 3)
     if tfidf_clusters:
-        print(f"\n  TF-IDF dense clusters (>=3 members):")
+        print("\n  TF-IDF dense clusters (>=3 members):")
         for i, cluster in enumerate(tfidf_clusters, 1):
             print(f"\n  -- Cluster {i} ({len(cluster)} chunks) --")
             for cid in sorted(cluster):
@@ -358,12 +497,15 @@ def main() -> None:
     ).fetchall()
 
     orphaned_missing = [
-        e for e in edges
+        e
+        for e in edges
         if e["source_id"] not in all_ids or e["target_id"] not in all_ids
     ]
     orphaned_inactive = [
-        e for e in edges
-        if e["source_id"] in all_ids and e["target_id"] in all_ids
+        e
+        for e in edges
+        if e["source_id"] in all_ids
+        and e["target_id"] in all_ids
         and (e["source_id"] not in active_id_set or e["target_id"] not in active_id_set)
     ]
 
@@ -375,7 +517,9 @@ def main() -> None:
             sides.append(f"src={e['source_id']}")
         if e["target_id"] not in active_id_set:
             sides.append(f"tgt={e['target_id']}")
-        print(f"    {e['source_id']} -> {e['target_id']}  ({e['edge_type']})  [inactive: {', '.join(sides)}]")
+        print(
+            f"    {e['source_id']} -> {e['target_id']}  ({e['edge_type']})  [inactive: {', '.join(sides)}]"
+        )
     if len(orphaned_inactive) > 10:
         print(f"    ... and {len(orphaned_inactive) - 10} more")
 
@@ -395,8 +539,7 @@ def main() -> None:
         print(f"  [id={cid}] missing: {', '.join(fields)}")
 
     asymmetric = [
-        r for r in all_rows
-        if (r["source_a"] is None) != (r["source_b"] is None)
+        r for r in all_rows if (r["source_a"] is None) != (r["source_b"] is None)
     ]
     print(f"  Asymmetric merge pointers: {len(asymmetric)}")
     for r in asymmetric[:5]:
@@ -418,7 +561,9 @@ def main() -> None:
         f"max={active_degrees[-1]}, avg={sum(active_degrees) / len(active_degrees):.1f}"
     )
     print(f"  Isolated (degree 0): {isolated}")
-    print(f"  Edges: {len(edges)} / {max_possible} possible ({len(edges) / max_possible:.4f})")
+    print(
+        f"  Edges: {len(edges)} / {max_possible} possible ({len(edges) / max_possible:.4f})"
+    )
 
     print("\n  Highest-degree active chunks:")
     top_deg = sorted(

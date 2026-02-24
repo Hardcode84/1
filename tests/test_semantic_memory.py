@@ -551,6 +551,50 @@ def test_save_merges_paraphrase_via_cosine_search(store: MemoryStore) -> None:
     assert store.count() == 1
 
 
+def test_save_core_separate_merge_pool(store: MemoryStore) -> None:
+    """Core chunk does not merge with episodic chunks."""
+    store.save(_summary("episodic fact", abstract="episodic"))
+
+    # Save a core memory — should NOT merge with the episodic chunk
+    # because it searches only core tier, finding nothing.
+    with _patch_embeddings(_EMB_A):
+        core_id = save_memory(
+            store,
+            "core principle",
+            "core_abs",
+            "core_sum",
+            model="test-model",
+            tier="core",
+        )
+
+    # Both chunks active: episodic untouched, core saved separately.
+    assert store.count() == 2
+    tier = store.get_tier(core_id)
+    assert tier == "core"
+
+
+def test_save_episodic_dedup_against_core(store: MemoryStore) -> None:
+    """Episodic save restating a core memory returns the core id."""
+    # Pre-existing core memory.
+    store.save(_summary("practice restraint", abstract="restraint"), tier="core")
+
+    # Episodic save with near-identical meaning — uniform embeddings give
+    # cosine=1.0 which exceeds sim_high, triggering core dedup.
+    with _patch_embeddings(_EMB_A):
+        result_id = save_memory(
+            store,
+            "I practiced restraint",
+            "abs",
+            "sum",
+            model="test-model",
+        )
+
+    # Should return the core chunk's id.
+    assert result_id == 1
+    # Episodic leaf should remain inactive (never activated).
+    assert store.count() == 1
+
+
 def test_save_inherits_edges_on_merge(store: MemoryStore) -> None:
     """Edges from absorbed chunks are inherited onto the merged chunk."""
     id_a = store.save(_summary("fact A"))

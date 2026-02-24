@@ -33,6 +33,7 @@ def save_memory(
     log: Callable[[str], None] = noop,
     sim_high: float = _DEFAULT_SIM_HIGH,
     sim_low: float = _DEFAULT_SIM_LOW,
+    tier: str | None = None,
 ) -> int:
     """Save a memory, merging with similar existing memories until fixed point.
 
@@ -49,17 +50,20 @@ def save_memory(
         log("[memory] Exact duplicate found, skipping.")
         return existing
 
+    # Determine search tier: core merges with core, episodic with episodic.
+    search_tier = tier or "episodic"
+
     with store.transaction():
         cs = ChunkSummary(chunk=chunk, abstract=abstract, summary=summary)
-        last_id = store.save(cs)
+        last_id = store.save(cs, tier=tier)
         store.deactivate([last_id])
 
         incoming_leaves = [stored_text]
 
         for round_idx in range(max_rounds):
             # Union hybrid + cosine-only results to catch paraphrases.
-            hybrid = store.search(text, top_k=top_k)
-            cosine = store.search(text, top_k=top_k, mode="cosine")
+            hybrid = store.search(text, top_k=top_k, tier=search_tier)
+            cosine = store.search(text, top_k=top_k, mode="cosine", tier=search_tier)
             seen: set[int] = set()
             results: list[SearchResult] = []
             for r in hybrid + cosine:
@@ -139,7 +143,9 @@ def save_memory(
                 )
                 cs = ChunkSummary(chunk=chunk, abstract=mr.abstract, summary=mr.summary)
                 old_last_id = last_id
-                last_id = store.save(cs, source_a=old_last_id, source_b=result.id)
+                last_id = store.save(
+                    cs, source_a=old_last_id, source_b=result.id, tier=tier
+                )
                 store.inherit_edges(last_id, [old_last_id, result.id])
                 store.deactivate([last_id])
 
@@ -154,6 +160,16 @@ def save_memory(
             if not merged:
                 log("[memory] Fixed point reached.")
                 break
+
+        # Episodic memories that restate a core memory are redundant.
+        if tier != "core":
+            core_hits = store.search(text, top_k=1, tier="core", mode="cosine")
+            if core_hits and core_hits[0].cosine_score >= sim_high:
+                log(
+                    f"[memory] Restates core #{core_hits[0].id}"
+                    f" (sim={core_hits[0].cosine_score:.3f}), skipping."
+                )
+                return core_hits[0].id
 
         # Activate whichever node ended up final (leaf or last merge).
         store.activate([last_id])

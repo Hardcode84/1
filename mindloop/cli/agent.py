@@ -27,6 +27,7 @@ from mindloop.recap import (
 from mindloop.values import (
     append_dispositions,
     distill_values,
+    extract_core_principles,
     extract_dispositions_window,
     load_values,
     save_values,
@@ -557,6 +558,34 @@ def _distill_session_values(paths: SessionPaths, model: str) -> None:
         print(f"Warning: values distillation failed: {exc}")
 
 
+def _save_core_principles(
+    paths: SessionPaths, model: str, store: "MemoryStore"
+) -> None:
+    """Extract core principles from dispositions and save as core memories."""
+    if not paths.root:
+        return
+    disp_path = paths.root / "_dispositions.jsonl"
+    if not disp_path.is_file():
+        return
+    try:
+        from mindloop.semantic_memory import save_memory
+
+        principles = extract_core_principles(disp_path, model=model)
+        for p in principles:
+            save_memory(
+                store,
+                p["text"],
+                p["abstract"],
+                p.get("summary", p["abstract"]),
+                model=model,
+                tier="core",
+            )
+        if principles:
+            print(f"Saved {len(principles)} core principles.")
+    except Exception as exc:
+        print(f"Warning: core principles extraction failed: {exc}")
+
+
 _INTRUSIVE_TOP_K = 3
 _INTRUSIVE_MIN_SCORE = 0.4
 _INTRUSIVE_DIVERSITY = 0.5
@@ -704,21 +733,46 @@ class MidSessionExtractor:
         query = "\n".join(self._pending_texts)
         self._last_query = query
         self._pending_texts.clear()
+
+        # Core memories: always surface the most relevant ones.
+        core_hits = self._store.search(query, top_k=2, tier="core", mode="cosine")
+        core_hits = [
+            r
+            for r in core_hits
+            if r.id not in self._seen_ids and r.cosine_score >= _INTRUSIVE_MIN_SCORE
+        ]
+
+        # Episodic memories: standard hybrid search.
         results = self._store.search(
             query,
             top_k=_INTRUSIVE_TOP_K,
             diversity=_INTRUSIVE_DIVERSITY,
+            tier="episodic",
         )
         hits = [
             r
             for r in results
             if r.id not in self._seen_ids and r.cosine_score >= _INTRUSIVE_MIN_SCORE
         ]
-        if not hits:
+
+        if not core_hits and not hits:
             return ""
-        self._seen_ids.update(r.id for r in hits)
-        lines = [f'- "{r.chunk_summary.abstract}" (#{r.id})' for r in hits]
-        return "These memories seem related to what you're doing:\n" + "\n".join(lines)
+
+        parts: list[str] = []
+        if core_hits:
+            self._seen_ids.update(r.id for r in core_hits)
+            lines = [f'- "{r.chunk_summary.abstract}" (#{r.id})' for r in core_hits]
+            parts.append("Core memories:\n" + "\n".join(lines))
+        if hits:
+            self._seen_ids.update(r.id for r in hits)
+            lines = [f'- "{r.chunk_summary.abstract}" (#{r.id})' for r in hits]
+            header = (
+                "These also seem related:"
+                if core_hits
+                else "These memories seem related to what you're doing:"
+            )
+            parts.append(header + "\n" + "\n".join(lines))
+        return "\n\n".join(parts)
 
     @property
     def pinned_windows(self) -> list[dict[str, str]]:
@@ -877,6 +931,7 @@ def main() -> None:
                 save_pinned_turns(pinned_path, mid_extract.pinned_windows)
             _generate_session_recap(paths, jsonl_path, summarizer_model)
             _distill_session_values(paths, summarizer_model)
+            _save_core_principles(paths, summarizer_model, mt.store)
             mt.close()
 
     if paths.name:
